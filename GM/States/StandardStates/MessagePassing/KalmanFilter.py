@@ -10,8 +10,6 @@ sys.path.append( '/Users/Eddie/GenModels' )
 from GM.Distributions import Normal
 sys.path.append( path )
 
-notNone = lambda _x: _x is not None
-
 class KalmanFilter( MessagePasser ):
     # Kalman filter with only 1 set of parameters
 
@@ -38,23 +36,18 @@ class KalmanFilter( MessagePasser ):
     def updateParams( self, y, u, A, sigma, C, R, mu0, sigma0 ):
         self.u = u
 
-        self.A = A
-        self.sigma = sigma
-        self.sigInv = np.linalg.inv( sigma )
-        self.J11 = self.sigInv
-        self.J12 = -self.sigInv @ self.A
-        self.J22 = self.A.T @ self.sigInv @ self.A
+        sigInv = np.linalg.inv( sigma )
+        self.J11 = sigInv
+        self.J12 = -sigInv @ A
+        self.J22 = A.T @ sigInv @ A
         self.log_Z = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
 
-        self.C = C
-        self.R = R
-        self.RInv = np.linalg.inv( R )
-        self.Jy = C.T @ self.RInv @ C
+        RInv = np.linalg.inv( R )
+        self.hy = y.dot( RInv @ C )
+        self.Jy = C.T @ RInv @ C
 
         self.mu0 = mu0
         self.sigma0 = sigma0
-
-        super( KalmanFilter, self ).updateParams( y )
 
     ######################################################################
 
@@ -66,10 +59,10 @@ class KalmanFilter( MessagePasser ):
         J12 = self.J12
         J22 = self.J22
 
-        h1 = self.sigInv.dot( u )
-        h2 = self.J12.T.dot( u )
+        h1 = J11.dot( u )
+        h2 = J12.T.dot( u )
 
-        log_Z = 0.5 * u.dot( self.sigInv ).dot( u ) + self.log_Z
+        log_Z = 0.5 * u.dot( h1 ) + self.log_Z
 
         return J11, J12, J22, h1, h2, log_Z
 
@@ -79,7 +72,7 @@ class KalmanFilter( MessagePasser ):
 
         # P( y_t | x_t ) as a function of x_t
         J = self.Jy
-        h = ( self.C.T @ self.RInv ).dot( self.y[ t ] )
+        h = self.hy[ t ]
         log_Z = Normal.log_partition( natParams=( -0.5 * J, h ) )
 
         if( forward ):
@@ -150,3 +143,39 @@ class KalmanFilter( MessagePasser ):
         return [ np.zeros( ( self.D_latent, self.D_latent ) ), \
                  np.zeros( self.D_latent ), \
                  0. ]
+
+
+class SwitchingKalmanFilter( KalmanFilter ):
+    # Kalman filter with multiple dynamics parameters and modes
+
+    def updateParams( self, y, u, z, As, sigmas, C, R, mu0, sigma0 ):
+        self.u = u
+        self.z = z
+
+        self.As = As
+        self.J11s = [ np.linalg.inv( sigma ) for sigma in sigmas ]
+        self.J12s = [ -sigInv @ A for A, sigInv in zip( self.As, self.J11s ) ]
+        self.J22s = [ A.T @ sigInv @ A for A, sigInv in zip( self.As, self.J11s ) ]
+        self.log_Zs = np.array( [ 0.5 * np.linalg.slogdet( sigma )[ 1 ] for sigma in sigmas ] )
+
+        RInv = np.linalg.inv( R )
+        self.hy = y.dot( RInv @ C )
+        self.Jy = C.T @ RInv @ C
+
+        self.mu0 = mu0
+        self.sigma0 = sigma0
+
+    def transitionProb( self, t, t1, forward=False ):
+        u = self.u[ t ]
+        k = self.z[ t1 ]
+
+        J11 = self.J11s[ k ]
+        J12 = self.J12s[ k ]
+        J22 = self.J22s[ k ]
+
+        h1 = J11.dot( u )
+        h2 = J12.T.dot( u )
+
+        log_Z = 0.5 * u.dot( h1 ) + self.log_Zs[ k ]
+
+        return J11, J12, J22, h1, h2, log_Z

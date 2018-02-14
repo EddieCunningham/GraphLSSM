@@ -2,6 +2,9 @@ import numpy as np
 from Base import Exponential
 from scipy.stats import multivariate_normal
 from NormalInverseWishart import NormalInverseWishart
+import scipy.linalg.lapack as lapack
+
+LOG_2_PI = np.log( 2 * np.pi )
 
 class Normal( Exponential ):
 
@@ -47,14 +50,18 @@ class Normal( Exponential ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
 
-        mu, sigma = params if params is not None else cls.natToStandard( *natParams )
+        if( natParams is not None ):
+            n1, n2 = natParams
+            k = n1.shape[ 0 ]
+            A1 = -0.25 * n2.dot( np.linalg.solve( n1, n2 ) )
+            A2 = -0.5 * np.linalg.slogdet( -2 * n1 )[ 1 ]
+        else:
+            mu, sigma = params
+            k = sigma.shape[ 0 ]
+            A1 = 0.5 * mu.dot( np.linalg.solve( sigma, mu ) )
+            A2 = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
 
-        k = sigma.shape[ 0 ]
-        sigInv = np.linalg.inv( sigma )
-        A1 = 0.5 * mu.dot( sigInv ).dot( mu )
-        A2 = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
-
-        log_h = k / 2 * np.log( 2 * np.pi )
+        log_h = k / 2 * LOG_2_PI
 
         if( split ):
             return ( A1, A2, log_h )
@@ -83,13 +90,15 @@ class Normal( Exponential ):
     @classmethod
     def marginalizeX1( cls, J11, J12, J22, h1, h2, log_Z ):
         K = h1.shape[ 0 ]
+
         J11Inv = np.linalg.inv( J11 )
         J = J22 - J12.T @ J11Inv @ J12
-        h = h2 - ( J12.T @ J11Inv ).dot( h1 )
+        J11Invh1 = J11Inv.dot( h1 )
+        h = h2 - J12.T.dot( J11Invh1 )
         log_Z = log_Z - \
-                0.5 * h1.dot( J11Inv ).dot( h1 ) + \
+                0.5 * h1.dot( J11Invh1 ) + \
                 0.5 * np.linalg.slogdet( J11 )[ 1 ] - \
-                K / 2 * np.log( 2 * np.pi )
+                K / 2 * LOG_2_PI
         return J, h, log_Z
 
     @classmethod

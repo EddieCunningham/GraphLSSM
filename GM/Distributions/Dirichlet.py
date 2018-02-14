@@ -53,8 +53,6 @@ class Dirichlet( Exponential ):
                 params = ( params, )
 
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
-        if( size == 1 ):
-            return dirichlet.rvs( alpha=alpha, size=size )[ 0 ]
         return dirichlet.rvs( alpha=alpha, size=size )
 
     ##########################################################################
