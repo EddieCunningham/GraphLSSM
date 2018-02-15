@@ -10,6 +10,8 @@ sys.path.append( '/Users/Eddie/GenModels' )
 from GM.Distributions import Normal
 sys.path.append( path )
 
+#########################################################################################
+
 class CategoricalForwardBackward( MessagePasser ):
     # Categorical emissions.  Everything is done in log space
 
@@ -25,7 +27,7 @@ class CategoricalForwardBackward( MessagePasser ):
 
     ######################################################################
 
-    def updateParams( self, y, initialDist, transDist, emissionDist ):
+    def updateParams( self, ys, initialDist, transDist, emissionDist ):
         assert initialDist.shape == ( self.K, )
         assert transDist.shape == ( self.K, self.K )
         assert emissionDist.shape[ 0 ] == self.K
@@ -34,8 +36,12 @@ class CategoricalForwardBackward( MessagePasser ):
         assert np.allclose( np.ones( self.K ), emissionDist.sum( axis=1 ) )
         self.pi0 = np.log( initialDist )
         self.pi  = np.log( transDist )
-        self.L   = np.log( emissionDist )
-        super( CategoricalForwardBackward, self ).updateParams( y )
+        _L   = np.log( emissionDist )
+
+        if( not isinstance( ys, np.ndarray ) ):
+            ys = np.array( ys )
+
+        self.L = _L.T[ ys ].sum( axis=0 )
 
     ######################################################################
 
@@ -45,14 +51,13 @@ class CategoricalForwardBackward( MessagePasser ):
     ######################################################################
 
     def emissionProb( self, t, forward=False ):
-        return self.L[ :, self.y[ t ] ]
+        return self.L[ t ]
 
     ######################################################################
 
     def multiplyTerms( self, terms, out=None ):
-        # Numpy should broadcast the terms correctly so that
-        # a matrix is returned if we're before the integration,
-        # otherwise a vector
+        # Using functools.reduce instead of np.add.reduce so that numpy
+        # can broadcast and add emission vector to transition matrix
         if( out is not None ):
             reduce( lambda x, y: np.add( x, y, out=out ), terms )
         else:
@@ -75,10 +80,12 @@ class CategoricalForwardBackward( MessagePasser ):
     def backwardBaseCase( self ):
         return np.zeros( self.K )
 
+#########################################################################################
+
 class GaussianForwardBackward( CategoricalForwardBackward ):
     # Gaussian emissions
 
-    def updateParams( self, y, initialDist, transDist, mus, sigmas ):
+    def updateParams( self, ys, initialDist, transDist, mus, sigmas ):
         assert initialDist.shape == ( self.K, )
         assert transDist.shape == ( self.K, self.K )
         assert len( mus ) == self.K
@@ -94,12 +101,10 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
         for k in range( self.K ):
             mu = mus[ k ]
             sigma = sigmas[ k ]
-            self.L[ :, k ] = Normal.log_likelihood( y, params=( mu, sigma ) )
 
-    ######################################################################
+            self.L[ :, k ] = Normal.log_likelihood( ys, params=( mu, sigma ) ).sum( axis=0 )
 
-    def emissionProb( self, t, forward=False ):
-        return self.L[ t ]
+#########################################################################################
 
 class SLDSForwardBackward( CategoricalForwardBackward ):
 
@@ -135,3 +140,5 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
     def forwardBaseCase( self ):
         return self.pi0 + \
                Normal.log_likelihood( self.y[ 0 ], params=( self.mu0, self.sigma0 ) )
+
+#########################################################################################

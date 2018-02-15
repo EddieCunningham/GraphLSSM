@@ -33,7 +33,7 @@ class KalmanFilter( MessagePasser ):
 
     ######################################################################
 
-    def updateParams( self, y, u, A, sigma, C, R, mu0, sigma0 ):
+    def updateParams( self, ys, u, A, sigma, C, R, mu0, sigma0 ):
         self.u = u
 
         sigInv = np.linalg.inv( sigma )
@@ -43,7 +43,11 @@ class KalmanFilter( MessagePasser ):
         self.log_Z = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
 
         RInv = np.linalg.inv( R )
-        self.hy = y.dot( RInv @ C )
+
+        if( not isinstance( ys, np.ndarray ) ):
+            ys = np.array( ys )
+
+        self.hy = ys.T.dot( RInv @ C ).sum( 0 )
         self.Jy = C.T @ RInv @ C
 
         self.mu0 = mu0
@@ -54,7 +58,6 @@ class KalmanFilter( MessagePasser ):
     def transitionProb( self, t, t1, forward=False ):
         u = self.u[ t ]
 
-        # These are constant because we're using one set of parameters
         J11 = self.J11
         J12 = self.J12
         J22 = self.J22
@@ -73,7 +76,7 @@ class KalmanFilter( MessagePasser ):
         # P( y_t | x_t ) as a function of x_t
         J = self.Jy
         h = self.hy[ t ]
-        log_Z = Normal.log_partition( natParams=( -0.5 * J, h ) )
+        log_Z = Normal.log_partition( natParams=( -0.5 * J, h ) ) # + const
 
         if( forward ):
             return J, h, np.array( log_Z )
@@ -144,14 +147,16 @@ class KalmanFilter( MessagePasser ):
                  np.zeros( self.D_latent ), \
                  0. ]
 
+#########################################################################################
 
 class SwitchingKalmanFilter( KalmanFilter ):
     # Kalman filter with multiple dynamics parameters and modes
 
-    def updateParams( self, y, u, z, As, sigmas, C, R, mu0, sigma0 ):
+    def updateParams( self, ys, u, z, As, sigmas, C, R, mu0, sigma0 ):
         self.u = u
         self.z = z
 
+        # Save everything because memory probably isn't a big issue
         self.As = As
         self.J11s = [ np.linalg.inv( sigma ) for sigma in sigmas ]
         self.J12s = [ -sigInv @ A for A, sigInv in zip( self.As, self.J11s ) ]
@@ -159,11 +164,17 @@ class SwitchingKalmanFilter( KalmanFilter ):
         self.log_Zs = np.array( [ 0.5 * np.linalg.slogdet( sigma )[ 1 ] for sigma in sigmas ] )
 
         RInv = np.linalg.inv( R )
-        self.hy = y.dot( RInv @ C )
+
+        if( not isinstance( ys, np.ndarray ) ):
+            ys = np.array( ys )
+
+        self.hy = ys.T.dot( RInv @ C ).sum( 0 )
         self.Jy = C.T @ RInv @ C
 
         self.mu0 = mu0
         self.sigma0 = sigma0
+
+    ######################################################################
 
     def transitionProb( self, t, t1, forward=False ):
         u = self.u[ t ]

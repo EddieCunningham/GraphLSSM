@@ -2,7 +2,7 @@ import numpy as np
 
 class MessagePasser():
     # Base message passing class for forward backward
-    # and kalman filter
+    # and kalman filter type algorithms
 
     def __init__( self, T ):
         self.T = T
