@@ -108,37 +108,37 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
 
 class SLDSForwardBackward( CategoricalForwardBackward ):
 
-    def updateParams( self, y, initialDist, transDist, mu0, sig0, u, As, sigmas ):
+    def updateParams( self, ys, initialDist, transDist, mu0, sigma0, u, As, sigmas ):
         assert initialDist.shape == ( self.K, )
         assert transDist.shape == ( self.K, self.K )
         assert np.isclose( 1.0, initialDist.sum() )
         assert np.allclose( np.ones( self.K ), transDist.sum( axis=1 ) )
         self.pi0 = np.log( initialDist )
         self.pi  = np.log( transDist )
-        self.As = As
-        self.sigmas = sigmas
-        self.u = u
-        super( CategoricalForwardBackward, self ).updateParams( y )
+
+        sig0Inv = np.linalg.inv( sigma0 )
+        self.L0 = -0.5 * np.einsum( 'ni,ij,nj', ys[ :, 0 ] - mu0, sig0Inv, ys[ :, 0 ] - mu0 ) - \
+                   0.5 * np.linalg.slogdet( sigma0 )[ 1 ] - \
+                   self.K / 2 * np.log( 2 * np.pi )
+
+        sigInvs = np.linalg.inv( sigmas )
+        mus = ys[ :, 1: ] - np.einsum( 'kij,ntj->knti', As, ys[ :, :-1 ] ) - u[ :-1 ]
+        self.L = -0.5 * np.einsum( 'knti,kij,kntj->tk', mus, sigInvs, mus ) - \
+                  0.5 * np.linalg.slogdet( sigmas )[ 1 ] - \
+                  self.K / 2 * np.log( 2 * np.pi )
 
     ######################################################################
 
     def emissionProb( self, t, forward=False ):
-
-        u = self.u[ t - 1 ]
-        x_1t = self.y[ t - 1 ]
-        x_t = self.y[ t ]
-
-        ans = np.zeros_like( self.pi0 )
-        for k in range( ans.shape[ 0 ] ):
-            mu = self.As[ k ].dot( x_1t ) + u
-            sigma = self.sigmas[ k ]
-            ans[ k ] = Normal.log_likelihood( x_t, params=( mu, sigma ) )
-        return ans
+        return self.L[ t - 1 ]
 
     ######################################################################
 
     def forwardBaseCase( self ):
-        return self.pi0 + \
-               Normal.log_likelihood( self.y[ 0 ], params=( self.mu0, self.sigma0 ) )
+        return self.pi0 + self.L0
 
-#########################################################################################
+    def marginalForward( self, lastAlpha ):
+        return np.logaddexp.reduce( lastAlpha )
+
+    def marginalBackward( self, firstBeta ):
+        return np.logaddexp.reduce( firstBeta + self.forwardBaseCase() )

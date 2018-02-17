@@ -7,7 +7,8 @@ from GM.States.StandardStates.MessagePassing import MessagePassingBase, \
                                                     CategoricalForwardBackward, \
                                                     KalmanFilter, \
                                                     SwitchingKalmanFilter, \
-                                                    GaussianForwardBackward
+                                                    GaussianForwardBackward, \
+                                                    SLDSForwardBackward
 from GM.Distributions import MatrixNormalInverseWishart, \
                              NormalInverseWishart, \
                              Dirichlet, \
@@ -98,6 +99,51 @@ def testGaussianForwardBackward():
         assert np.isclose( comp, marginal ), comp - marginal
 
     print( 'Passed the gaussian forward backward marginal test!\n\n' )
+
+######################################################################
+
+def testSLDSForwardBackward():
+
+    T = 50
+    D_latent = 7
+    D_obs = 9
+    D = 5
+
+    mp = SLDSForwardBackward( T, D_latent )
+
+    onesK = np.ones( D_latent )
+
+    ( p, ) = Dirichlet.sample( params=onesK )
+    ys = np.random.random( ( D, T, D_latent ) )
+    ( initialDist, ) = Dirichlet.sample( params=onesK )
+    transDist = Dirichlet.sample( params=onesK, size=D_latent )
+
+    u = np.random.random( ( T, D_latent ) )
+    mu0, sigma0 = NormalInverseWishart.basicSample( D_latent )
+
+    ASigmas = [ MatrixNormalInverseWishart.basicSample( D_latent, D_latent ) for _ in range( D_latent ) ]
+    As = [ A for A, sigma in ASigmas ]
+    sigmas = [ sigma for A, sigma in ASigmas ]
+
+    start = time.time()
+    mp.updateParams( ys, initialDist, transDist, mu0, sigma0, u, As, sigmas )
+    end = time.time()
+    print( 'Preprocess: ', end - start )
+
+
+    start = time.time()
+    alphas = mp.forwardFilter()
+    betas = mp.backwardFilter()
+    end = time.time()
+    print( 'Both filters: ', end - start )
+
+
+    forwardMarginal = mp.marginalForward( alphas[ -1 ] )
+    backwardMarginal = mp.marginalBackward( betas[ 0 ] )
+
+    assert np.isclose( forwardMarginal, backwardMarginal )
+
+    print( 'Passed the SLDS forward backward marginal test!\n\n' )
 
 ######################################################################
 
@@ -204,9 +250,9 @@ def testSwitchingKalmanFilter():
 
 ######################################################################
 
-testCategoricalForwardBackward()
-testGaussianForwardBackward()
-testKalmanFilter()
-testSwitchingKalmanFilter()
-
+# testCategoricalForwardBackward()
+# testGaussianForwardBackward()
+# testKalmanFilter()
+# testSwitchingKalmanFilter()
+testSLDSForwardBackward()
 
