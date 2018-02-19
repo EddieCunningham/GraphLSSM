@@ -47,8 +47,10 @@ class KalmanFilter( MessagePasser ):
         if( not isinstance( ys, np.ndarray ) ):
             ys = np.array( ys )
 
-        self.hy = ys.T.dot( RInv @ C ).sum( 0 )
+        self.hy = ys.dot( RInv @ C ).sum( 0 )
         self.Jy = C.T @ RInv @ C
+        partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
+        self.log_Zy = partition( self.Jy, self.hy )
 
         self.mu0 = mu0
         self.sigma0 = sigma0
@@ -76,7 +78,7 @@ class KalmanFilter( MessagePasser ):
         # P( y_t | x_t ) as a function of x_t
         J = self.Jy
         h = self.hy[ t ]
-        log_Z = Normal.log_partition( natParams=( -0.5 * J, h ) ) # + const
+        log_Z = self.log_Zy[ t ]
 
         if( forward ):
             return J, h, np.array( log_Z )
@@ -168,8 +170,10 @@ class SwitchingKalmanFilter( KalmanFilter ):
         if( not isinstance( ys, np.ndarray ) ):
             ys = np.array( ys )
 
-        self.hy = ys.T.dot( RInv @ C ).sum( 0 )
+        self.hy = ys.dot( RInv @ C ).sum( axis=0 )
         self.Jy = C.T @ RInv @ C
+        partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
+        self.log_Zy = partition( self.Jy, self.hy )
 
         self.mu0 = mu0
         self.sigma0 = sigma0

@@ -116,6 +116,10 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
         self.pi0 = np.log( initialDist )
         self.pi  = np.log( transDist )
 
+        # This is ugly, but all it does is calculate the emission likelihood over all of
+        # the data sets and over all of the modes.  Definitely should rewrite using
+        # tensor_dot
+
         sig0Inv = np.linalg.inv( sigma0 )
         self.L0 = -0.5 * np.einsum( 'ni,ij,nj', ys[ :, 0 ] - mu0, sig0Inv, ys[ :, 0 ] - mu0 ) - \
                    0.5 * np.linalg.slogdet( sigma0 )[ 1 ] - \

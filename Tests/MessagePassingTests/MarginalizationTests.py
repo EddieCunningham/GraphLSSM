@@ -23,9 +23,9 @@ import time
 def testCategoricalForwardBackward():
 
     T = 1000
-    K = 200
+    K = 20
     obsDim = 40
-    D = 40
+    D = 4
 
     mp = CategoricalForwardBackward( T, K )
 
@@ -62,10 +62,10 @@ def testCategoricalForwardBackward():
 
 def testGaussianForwardBackward():
 
-    T = 1000
-    K = 200
+    T = 100
+    K = 20
     obsDim = 40
-    D = 40
+    D = 4
 
     mp = GaussianForwardBackward( T, K )
 
@@ -104,10 +104,10 @@ def testGaussianForwardBackward():
 
 def testSLDSForwardBackward():
 
-    T = 50
-    D_latent = 7
-    D_obs = 9
-    D = 5
+    T = 100
+    D_latent = 20
+    D_obs = 8
+    D = 4
 
     mp = SLDSForwardBackward( T, D_latent )
 
@@ -150,9 +150,9 @@ def testSLDSForwardBackward():
 def testKalmanFilter():
 
     T = 1000
-    D_latent = 200
-    D_obs = 40
-    D = 40
+    D_latent = 7
+    D_obs = 3
+    D = 4
 
     mp = KalmanFilter( T, D_latent, D_obs )
 
@@ -198,11 +198,11 @@ def testKalmanFilter():
 
 def testSwitchingKalmanFilter():
 
-    T = 1000
-    D_latent = 200
-    D_obs = 40
-    D = 40
-    K = 50
+    T = 100
+    D_latent = 20
+    D_obs = 7
+    D = 4
+    K = 5
 
     mp = SwitchingKalmanFilter( T, D_latent, D_obs )
 
@@ -250,9 +250,9 @@ def testSwitchingKalmanFilter():
 
 ######################################################################
 
-# testCategoricalForwardBackward()
-# testGaussianForwardBackward()
-# testKalmanFilter()
-# testSwitchingKalmanFilter()
+testCategoricalForwardBackward()
+testGaussianForwardBackward()
 testSLDSForwardBackward()
+testKalmanFilter()
+testSwitchingKalmanFilter()
 

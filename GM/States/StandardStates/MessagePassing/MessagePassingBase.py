@@ -13,8 +13,8 @@ class MessagePasser():
     def genWorkspace( self ):
         assert 0
 
-    def updateParams( self, y ):
-        self.y = y
+    def updateParams( self, ys ):
+        self.ys = ys
 
     def transitionProb( self, t, t1 ):
         assert 0

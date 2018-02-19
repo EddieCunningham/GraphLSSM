@@ -2,9 +2,9 @@ import numpy as np
 from Base import Exponential
 from scipy.stats import multivariate_normal
 from NormalInverseWishart import NormalInverseWishart
-import scipy.linalg.lapack as lapack
+from scipy.linalg import lapack, cho_factor, cho_solve
 
-LOG_2_PI = np.log( 2 * np.pi )
+_HALF_LOG_2_PI = 0.5 * np.log( 2 * np.pi )
 
 class Normal( Exponential ):
 
@@ -61,7 +61,7 @@ class Normal( Exponential ):
             A1 = 0.5 * mu.dot( np.linalg.solve( sigma, mu ) )
             A2 = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
 
-        log_h = k / 2 * LOG_2_PI
+        log_h = k * _HALF_LOG_2_PI
 
         if( split ):
             return ( A1, A2, log_h )
@@ -91,14 +91,16 @@ class Normal( Exponential ):
     def marginalizeX1( cls, J11, J12, J22, h1, h2, log_Z ):
         K = h1.shape[ 0 ]
 
-        J11Inv = np.linalg.inv( J11 )
-        J = J22 - J12.T @ J11Inv @ J12
-        J11Invh1 = J11Inv.dot( h1 )
+        J11Chol = cho_factor( J11, lower=True )
+        J11Invh1 = cho_solve( J11Chol, h1 )
+
+        J = J22 - J12.T @ cho_solve( J11Chol, J12 )
         h = h2 - J12.T.dot( J11Invh1 )
+
         log_Z = log_Z - \
                 0.5 * h1.dot( J11Invh1 ) + \
-                0.5 * np.linalg.slogdet( J11 )[ 1 ] - \
-                K / 2 * LOG_2_PI
+                np.log( np.diag( J11Chol[ 0 ] ) ).sum() - \
+                K * _HALF_LOG_2_PI
         return J, h, log_Z
 
     @classmethod
