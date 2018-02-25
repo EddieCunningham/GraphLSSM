@@ -1,5 +1,5 @@
 import numpy as np
-from Base import Exponential
+from Base import ExponentialFam
 from Normal import Normal
 from InverseWishart import InverseWishart
 from NormalInverseWishart import NormalInverseWishart
@@ -19,13 +19,13 @@ def likelihoodNoPartitionTest( dist ):
     x = dist.isample()
     nat1 = dist.natParams
     stat1 = dist.sufficientStats( x )
-    ans1 = Exponential.log_pdf( nat1, stat1, [ 0 ] )
+    ans1 = ExponentialFam.log_pdf( nat1, stat1, [ 0 ] )
     trueAns1 = dist.ilog_likelihood( x )
 
     x = dist.isample()
     nat2 = dist.natParams
     stat2 = dist.sufficientStats( x )
-    ans2 = Exponential.log_pdf( nat2, stat2, [ 0 ] )
+    ans2 = ExponentialFam.log_pdf( nat2, stat2, [ 0 ] )
     trueAns2 = dist.ilog_likelihood( x )
 
     assert np.isclose( ans1 - ans2, trueAns1 - trueAns2 ), ( ans1 - ans2 ) - ( trueAns1 - trueAns2 )
@@ -35,7 +35,7 @@ def likelihoodTest( dist, x ):
     nat = dist.natParams
     stat = dist.sufficientStats( x )
     part = dist.ilog_partition( x, split=True )
-    ans1 = Exponential.log_pdf( nat, stat, part )
+    ans1 = ExponentialFam.log_pdf( nat, stat, part )
 
     ans2 = dist.ilog_likelihood( x )
 
@@ -51,7 +51,7 @@ def jointTest( dist, x ):
     stat = dist.prior.sufficientStats( dist.params )
     part = dist.prior.log_partition( dist.params, natParams=dist.prior.natParams, split=True )
 
-    ans1 = Exponential.log_pdf( postNatParams, stat, part )
+    ans1 = ExponentialFam.log_pdf( postNatParams, stat, part )
     ans2 = dist.ilog_joint( x )
 
     assert np.isclose( ans1, ans2 ), ans1 - ans2
@@ -63,7 +63,7 @@ def posteriorTest( dist, x ):
     stat = dist.prior.sufficientStats( dist.params )
     part = dist.prior.log_partition( dist.params, natParams=postNatParams, split=True )
 
-    ans1 = Exponential.log_pdf( postNatParams, stat, part )
+    ans1 = ExponentialFam.log_pdf( postNatParams, stat, part )
     ans2 = dist.ilog_posterior( x )
 
     assert np.isclose( ans1, ans2 ), ans1 - ans2

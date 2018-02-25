@@ -1,10 +1,10 @@
 import numpy as np
-from Base import Exponential
+from Base import ExponentialFam
 from scipy.stats import dirichlet
 from scipy.special import gammaln
 import Categorical
 
-class Dirichlet( Exponential ):
+class Dirichlet( ExponentialFam ):
 
     def __init__( self, alpha=None, prior=None, hypers=None ):
         super( Dirichlet, self ).__init__( alpha, prior=prior, hypers=hypers )
@@ -62,6 +62,9 @@ class Dirichlet( Exponential ):
         # Compute P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
+        if( isinstance( x, tuple ) ):
+            assert len( x ) == 1
+            x, = x
         assert isinstance( x, np.ndarray )
         if( x.ndim > 1 ):
             x = x.reshape( -1 )

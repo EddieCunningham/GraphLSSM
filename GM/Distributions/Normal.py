@@ -1,12 +1,12 @@
 import numpy as np
-from Base import Exponential
+from Base import ExponentialFam
 from scipy.stats import multivariate_normal
 from NormalInverseWishart import NormalInverseWishart
 from scipy.linalg import lapack, cho_factor, cho_solve
 
 _HALF_LOG_2_PI = 0.5 * np.log( 2 * np.pi )
 
-class Normal( Exponential ):
+class Normal( ExponentialFam ):
 
     priorClass = NormalInverseWishart
 
@@ -70,8 +70,11 @@ class Normal( Exponential ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, params=None, natParams=None, D=None, size=1 ):
         # Sample from P( x | Ѳ; α )
+        if( params is None and natParams is None ):
+            assert D is not None
+            params = ( np.zeros( D ), np.eye( D ) )
         assert ( params is None ) ^ ( natParams is None )
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
         return multivariate_normal.rvs( mean=mu, cov=sigma, size=size )

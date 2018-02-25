@@ -1,10 +1,10 @@
 import numpy as np
-from Base import Exponential
+from Base import ExponentialFam
 from Normal import Normal
 from MatrixNormalInverseWishart import MatrixNormalInverseWishart
 
 
-class Regression( Exponential ):
+class Regression( ExponentialFam ):
 
     priorClass = MatrixNormalInverseWishart
 

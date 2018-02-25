@@ -1,7 +1,8 @@
 import numpy as np
+import string
 __all__ = [ 'Distribution', \
             'Conjugate', \
-            'Exponential' ]
+            'ExponentialFam' ]
 
 class Distribution():
 
@@ -71,10 +72,10 @@ class Conjugate( Distribution ):
 
 ####################################################################################################################################
 
-class Exponential( Conjugate ):
+class ExponentialFam( Conjugate ):
 
     def __init__( self, *params, prior=None, hypers=None ):
-        super( Exponential, self ).__init__( prior=prior, hypers=hypers )
+        super( ExponentialFam, self ).__init__( prior=prior, hypers=hypers )
 
         self.standardChanged = False
         self.naturalChanged = False
@@ -85,9 +86,8 @@ class Exponential( Conjugate ):
         else:
             self.params = self.iparamSample()
 
-        # Set the natural parameters implicitely
+        # Set the natural parameters
         self.natParams
-
 
     ##########################################################################
 
@@ -184,6 +184,7 @@ class Exponential( Conjugate ):
         return self.jointSample( priorNatParams=self.prior.natParams )
 
     ##########################################################################
+
     @classmethod
     def posteriorPriorNatParams( cls, x, priorParams=None, priorNatParams=None ):
         assert ( priorParams is None ) ^ ( priorNatParams is None )
@@ -210,11 +211,21 @@ class Exponential( Conjugate ):
     ####################################################################################################################################################
 
     @classmethod
+    def log_likelihoodExpFam( cls, x, params=None, natParams=None ):
+        assert ( params is None ) ^ ( natParams is None )
+        natParams = natParams if natParams is not None else cls.standardToNat( *params )
+        stats = cls.sufficientStats( x )
+        part = cls.log_partition( x, natParams=natParams )
+        return cls.log_pdf( natParams, stats, part )
+
+    @classmethod
     def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
 
-    def ilog_likelihood( self, x ):
+    def ilog_likelihood( self, x, expFam=False ):
+        if( expFam ):
+            return self.log_likelihoodExpFam( x, natParams=self.natParams )
         if( self.standardChanged ):
             return self.log_likelihood( x, params=self.params )
         return self.log_likelihood( x, natParams=self.natParams )
@@ -228,10 +239,22 @@ class Exponential( Conjugate ):
         params = params if params is not None else cls.natToStandard( *natParams )
         return cls.priorClass.log_likelihood( params, params=priorParams, natParams=priorNatParams )
 
-    def ilog_params( self ):
-        return self.prior.ilog_likelihood( self.params )
+    def ilog_params( self, expFam=False ):
+        return self.prior.ilog_likelihood( self.params, expFam=expFam )
 
     ##########################################################################
+
+    @classmethod
+    def log_jointExpFam( cls, x, params=None, natParams=None, priorParams=None, priorNatParams=None ):
+        assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+
+        postNatParams = cls.posteriorPriorNatParams( x, priorParams=priorParams, priorNatParams=priorNatParams )
+
+        params = params if params is not None else cls.natToStandard( *natParams )
+        stat = cls.priorClass.sufficientStats( params )
+        part = cls.priorClass.log_partition( params, params=priorParams, natParams=priorNatParams, split=True )
+
+        return cls.log_pdf( postNatParams, stat, part )
 
     @classmethod
     def log_joint( cls, x, params=None, natParams=None, priorParams=None, priorNatParams=None ):
@@ -241,7 +264,9 @@ class Exponential( Conjugate ):
         return cls.log_params( params=params, natParams=natParams, priorParams=priorParams, priorNatParams=priorNatParams ) + \
                cls.log_likelihood( x, params=params, natParams=natParams )
 
-    def ilog_joint( self, x ):
+    def ilog_joint( self, x, expFam=False ):
+        if( expFam ):
+            return self.log_jointExpFam( x, params=self.params, priorNatParams=self.prior.natParams )
         if( self.standardChanged ):
             if( self.prior.standardChanged ):
                 return self.log_joint( x, params=self.params, priorParams=self.prior.params )
@@ -253,6 +278,18 @@ class Exponential( Conjugate ):
     ##########################################################################
 
     @classmethod
+    def log_posteriorExpFam( cls, x, params=None, natParams=None, priorParams=None, priorNatParams=None ):
+        assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+
+        postNatParams = cls.posteriorPriorNatParams( x, priorParams=priorParams, priorNatParams=priorNatParams )
+
+        params = params if params is not None else cls.natToStandard( *natParams )
+        stat = cls.priorClass.sufficientStats( params )
+        part = cls.priorClass.log_partition( params, natParams=postNatParams, split=True )
+
+        return cls.log_pdf( postNatParams, stat, part )
+
+    @classmethod
     def log_posterior( cls, x, params=None, natParams=None, priorParams=None, priorNatParams=None ):
         # Compute P( Ѳ | x; α )
         assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
@@ -261,7 +298,9 @@ class Exponential( Conjugate ):
         postNatParams = cls.posteriorPriorNatParams( x, priorParams=priorParams, priorNatParams=priorNatParams )
         return cls.priorClass.log_likelihood( params, natParams=postNatParams )
 
-    def ilog_posterior( self, x ):
+    def ilog_posterior( self, x, expFam=False ):
+        if( expFam ):
+            return self.log_posteriorExpFam( x, params=self.params, priorNatParams=self.prior.natParams )
         if( self.standardChanged ):
             if( self.prior.standardChanged ):
                 return self.log_posterior( x, params=self.params, priorParams=self.prior.params )
@@ -277,9 +316,93 @@ class Exponential( Conjugate ):
 
         ans = 0.0
         for natParam, stat in zip( natParams, sufficientStats ):
-            ans += ( natParam * stat ).sum()
+                ans += ( natParam * stat ).sum()
 
         if( log_partition is not None ):
-            ans -= sum( log_partition )
+            if( isinstance( log_partition, tuple ) ):
+                ans -= sum( log_partition )
+            else:
+                ans -= log_partition
 
         return ans
+
+    ##########################################################################
+
+    def paramNaturalTest( self ):
+        params = self.params
+        params2 = self.natToStandard( *self.standardToNat( *params ) )
+        for p1, p2 in zip( params, params2 ):
+            assert np.allclose( p1, p2 )
+
+    def likelihoodNoPartitionTest( self ):
+        x = self.isample()
+        ans1 = self.ilog_likelihood( x, expFam=True )
+        trueAns1 = self.ilog_likelihood( x )
+
+        x = self.isample()
+        ans2 = self.ilog_likelihood( x, expFam=True )
+        trueAns2 = self.ilog_likelihood( x )
+        assert np.isclose( ans1 - ans2, trueAns1 - trueAns2 ), ( ans1 - ans2 ) - ( trueAns1 - trueAns2 )
+
+    def likelihoodTest( self ):
+        x = self.isample()
+        ans1 = self.ilog_likelihood( x, expFam=True )
+        ans2 = self.ilog_likelihood( x )
+        assert np.isclose( ans1, ans2 ), ans1 - ans2
+
+    def paramTest( self ):
+        self.prior.likelihoodTest()
+
+    def jointTest( self ):
+        x = self.isample()
+        ans1 = self.ilog_joint( x, expFam=True )
+        ans2 = self.ilog_joint( x )
+        assert np.isclose( ans1, ans2 ), ans1 - ans2
+
+    def posteriorTest( self ):
+        x = self.isample()
+        ans1 = self.ilog_posterior( x, expFam=True )
+        ans2 = self.ilog_posterior( x )
+        assert np.isclose( ans1, ans2 ), ans1 - ans2
+
+####################################################################################################################################
+
+class TensorExponentialFam( ExponentialFam ):
+
+    def __init__( self, *params, prior=None, hypers=None ):
+        super( TensorExponentialFam, self ).__init__( *params, prior=prior, hypers=hypers )
+
+    @staticmethod
+    def combine( stat, nat ):
+        N = len( stat ) + len( nat ) - 2
+
+        ind1 = string.ascii_letters[ : N ]
+        ind2 = string.ascii_letters[ N : N * 2 ]
+        contract = ind1 + ',' + ind2 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->'
+
+        return np.einsum( contract, *stat, *nat, optimize=( N > 2 ) )
+
+    @staticmethod
+    def log_pdf( natParams, sufficientStats, log_partition=None ):
+
+        ans = 0.0
+        for natParam, stat in zip( natParams, sufficientStats ):
+            ans += TensorExponentialFam.combine( stat, natParam  )
+
+        if( log_partition is not None ):
+            if( isinstance( log_partition, tuple ) ):
+                ans -= sum( log_partition )
+            else:
+                ans -= log_partition
+
+        return ans
+
+    def paramNaturalTest( self ):
+        params = self.params
+        params2 = self.natToStandard( *self.standardToNat( *params ) )
+        for p1, p2 in zip( params, params2 ):
+            if( isinstance( p1, tuple ) or isinstance( p1, list ) ):
+                for _p1, _p2 in zip( p1, p2 ):
+                    assert np.allclose( _p1, _p2 )
+            else:
+                assert np.allclose( p1, p2 )

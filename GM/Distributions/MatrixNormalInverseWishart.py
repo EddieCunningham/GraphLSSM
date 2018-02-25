@@ -1,12 +1,12 @@
 import numpy as np
-from Base import Exponential
+from Base import ExponentialFam
 from scipy.special import multigammaln
 from scipy.stats import matrix_normal
 from InverseWishart import InverseWishart
 import Regression
 import Normal
 
-class MatrixNormalInverseWishart( Exponential ):
+class MatrixNormalInverseWishart( ExponentialFam ):
     # This class is written with the intention of making it a prior for
     # a normal distribution with an unknown mean and covariance
 

@@ -1,9 +1,9 @@
 import numpy as np
-from Base import Exponential
+from Base import ExponentialFam
 from scipy.stats import invwishart
 from scipy.special import multigammaln
 
-class InverseWishart( Exponential ):
+class InverseWishart( ExponentialFam ):
 
     def __init__( self, psi, nu, prior=None, hypers=None ):
         super( InverseWishart, self ).__init__( psi, nu, prior=prior, hypers=hypers )
@@ -54,11 +54,16 @@ class InverseWishart( Exponential ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None ):
+    def sample( cls, params=None, natParams=None, D=None, size=1 ):
         # Sample from P( x | Ѳ; α )
+
+        if( params is None and natParams is None ):
+            assert D is not None
+            params = ( np.eye( D ), D )
+
         assert ( params is None ) ^ ( natParams is None )
         psi, nu = params if params is not None else cls.natToStandard( *natParams )
-        return invwishart.rvs( df=nu, scale=psi, size=1 )
+        return invwishart.rvs( df=nu, scale=psi, size=size )
 
     ##########################################################################
 
@@ -71,4 +76,4 @@ class InverseWishart( Exponential ):
         stat = cls.sufficientStats( x )
         part = cls.log_partition( x, natParams=nat, split=True )
 
-        return Exponential.log_pdf( nat, stat, part )
+        return ExponentialFam.log_pdf( nat, stat, part )
