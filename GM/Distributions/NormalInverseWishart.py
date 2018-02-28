@@ -13,6 +13,34 @@ class NormalInverseWishart( ExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def mu_0( self ):
+        return self._params[ 0 ]
+
+    @property
+    def kappa( self ):
+        return self._params[ 1 ]
+
+    @property
+    def psi( self ):
+        return self._params[ 2 ]
+
+    @property
+    def nu( self ):
+        return self._params[ 3 ]
+
+    ##########################################################################
+
+    @classmethod
+    def dataN( cls, x ):
+        if( not isinstance( x[ 0 ], np.ndarray ) ):
+            return len( x )
+        assert len( x ) == 2
+        assert isinstance( x[ 0 ], np.ndarray ) and isinstance( x[ 1 ], np.ndarray )
+        return 1
+
+    ##########################################################################
+
     @classmethod
     def standardToNat( cls, mu_0, kappa, psi, nu, Q ):
         n1 = kappa * np.outer( mu_0, mu_0 ) + psi
@@ -39,6 +67,12 @@ class NormalInverseWishart( ExponentialFam ):
     @classmethod
     def sufficientStats( cls, x, forPost=False ):
         # Compute T( x )
+        if( cls.dataN( x ) > 1 ):
+            t = ( 0, 0, 0, 0, 0 )
+            for _x in x:
+                t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
+            return t
+
         t1, t2 = Normal.Normal.standardToNat( *x )
         t3, t4, t5 = Normal.Normal.log_partition( params=x, split=True )
         return t1, t2, -t3, -t4, -t5
@@ -61,24 +95,16 @@ class NormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None ):
+    def sample( cls, params=None, natParams=None, D=None, size=1 ):
         # Sample from P( x | Ѳ; α )
+        if( params is None and natParams is None ):
+            assert D is not None
+            params = ( np.eye( D ), D, np.zeros( D ), 1 )
         assert ( params is None ) ^ ( natParams is None )
         mu_0, kappa, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
 
-        sigma = InverseWishart.sample( params=( psi, nu ) )
-        mu = Normal.Normal.sample( params=( mu_0, sigma / kappa ) )
-        return mu, sigma
-
-    @classmethod
-    def basicSample( cls, D ):
-        # Sample from P( x | Ѳ; α )
-
-        psi = np.eye( D )
-        nu = D
-        mu_0 = np.ones( D )
-        kappa = 1
-
+        if( size > 1 ):
+            return [ cls.sample( params=params, natParams=natParams, size=1 ) for _ in range( size ) ]
         sigma = InverseWishart.sample( params=( psi, nu ) )
         mu = Normal.Normal.sample( params=( mu_0, sigma / kappa ) )
         return mu, sigma
@@ -90,6 +116,9 @@ class NormalInverseWishart( ExponentialFam ):
         # Compute P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
         mu_0, kappa, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
+
+        if( cls.dataN( x ) > 1 ):
+            return sum( [ cls.log_likelihood( _x, params=params, natParams=natParams ) for _x in x ] )
         mu, sigma = x
         return InverseWishart.log_likelihood( sigma, params=( psi, nu ) ) + \
                Normal.Normal.log_likelihood( mu, params=( mu_0, sigma / kappa ) )

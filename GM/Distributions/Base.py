@@ -148,14 +148,14 @@ class ExponentialFam( Conjugate ):
     ####################################################################################################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None ):
+    def sample( cls, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
 
-    def isample( self ):
+    def isample( self, size=1 ):
         if( self.standardChanged ):
-            return self.sample( params=self.params )
-        return self.sample( natParams=self.natParams )
+            return self.sample( params=self.params, size=size )
+        return self.sample( natParams=self.natParams, size=size )
 
     ##########################################################################
 
@@ -215,7 +215,8 @@ class ExponentialFam( Conjugate ):
         assert ( params is None ) ^ ( natParams is None )
         natParams = natParams if natParams is not None else cls.standardToNat( *params )
         stats = cls.sufficientStats( x )
-        part = cls.log_partition( x, natParams=natParams )
+        dataN = cls.dataN( x )
+        part = cls.log_partition( x, natParams=natParams ) * dataN
         return cls.log_pdf( natParams, stats, part )
 
     @classmethod
@@ -316,7 +317,7 @@ class ExponentialFam( Conjugate ):
 
         ans = 0.0
         for natParam, stat in zip( natParams, sufficientStats ):
-                ans += ( natParam * stat ).sum()
+            ans += ( natParam * stat ).sum()
 
         if( log_partition is not None ):
             if( isinstance( log_partition, tuple ) ):
@@ -335,17 +336,17 @@ class ExponentialFam( Conjugate ):
             assert np.allclose( p1, p2 )
 
     def likelihoodNoPartitionTest( self ):
-        x = self.isample()
+        x = self.isample( size=10 )
         ans1 = self.ilog_likelihood( x, expFam=True )
         trueAns1 = self.ilog_likelihood( x )
 
-        x = self.isample()
+        x = self.isample( size=10 )
         ans2 = self.ilog_likelihood( x, expFam=True )
         trueAns2 = self.ilog_likelihood( x )
         assert np.isclose( ans1 - ans2, trueAns1 - trueAns2 ), ( ans1 - ans2 ) - ( trueAns1 - trueAns2 )
 
     def likelihoodTest( self ):
-        x = self.isample()
+        x = self.isample( size=10 )
         ans1 = self.ilog_likelihood( x, expFam=True )
         ans2 = self.ilog_likelihood( x )
         assert np.isclose( ans1, ans2 ), ans1 - ans2
@@ -354,13 +355,13 @@ class ExponentialFam( Conjugate ):
         self.prior.likelihoodTest()
 
     def jointTest( self ):
-        x = self.isample()
+        x = self.isample( size=10 )
         ans1 = self.ilog_joint( x, expFam=True )
         ans2 = self.ilog_joint( x )
         assert np.isclose( ans1, ans2 ), ans1 - ans2
 
     def posteriorTest( self ):
-        x = self.isample()
+        x = self.isample( size=10 )
         ans1 = self.ilog_posterior( x, expFam=True )
         ans2 = self.ilog_posterior( x )
         assert np.isclose( ans1, ans2 ), ans1 - ans2
@@ -373,12 +374,23 @@ class TensorExponentialFam( ExponentialFam ):
         super( TensorExponentialFam, self ).__init__( *params, prior=prior, hypers=hypers )
 
     @staticmethod
-    def combine( stat, nat ):
+    def combine( stat, nat, size=None ):
+        # At the moment this only assumes that stat will be
+        # either size 1 or size 2
+
         N = len( stat ) + len( nat ) - 2
+
+        # This is really just enforced for clarity
+        assert size is not None
 
         ind1 = string.ascii_letters[ : N ]
         ind2 = string.ascii_letters[ N : N * 2 ]
-        contract = ind1 + ',' + ind2 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->'
+        t = string.ascii_letters[ N * 2 ]
+        if( len( stat ) == 1 ):
+            contract = t + ind1 + ',' + ind2 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->'
+        else:
+            assert len( stat ) == 2
+            contract = t + ind1 + ',' + t + ind2 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->'
 
         return np.einsum( contract, *stat, *nat, optimize=( N > 2 ) )
 
@@ -387,7 +399,7 @@ class TensorExponentialFam( ExponentialFam ):
 
         ans = 0.0
         for natParam, stat in zip( natParams, sufficientStats ):
-            ans += TensorExponentialFam.combine( stat, natParam  )
+            ans += TensorExponentialFam.combine( stat, natParam, size=stat[ 0 ][ 0 ] )
 
         if( log_partition is not None ):
             if( isinstance( log_partition, tuple ) ):

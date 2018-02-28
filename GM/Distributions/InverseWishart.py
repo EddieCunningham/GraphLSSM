@@ -10,6 +10,24 @@ class InverseWishart( ExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def psi( self ):
+        return self._params[ 0 ]
+
+    @property
+    def nu( self ):
+        return self._params[ 1 ]
+
+    ##########################################################################
+
+    @classmethod
+    def dataN( cls, x ):
+        if( x.ndim == 3 ):
+            return x.shape[ 0 ]
+        return 1
+
+    ##########################################################################
+
     @classmethod
     def standardToNat( cls, psi, nu ):
         p = psi.shape[ 0 ]
@@ -30,8 +48,12 @@ class InverseWishart( ExponentialFam ):
     def sufficientStats( cls, x, forPost=False ):
         # Compute T( x )
 
-        t1 = np.linalg.inv( x )
-        _, t2 = np.linalg.slogdet( x )
+        if( cls.dataN( x ) > 1 ):
+            t1 = np.linalg.inv( x ).sum( axis=0 )
+            t2 = np.linalg.slogdet( x )[ 1 ].sum()
+        else:
+            t1 = np.linalg.inv( x )
+            t2 = np.linalg.slogdet( x )[ 1 ]
         return t1, t2
 
     @classmethod
@@ -72,8 +94,4 @@ class InverseWishart( ExponentialFam ):
         # Compute P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
         # There is a bug in scipy's invwishart.logpdf! Don't use it!
-        nat = natParams if natParams is not None else cls.standardToNat( *params )
-        stat = cls.sufficientStats( x )
-        part = cls.log_partition( x, natParams=nat, split=True )
-
-        return ExponentialFam.log_pdf( nat, stat, part )
+        return cls.log_likelihoodExpFam( x, params=params, natParams=natParams )

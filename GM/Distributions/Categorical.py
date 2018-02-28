@@ -19,6 +19,12 @@ class Categorical( ExponentialFam ):
     ##########################################################################
 
     @classmethod
+    def dataN( cls, x ):
+        return x.shape[ 0 ]
+
+    ##########################################################################
+
+    @classmethod
     def standardToNat( cls, p ):
         n = np.log( p )
         return ( n, )

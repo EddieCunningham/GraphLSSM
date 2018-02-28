@@ -13,6 +13,23 @@ class Regression( ExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def A( self ):
+        return self._params[ 0 ]
+
+    @property
+    def sigma( self ):
+        return self._params[ 1 ]
+
+    ##########################################################################
+
+    @classmethod
+    def dataN( cls, x ):
+        xs, ys = x
+        return ys.shape[ 0 ]
+
+    ##########################################################################
+
     @classmethod
     def standardToNat( cls, A, sigma ):
 
@@ -35,6 +52,8 @@ class Regression( ExponentialFam ):
     @classmethod
     def sufficientStats( cls, x, forPost=False ):
         # Compute T( x )
+
+        cls.dataN( x )
 
         x, y = x
 
@@ -79,8 +98,8 @@ class Regression( ExponentialFam ):
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
         D = A.shape[ 1 ]
         if( x is None ):
-            x = Normal.sample( params=( np.zeros( D ), np.eye( D ) ), size=1 )
-            y = Normal.sample( params=( A.dot( x ), sigma ), size=size )
+            x = np.array( [ Normal.sample( params=( np.zeros( D ), np.eye( D ) ), size=1 ) for _ in range( size ) ] )
+            y = np.array( [ Normal.sample( params=( A.dot( _x ), sigma ), size=1 ) for _x in x ] )
             return ( x, y )
         return Normal.sample( params=( A.dot( x ), sigma ), size=size )
 
@@ -93,5 +112,7 @@ class Regression( ExponentialFam ):
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
 
         x, y = x
-        assert x.ndim == 1 and y.ndim == 1
+        assert x.shape == y.shape
+        if( x.ndim != 1 ):
+            return sum( [ Normal.log_likelihood( _y, ( A.dot( _x ), sigma ) ) for _x, _y in zip( x, y ) ] )
         return Normal.log_likelihood( y, ( A.dot( x ), sigma ) )

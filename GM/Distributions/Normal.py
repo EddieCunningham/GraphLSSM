@@ -15,6 +15,24 @@ class Normal( ExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def mu( self ):
+        return self._params[ 0 ]
+
+    @property
+    def sigma( self ):
+        return self._params[ 1 ]
+
+    ##########################################################################
+
+    @classmethod
+    def dataN( cls, x ):
+        if( x.ndim == 2 ):
+            return x.shape[ 0 ]
+        return 1
+
+    ##########################################################################
+
     @classmethod
     def standardToNat( cls, mu, sigma ):
         n1 = np.linalg.inv( sigma )
@@ -86,6 +104,9 @@ class Normal( ExponentialFam ):
         # Compute P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
+
+        if( x.ndim == 2 ):
+            return multivariate_normal.logpdf( x, mean=mu, cov=sigma ).sum()
         return multivariate_normal.logpdf( x, mean=mu, cov=sigma )
 
     ##########################################################################
