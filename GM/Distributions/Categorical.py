@@ -97,7 +97,7 @@ class Categorical( ExponentialFam ):
         natParams = natParams if natParams is not None else cls.standardToNat( *params )
         stats = cls.sufficientStats( x, D=D )
         part = cls.log_partition( x, natParams=natParams )
-        return ExponentialFam.log_pdf( natParams, stats, part )
+        return cls.log_pdf( natParams, stats, part )
 
     @classmethod
     def log_jointExpFam( cls, x, D=None, params=None, natParams=None, priorParams=None, priorNatParams=None ):
@@ -110,7 +110,7 @@ class Categorical( ExponentialFam ):
         stat = cls.priorClass.sufficientStats( params )
         part = cls.priorClass.log_partition( params, params=priorParams, natParams=priorNatParams, split=True )
 
-        return ExponentialFam.log_pdf( postNatParams, stat, part )
+        return cls.log_pdf( postNatParams, stat, part )
 
     @classmethod
     def log_posteriorExpFam( cls, x, D=None, params=None, natParams=None, priorParams=None, priorNatParams=None ):
@@ -123,7 +123,7 @@ class Categorical( ExponentialFam ):
         stat = cls.priorClass.sufficientStats( params )
         part = cls.priorClass.log_partition( params, natParams=postNatParams, split=True )
 
-        return ExponentialFam.log_pdf( postNatParams, stat, part )
+        return cls.log_pdf( postNatParams, stat, part )
 
     @classmethod
     def log_posterior( cls, x, D=None, params=None, natParams=None, priorParams=None, priorNatParams=None ):

@@ -10,7 +10,8 @@ from GM.Distributions import ExponentialFam, \
                              MatrixNormalInverseWishart, \
                              Categorical, \
                              Dirichlet, \
-                             TensorNormal
+                             TensorNormal, \
+                             TensorRegression
 from scipy.stats import invwishart
 
 def testsForDistWithoutPrior( dist ):
@@ -91,6 +92,18 @@ def tensorTests():
 
     tn = TensorNormal( **tnParams )
     testsForDistWithoutPrior( tn )
+
+    D = 4
+    N = 5
+
+    trParams = {
+        'A': TensorNormal.sample( Ds=tuple( [ D for _ in range( N ) ] ) )[ 0 ],
+        'sigma': InverseWishart.sample( D=D )
+    }
+
+    tr = TensorRegression( **trParams )
+    testsForDistWithoutPrior( tr )
+
 
 standardTests()
 tensorTests()

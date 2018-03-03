@@ -1,7 +1,7 @@
 import numpy as np
 from Base import ExponentialFam
 from scipy.special import multigammaln
-from scipy.stats import matrix_normal
+from TensorNormal import TensorNormal
 from InverseWishart import InverseWishart
 import Regression
 import Normal
@@ -117,7 +117,7 @@ class MatrixNormalInverseWishart( ExponentialFam ):
             return [ cls.sample( params=params, natParams=natParams, size=1 ) for _ in range( size ) ]
 
         sigma = InverseWishart.sample( params=( psi, nu ) )
-        A = matrix_normal.rvs( mean=M, rowcov=sigma, colcov=V, size=1 )
+        A = TensorNormal.sample( params=( M, ( sigma, V ) ), size=1 )[ 0 ]
         return A, sigma
 
     ##########################################################################
@@ -131,4 +131,4 @@ class MatrixNormalInverseWishart( ExponentialFam ):
             return sum( [ cls.log_likelihood( _x, params=params, natParams=natParams ) for _x in x ] )
         A, sigma = x
         return InverseWishart.log_likelihood( sigma, params=( psi, nu ) ) + \
-               matrix_normal.logpdf( X=A, mean=M, rowcov=sigma, colcov=V )
+               TensorNormal.log_likelihood( A[ None ], params=( M, ( sigma, V ) ) )

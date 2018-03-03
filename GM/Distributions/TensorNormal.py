@@ -1,6 +1,7 @@
 import numpy as np
 from Base import TensorExponentialFam
 from Normal import Normal
+from InverseWishart import InverseWishart
 import string
 from functools import reduce
 
@@ -8,6 +9,8 @@ _HALF_LOG_2_PI = 0.5 * np.log( 2 * np.pi )
 
 class TensorNormal( TensorExponentialFam ):
 
+    # Just for the moment
+    priorClass = None
 
     def __init__( self, M=None, covs=None, prior=None, hypers=None ):
         super( TensorNormal, self ).__init__( M, covs, prior=prior, hypers=hypers )
@@ -59,7 +62,7 @@ class TensorNormal( TensorExponentialFam ):
         t1 = ( x, x )
         t2 = ( x, )
         if( forPost ):
-            # This for when we add to the NIW natural params
+            # This for when we add to the TNIW natural params
             t3 = ( x.shape[ 0 ], )
             t4 = ( x.shape[ 0 ], )
             t5 = ( x.shape[ 0 ], )
@@ -76,7 +79,7 @@ class TensorNormal( TensorExponentialFam ):
         totalDim = np.prod( [ cov.shape[ 0 ] for cov in covs ] )
 
         A1 = 0.5 * sum( [ totalDim / cov.shape[ 0 ] * np.linalg.slogdet( cov )[ 1 ] for cov in covs ] )
-        A2 = 0.5 * TensorExponentialFam.combine( ( M[ None ], M[ None ] ), cls.invs( covs ), size=1 )
+        A2 = 0.5 * cls.combine( ( M[ None ], M[ None ] ), cls.invs( covs ) )
         log_h = totalDim * _HALF_LOG_2_PI
 
         if( split ):
@@ -86,7 +89,12 @@ class TensorNormal( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, params=None, natParams=None, Ds=None, size=1 ):
+        if( params is None and natParams is None ):
+            assert Ds is not None
+            assert isinstance( Ds, tuple )
+            params = ( np.zeros( Ds ), [ InverseWishart.sample( D=D ) for D in Ds ] )
+
         # Sample from P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
         M, covs = params if params is not None else cls.natToStandard( *natParams )
@@ -100,7 +108,7 @@ class TensorNormal( TensorExponentialFam ):
 
         ind1 = string.ascii_letters[ : N ]
         ind2 = string.ascii_letters[ N : N * 2 ]
-        t = string.ascii_letters[ N*2 ]
+        t = string.ascii_letters[ N * 2 ]
         contract = t + ind1 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->' + t + ind2
 
         return M + np.einsum( contract, X, *covChols )
@@ -133,16 +141,33 @@ class TensorNormal( TensorExponentialFam ):
         assert x.shape[ 1: ] == M.shape
         dataN = cls.dataN( x )
 
-        statNat = -0.5 * TensorExponentialFam.combine( ( x - M, x - M ), covInvs, size=x.shape[ 0 ] )
+        statNat = -0.5 * cls.combine( ( x - M, x - M ), covInvs )
         part = -0.5 * sum( [ totalDim / cov.shape[ 0 ] * np.linalg.slogdet( cov )[ 1 ] for cov in covs ] ) + \
-               -0.5 * totalDim * np.log( 2 * np.pi )
+               - totalDim * _HALF_LOG_2_PI
         return statNat + part * dataN
-
 
     def ilog_likelihood( self, x, expFam=False, ravel=False ):
         if( ravel ):
             return self.log_likelihoodRavel( x, params=self.params )
         return super( TensorNormal, self ).ilog_likelihood( x, expFam=expFam )
+
+    ##########################################################################
+
+    @classmethod
+    def combine( cls, stat, nat ):
+
+        N = len( stat ) + len( nat ) - 2
+
+        ind1 = string.ascii_letters[ : N ]
+        ind2 = string.ascii_letters[ N : N * 2 ]
+        t = string.ascii_letters[ N * 2 ]
+        if( len( stat ) == 1 ):
+            contract = t + ind1 + ',' + ind2 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->'
+        else:
+            assert len( stat ) == 2
+            contract = t + ind1 + ',' + t + ind2 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->'
+
+        return np.einsum( contract, *stat, *nat, optimize=( N > 2 ) )
 
     ##########################################################################
 

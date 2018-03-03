@@ -67,7 +67,6 @@ class Regression( ExponentialFam ):
         t3 = x.T.dot( y )
 
         if( forPost ):
-            # This for when we add to the MNIW natural params
             t4 = x.shape[ 0 ]
             t5 = x.shape[ 0 ]
             return t1, t2, t3, t4, t5
@@ -77,7 +76,6 @@ class Regression( ExponentialFam ):
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
-
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
 
         p = sigma.shape[ 0 ]

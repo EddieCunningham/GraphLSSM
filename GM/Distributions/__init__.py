@@ -10,3 +10,4 @@ from .Normal import Normal
 from .Dirichlet import Dirichlet
 from .Categorical import Categorical
 from .TensorNormal import TensorNormal
+from .TensorRegression import TensorRegression

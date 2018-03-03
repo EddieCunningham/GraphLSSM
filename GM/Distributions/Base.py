@@ -312,8 +312,8 @@ class ExponentialFam( Conjugate ):
 
     ##########################################################################
 
-    @staticmethod
-    def log_pdf( natParams, sufficientStats, log_partition=None ):
+    @classmethod
+    def log_pdf( cls, natParams, sufficientStats, log_partition=None ):
 
         ans = 0.0
         for natParam, stat in zip( natParams, sufficientStats ):
@@ -343,6 +343,7 @@ class ExponentialFam( Conjugate ):
         x = self.isample( size=10 )
         ans2 = self.ilog_likelihood( x, expFam=True )
         trueAns2 = self.ilog_likelihood( x )
+
         assert np.isclose( ans1 - ans2, trueAns1 - trueAns2 ), ( ans1 - ans2 ) - ( trueAns1 - trueAns2 )
 
     def likelihoodTest( self ):
@@ -373,33 +374,16 @@ class TensorExponentialFam( ExponentialFam ):
     def __init__( self, *params, prior=None, hypers=None ):
         super( TensorExponentialFam, self ).__init__( *params, prior=prior, hypers=hypers )
 
-    @staticmethod
-    def combine( stat, nat, size=None ):
-        # At the moment this only assumes that stat will be
-        # either size 1 or size 2
+    @classmethod
+    def combine( cls, stat, nat, size=None ):
+        assert 0, 'Implement in base'
 
-        N = len( stat ) + len( nat ) - 2
-
-        # This is really just enforced for clarity
-        assert size is not None
-
-        ind1 = string.ascii_letters[ : N ]
-        ind2 = string.ascii_letters[ N : N * 2 ]
-        t = string.ascii_letters[ N * 2 ]
-        if( len( stat ) == 1 ):
-            contract = t + ind1 + ',' + ind2 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->'
-        else:
-            assert len( stat ) == 2
-            contract = t + ind1 + ',' + t + ind2 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->'
-
-        return np.einsum( contract, *stat, *nat, optimize=( N > 2 ) )
-
-    @staticmethod
-    def log_pdf( natParams, sufficientStats, log_partition=None ):
+    @classmethod
+    def log_pdf( cls, natParams, sufficientStats, log_partition=None ):
 
         ans = 0.0
         for natParam, stat in zip( natParams, sufficientStats ):
-            ans += TensorExponentialFam.combine( stat, natParam, size=stat[ 0 ][ 0 ] )
+            ans += cls.combine( stat, natParam )
 
         if( log_partition is not None ):
             if( isinstance( log_partition, tuple ) ):
