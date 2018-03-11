@@ -154,6 +154,51 @@ class TensorNormal( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
+    def marginalizeX1( J11, J12, J22, h1, h2, logZ, D, N, intX1=True ):
+
+        # Integrate exp{ -0.5 * < J11, x1:N, x1:N >
+        #                -0.5 * < J22, y1:N, y1:N >
+        #                     + < J12, y1:N, x1:N >
+        #                     + < h1, x1:N >
+        #                     + < h2, y1:N >
+        #                     - logZ }
+        # over x1:N
+
+        if( intX1 ):
+            _J11 = J11.reshape( ( D**N, D**N ) )
+            _J12 = J12.reshape( ( D**N, D**N ) )
+            _J22 = J22.reshape( ( D**N, D**N ) )
+            _h1 = h1.ravel()
+            _h2 = h2.ravel()
+        else:
+            _J11 = J22.reshape( ( D**N, D**N ) )
+            _J12 = J12.reshape( ( D**N, D**N ) ).T
+            _J22 = J11.reshape( ( D**N, D**N ) )
+            _h1 = h2.ravel()
+            _h2 = h1.ravel()
+
+        np.linalg.inv( _J11 )
+        J11Chol = cho_factor( _J11, lower=True )
+        J11Invh1 = cho_solve( J11Chol, _h1 )
+
+        J = _J22 - _J12.T @ cho_solve( J11Chol, _J12 )
+        h = _h2 - _J12.T.dot( J11Invh1 )
+
+        logZ = logZ - \
+                0.5 * _h1.dot( J11Invh1 ) + \
+                np.log( np.diag( J11Chol[ 0 ] ) ).sum() - \
+                D**N * _HALF_LOG_2_PI
+        return J.reshape( [ D for _ in range( 2 * N ) ] ), \
+               h.reshape( [ D for _ in range( N ) ] ), \
+               logZ
+
+    @classmethod
+    def marginalizeX2( cls, J11, J12, J22, h1, h2, logZ, D, N ):
+        return cls.marginalizeX1( J11, J12, J22, h1, h2, logZ, D, N, intX1=False )
+
+    ##########################################################################
+
+    @classmethod
     def combine( cls, stat, nat ):
 
         N = len( stat ) + len( nat ) - 2
