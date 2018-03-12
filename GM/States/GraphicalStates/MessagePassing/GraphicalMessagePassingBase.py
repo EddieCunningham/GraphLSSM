@@ -1,6 +1,7 @@
 import numpy as np
 import scipy as sp
 from scipy.sparse import coo_matrix
+import graphviz
 
 def dprint( *args, use=False ):
     if( use ):
@@ -13,6 +14,18 @@ class Graph():
         self.nodes = set()
         self.edgeChildren = list()
         self.edgeParents = list()
+
+    @staticmethod
+    def fromParentChildMask( pMask, cMask ):
+        graph = Graph()
+        assert pMask.shape == cMask.shape
+        nEdges = pMask.shape[ 1 ]
+        for e in range( nEdges ):
+            parents = pMask.getcol( e ).nonzero()[ 0 ]
+            children = cMask.getcol( e ).nonzero()[ 0 ]
+            graph.addEdge( parents=parents.tolist(), children=children.tolist() )
+
+        return graph
 
     def addEdge( self, parents, children ):
         assert isinstance( parents, list ) or isinstance( parents, tuple )
@@ -53,6 +66,37 @@ class Graph():
 
         return parentMask, childMask
 
+    def draw( self, render=True ):
+
+        """ Draws the hypergraph using graphviz """
+        d = graphviz.Digraph()
+        for e, ( parents, children ) in enumerate( zip( self.edgeParents, self.edgeChildren ) ):
+            for p in parents:
+                d.edge( 'n( '+str( p )+' )', 'E( '+str( e )+' )', **{
+                    'arrowhead': 'none',
+                    'fixedsize': 'true'
+                })
+            for c in children:
+                d.edge( 'E( '+str( e )+' )', 'n( '+str( c )+' )', **{
+                    'arrowhead': 'none',
+                    'fixedsize': 'true'
+                })
+
+            d.node('E( '+str( e )+' )', **{
+                'width': '0.25',
+                'height': '0.25',
+                'fontcolor': 'white',
+                'style': 'filled',
+                'fillcolor': 'black',
+                'fixedsize': 'true',
+                'fontsize': '6'
+            })
+
+        if( render ):
+            d.render()
+
+        return d
+
 class GraphMessagePasser():
     # Base message passing class for hyper graphs.
     # Will use a sparse matrix to hold graph structure
@@ -69,14 +113,66 @@ class GraphMessagePasser():
     def genChildMasks( self ):
         assert 0
 
-    def updateParams( self, parentMasks, childMasks, feedbackSets ):
-        for childMask, parentMask, feedbackSet in zip( childMasks, parentMasks, feedbackSets ):
-            assert isinstance( childMask, coo_matrix )
-            assert isinstance( parentMask, coo_matrix )
-            assert childMask.shape == parentMask.shape and parentMask.shape[ 0 ] == feedbackSet.shape[ 0 ]
-        self.pmask = sp.sparse.vstack( parentMasks )
-        self.cmask = sp.sparse.vstack( childMasks )
-        self.fbsMask = np.concatenate( feedbackSets )
+    def toGraph( self ):
+        return Graph.fromParentChildMask( self.pmask, self.cmask )
+
+    def concatSparseMatrix( self, sparseMatrices ):
+        # Builds a big block diagonal matrix where each diagonal matrix
+        # is an element in sparseMatrices
+
+        row = np.array( [], dtype=int )
+        col = np.array( [], dtype=int )
+        data = np.array( [], dtype=int )
+        nRows = 0
+        nCols = 0
+        for mat in sparseMatrices:
+            m, n = mat.shape
+            row = np.hstack( ( row, mat.row + nRows ) )
+            col = np.hstack( ( col, mat.col + nCols ) )
+            data = np.hstack( ( data, mat.data ) )
+            nRows += m
+            nCols += n
+        return coo_matrix( ( data, ( row, col ) ), shape=( nRows, nCols ), dtype=bool )
+
+    def fbsConcat( self, feedbackSets, nodeCounts ):
+        assert len( feedbackSets ) == len( nodeCounts )
+        bigFBS = []
+        totalN = 0
+        for fbs, N in zip( feedbackSets, nodeCounts ):
+            bigFBS.append( fbs + totalN )
+            totalN += N
+        return np.concatenate( bigFBS )
+
+    def updateParams( self, parentMasks, childMasks, feedbackSets=None ):
+
+        if( feedbackSets is not None ):
+            assert len( parentMasks ) == len( childMasks ) == len( feedbackSets )
+            for childMask, parentMask, feedbackSet in zip( childMasks, parentMasks, feedbackSets ):
+                assert isinstance( childMask, coo_matrix )
+                assert isinstance( parentMask, coo_matrix )
+                assert childMask.shape == parentMask.shape
+        else:
+            assert len( parentMasks ) == len( childMasks )
+            for childMask, parentMask in zip( childMasks, parentMasks ):
+                assert isinstance( childMask, coo_matrix )
+                assert isinstance( parentMask, coo_matrix )
+                assert childMask.shape == parentMask.shape
+
+        self.pmask = self.concatSparseMatrix( parentMasks )
+        self.cmask = self.concatSparseMatrix( childMasks )
+
+        self.nodes = np.arange( self.pmask.shape[ 0 ] )
+
+        if( feedbackSets is not None ):
+            nodeCounts = [ mat.shape[ 0 ] for mat in parentMasks ]
+            self.fbsMask = np.in1d( self.nodes, self.fbsConcat( feedbackSets, nodeCounts ) )
+            # self.fbsMask = np.in1d( self.nodes, np.concatenate( feedbackSets ) )
+        else:
+            self.fbsMask = np.zeros( self.pmask.shape[ 0 ], dtype=bool )
+
+        fbs = self.nodes[ self.fbsMask ]
+        self.fbsPMask = np.in1d( self.pmask.row, fbs )
+        self.fbsCMask = np.in1d( self.cmask.row, fbs )
 
     def transitionProb( self, t, t1 ):
         assert 0
@@ -102,7 +198,7 @@ class GraphMessagePasser():
         if( split ):
             return [ self.upEdges( n, split=False ) for n in nodes ]
         rows, cols = self.cmask.nonzero()
-        return cols[ np.in1d( rows, nodes ) ]
+        return np.unique( cols[ np.in1d( rows, nodes ) ] )
 
     def downEdges( self, nodes, skipEdges=None, split=False ):
         if( split ):
@@ -110,52 +206,94 @@ class GraphMessagePasser():
         if( skipEdges is not None ):
             return np.setdiff1d( self.downEdges( nodes, skipEdges=None, split=False ), skipEdges )
         rows, cols = self.pmask.nonzero()
-        return cols[ np.in1d( rows, nodes ) ]
+        return np.unique( cols[ np.in1d( rows, nodes ) ] )
 
-    def parents( self, nodes, split=False ):
-        if( split ):
-            return [ self.parents( n, split=False ) for n in nodes ]
+    def _nodesFromEdges( self, nodes, edges, getChildren=True, diffNodes=False, noFBS=False ):
 
-        nodeMask = np.in1d( self.cmask.row, nodes )
-        parentEdges = np.in1d( self.pmask.col, self.cmask.col[ nodeMask ] )
-        return np.unique( self.pmask.row[ parentEdges ] )
+        mask = self.cmask if getChildren else self.pmask
+        fbsmask = self.fbsCMask if getChildren else self.fbsPMask
 
-    def children( self, nodes, edges=None, split=False ):
-        if( split ):
-            if( edges is None ):
-                return [ self.children( n, split=False ) for n in nodes ]
-            else:
-                return [ self.children( n, e, split=False ) for n, e in zip( nodes, edges ) ]
+        edgeMask = np.in1d( mask.col, edges )
 
-        nodeMask = np.in1d( self.pmask.row, nodes )
-        if( edges is not None ):
-            relevantEdgeMask = np.in1d( self.pmask.col, edges ) & nodeMask
-            childEdges = self.pmask.col[ relevantEdgeMask ]
-        else:
-            childEdges = self.pmask.col[ nodeMask ]
-        edgeMask = np.in1d( self.cmask.col, childEdges )
-        return np.unique( self.cmask.row[ edgeMask ] )
+        if( noFBS == True ):
+            edgeMask &= np.logical_not( fbsmask )
 
-    def mates( self, nodes, edges=None, split=False ):
+        if( diffNodes ):
+            return np.setdiff1d( mask.row[ edgeMask ], nodes )
+
+        return np.unique( mask.row[ edgeMask ] )
+
+    def _nodeSelectFromEdge( self, nodes, edges=None, upEdge=False, getChildren=True, diffNodes=False, splitByEdge=False, split=False, noFBS=False ):
+
         if( split ):
             if( edges is None ):
-                return [ self.mates( n, split=False ) for n in nodes ]
+                return [ self._nodeSelectFromEdge( n, edges=None, \
+                                                      upEdge=upEdge, \
+                                                      getChildren=getChildren, \
+                                                      diffNodes=diffNodes, \
+                                                      splitByEdge=splitByEdge, \
+                                                      split=False, \
+                                                      noFBS=noFBS ) for n in nodes ]
             else:
-                return [ self.mates( n, e, split=False ) for n, e in zip( nodes, edges ) ]
+                return [ self._nodeSelectFromEdge( n, edges=e, \
+                                                      upEdge=upEdge, \
+                                                      getChildren=getChildren, \
+                                                      diffNodes=diffNodes, \
+                                                      splitByEdge=splitByEdge, \
+                                                      split=False, \
+                                                      noFBS=noFBS ) for n, e in zip( nodes, edges ) ]
 
-        nodeMask = np.in1d( self.pmask.row, nodes )
+        _edges = self.upEdges( nodes ) if upEdge else self.downEdges( nodes )
+
         if( edges is not None ):
-            relevantEdgeMask = np.in1d( self.pmask.col, edges ) & nodeMask
-            mateEdges = self.pmask.col[ relevantEdgeMask ]
-        else:
-            mateEdges = self.pmask.col[ nodeMask ]
-        edgeMask = np.in1d( self.pmask.col, mateEdges )
-        return np.setdiff1d( self.pmask.row[ edgeMask ], nodes )
+            _edges = np.intersect1d( _edges, edges )
 
-    def siblings( self, nodes, split=False ):
-        if( split ):
-            return [ self.siblings( n, split=False ) for n in nodes ]
-        return np.setdiff1d( self.cmask.row[ np.in1d( self.cmask.col, self.cmask.col[ np.in1d( self.cmask.row, nodes ) ] ) ], nodes )
+        if( splitByEdge == True ):
+            return [ [ e, self._nodeSelectFromEdge( nodes, edges=e, \
+                                                           upEdge=upEdge, \
+                                                           getChildren=getChildren, \
+                                                           diffNodes=diffNodes, \
+                                                           splitByEdge=False, \
+                                                           split=False, \
+                                                           noFBS=noFBS ) ] for e in _edges ]
+
+        return self._nodesFromEdges( nodes, _edges, getChildren=getChildren, diffNodes=diffNodes, noFBS=noFBS )
+
+    def parents( self, nodes, split=False, noFBS=False ):
+        return self._nodeSelectFromEdge( nodes, edges=None, \
+                                                upEdge=True, \
+                                                getChildren=False, \
+                                                diffNodes=False, \
+                                                splitByEdge=False, \
+                                                split=split, \
+                                                noFBS=noFBS )
+
+    def siblings( self, nodes, split=False, noFBS=False ):
+        return self._nodeSelectFromEdge( nodes, edges=None, \
+                                                upEdge=True, \
+                                                getChildren=True, \
+                                                diffNodes=True, \
+                                                splitByEdge=False, \
+                                                split=split, \
+                                                noFBS=noFBS )
+
+    def children( self, nodes, edges=None, splitByEdge=False, split=False, noFBS=False ):
+        return self._nodeSelectFromEdge( nodes, edges=edges, \
+                                                upEdge=False, \
+                                                getChildren=True, \
+                                                diffNodes=False, \
+                                                splitByEdge=splitByEdge, \
+                                                split=split, \
+                                                noFBS=noFBS )
+
+    def mates( self, nodes, edges=None, splitByEdge=False, split=False, noFBS=False ):
+        return self._nodeSelectFromEdge( nodes, edges=edges, \
+                                                upEdge=False, \
+                                                getChildren=False, \
+                                                diffNodes=True, \
+                                                splitByEdge=splitByEdge, \
+                                                split=split, \
+                                                noFBS=noFBS )
 
     ######################################################################
 
@@ -170,27 +308,43 @@ class GraphMessagePasser():
         childOfEdgeCount = self.cmask.getnnz( axis=1 )
 
         # Get the indices of leaves and roots
-        rootIndices = np.arange( M )[ ( parentOfEdgeCount != 0 ) & ( childOfEdgeCount == 0 ) ]
-        leafIndices = np.arange( M )[ ( childOfEdgeCount != 0 ) & ( parentOfEdgeCount == 0 ) ]
+        rootIndices = self.nodes[ ( parentOfEdgeCount != 0 ) & ( childOfEdgeCount == 0 ) ]
+        leafIndices = self.nodes[ ( childOfEdgeCount != 0 ) & ( parentOfEdgeCount == 0 ) ]
 
         # Explicitely get the feedback set
-        fbs = np.arange( self.fbsMask.shape[ 0 ] )[ self.fbsMask ]
+        fbs = self.nodes[ self.fbsMask ]
 
-        # Parent of nodes in feedback set are nodes who
+        # Nodes whose parents are all in the fbs are roots, and nodes whose
+        # children are all in the fbs are leaves
+        pseudoRoots = []
+        pseudoLeaves = []
+
         fbsParents = self.parents( fbs )
+        childrenOfFBSParents = self.children( fbsParents, split=True )
+        for children, fbsParent in zip( childrenOfFBSParents, fbsParents ):
+            if( np.all( np.in1d( children, fbs ) ) == True ):
+                pseudoLeaves.append( fbsParent )
+
         fbsChildren = self.children( fbs )
+        parentsOfFBSChildren = self.parents( fbsChildren, split=True )
+        for parents, fbsChild in zip( parentsOfFBSChildren, fbsChildren ):
+            if( np.all( np.in1d( parents, fbs ) ) == True ):
+                pseudoRoots.append( fbsChild )
 
         # Generate the up and down base arrays
-        uList = np.setdiff1d( np.hstack( ( rootIndices, fbsChildren ) ), fbs )
-        vList = np.setdiff1d( np.hstack( ( leafIndices, fbsParents ) ), fbs )
+        uList = np.setdiff1d( np.hstack( ( rootIndices, np.array( pseudoRoots, dtype=int ) ) ), fbs )
+        vList = np.setdiff1d( np.hstack( ( leafIndices, np.array( pseudoLeaves, dtype=int ) ) ), fbs )
 
-        return uList, [ vList, None ]
+        return uList, [ vList, [ None for _ in vList ] ]
 
     ######################################################################
 
     def progressInit( self ):
-        uDone = np.zeros( self.pmask.shape[ 0 ], dtype=bool )
+        uDone = np.copy( self.fbsMask )
         vDone = coo_matrix( ( np.zeros_like( self.pmask.row ), ( self.pmask.row, self.pmask.col ) ), shape=self.pmask.shape, dtype=bool )
+        fbs = self.nodes[ self.fbsMask ]
+        vDone.data[ np.in1d( vDone.row, fbs ) ] = True
+
         return uDone, vDone
 
     ######################################################################
@@ -207,18 +361,24 @@ class GraphMessagePasser():
             #  - V for all parents over all down edges except node's up edge
             #  - V for all siblings over all down edges
             upEdge = self.upEdges( n )
-            dprint( 'upEdge:', upEdge, use=debug )
-            for p in self.parents( n ):
-                USemData[ n ] += 1
+            parents = self.parents( n, noFBS=True )
 
-                downEdges = self.downEdges( p, skipEdges=upEdge )
+            USemData[ n ] += parents.shape[ 0 ]
+
+            dprint( 'All parents:', parents, use=debug )
+            dprint( 'upEdge:', upEdge, use=debug )
+            for parent in parents:
+
+                downEdges = self.downEdges( parent, skipEdges=upEdge )
                 USemData[ n ] += downEdges.shape[ 0 ]
 
-                dprint( 'p:', p, use=debug )
-                dprint( 'downEdges:', downEdges, use=debug )
+                dprint( 'downEdges:', downEdges, 'from parent:', parent, use=debug )
 
-            USemData[ n ] += self.siblings( n ).shape[ 0 ]
-            dprint( 'siblings:', self.siblings( n ), use=debug )
+            siblings = self.siblings( n, noFBS=True )
+            for sibling in siblings:
+                downEdges = self.downEdges( sibling )
+                USemData[ n ] += downEdges.shape[ 0 ]
+                dprint( 'downEdges:', downEdges, 'from sibling:', sibling, use=debug )
 
         VSemData = np.zeros_like( self.pmask.row )
 
@@ -226,18 +386,31 @@ class GraphMessagePasser():
             dprint( '\nV Sem for n:', n, 'e:', e, use=debug )
             # V:
             #  - U for all mates from e
-            #  - V for all mates over all down edges except for e
-            #  - V for all children from e over all down edges
-            VSemData[ i ] += self.mates( n, edges=e ).shape[ 0 ]
-            dprint( 'All mates:', self.mates( n, edges=e ), use=debug )
+            #  - V for all mates over all down edges for mate except for e
+            #  - V for all children from e over all down edges for child
 
-            downEdges = self.downEdges( n, skipEdges=e )
-            VSemData[ i ] += self.mates( n, edges=downEdges ).shape[ 0 ]
-            dprint( 'downEdges without e:', downEdges, use=debug )
-            dprint( 'Not down e mates:', self.mates( n, edges=downEdges ), use=debug )
+            mates = self.mates( n, edges=e, noFBS=True )
 
-            VSemData[ i ] += self.children( n, edges=e ).shape[ 0 ]
-            dprint( 'children from e:', self.children( n, edges=e ), use=debug )
+            VSemData[ i ] += mates.shape[ 0 ]
+            dprint( 'All mates:', mates, use=debug )
+
+            for mate in mates:
+                downEdges = self.downEdges( mate, skipEdges=e )
+                VSemData[ i ] += downEdges.shape[ 0 ]
+                dprint( 'downEdges without e:', downEdges, 'from mate:', mate, use=debug )
+
+            children = self.children( n, edges=e, noFBS=True )
+            dprint( 'All children:', children, use=debug )
+            for child in children:
+                downEdges = self.downEdges( child )
+                VSemData[ i ] += downEdges.shape[ 0 ]
+                dprint( 'downEdges:', downEdges, 'from child:', child, use=debug )
+
+        # Set the feedback set nodes to 0
+        USemData[ self.fbsMask ] = 0
+
+        fbs = self.nodes[ self.fbsMask ]
+        VSemData[ np.in1d( self.pmask.row, fbs ) ] = 0
 
         uSem = USemData
         vSem = coo_matrix( ( VSemData, ( self.pmask.row, self.pmask.col ) ), shape=self.pmask.shape, dtype=int )
@@ -252,12 +425,11 @@ class GraphMessagePasser():
     ######################################################################
 
     def readyForU( self, uSem, uDone, debug=False ):
-        nodes = np.arange( uSem.shape[ 0 ] )
         dprint( '\nWorking on ready for U', use=debug )
         dprint( 'uSem mask', uSem == 0, use=debug )
         dprint( 'uDone', uDone, use=debug )
         dprint( 'done mask', np.logical_not( uDone ), use=debug )
-        return nodes[ ( uSem == 0 ) & np.logical_not( uDone ) ]
+        return self.nodes[ ( uSem == 0 ) & np.logical_not( uDone ) ]
 
     def readyForV( self, vSem, vDone, debug=False ):
         dprint( '\nWorking on ready for V', use=debug )
@@ -274,55 +446,69 @@ class GraphMessagePasser():
         dprint( '\nDone with U for', nodes, use=debug )
 
         # Decrement uSem for children
-        children = self.children( nodes, split=True )
+        children = self.children( nodes, split=True, noFBS=True )
         for node, childrenForNode in zip( nodes, children ):
             uSem[ childrenForNode ] -= 1
             dprint( 'Decrementing from U for child', childrenForNode, 'from parent', node, use=debug )
 
-        # Decrement vSem for all mates over each down edge
-        mates = self.mates( nodes, split=True )
-        for node, mateForNode in zip( nodes, mates ):
-            vSem.data[ np.in1d( vSem.row, mateForNode ) ] -= 1
-            dprint( 'Decrementing from V for mates', mateForNode, 'from node', node, use=debug )
+        # Decrement vSem for all mates over down edges that node and mate are a part of
+        matesAndEdges = self.mates( nodes, splitByEdge=True, split=True, noFBS=True )
+        for node, mateAndEdge in zip( nodes, matesAndEdges ):
+            for e, m in mateAndEdge:
+                vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] -= 1
+                dprint( 'Decrementing from V for mates', m, 'at edge', e, 'from node', node, use=debug )
 
         uDone[ nodes ] = True
 
     def VDone( self, nodesAndEdges, uSem, vSem, vDone, debug=False ):
 
         nodes, edges = nodesAndEdges
+        edgesWithoutNone = np.array( [ e for e in edges if e is not None ] )
 
-        dprint( '\nDone with V for', nodes, ' at', edges, use=debug  )
-        notCurrentEdge = np.setdiff1d( vSem.col, edges )
+        dprint( '\nDone with V for', nodes, 'at', edges, use=debug  )
+        notCurrentEdge = np.setdiff1d( vSem.col, edgesWithoutNone )
 
-        # Decrement uSem for children
-        children = self.children( nodes, edges=notCurrentEdge, split=True )
-        for node, childrenForNode in zip( nodes, children ):
-            uSem[ childrenForNode ] -= 1
-            dprint( 'Decrementing from U for child', children, 'from parent', node, use=debug )
+        # Decrement uSem for children that come from a different edge than the one computed for V
+        childrenAndEdges = self.children( nodes, splitByEdge=True, split=True, noFBS=True )
+        for node, edge, childAndEdge in zip( nodes, edges, childrenAndEdges ):
+            for e, c in childAndEdge:
+                if( e == edge ):
+                    continue
+                uSem[ c ] -= 1
+                dprint( 'Decrementing from U for child', c, 'from parent', node, use=debug )
 
-        # Decrement uSem for siblings
-        siblings = self.siblings( nodes, split=True )
-        for node, siblingsForNode in zip( nodes, siblings ):
+        # Decrement uSem for all siblings
+        siblings = self.siblings( nodes, split=True, noFBS=True )
+        for _e, node, siblingsForNode in zip( edges, nodes, siblings ):
+            if( _e is None ):
+                # If this node doesn't have a down edge, then we don't want to decrement
+                continue
             uSem[ siblingsForNode ] -= 1
-            dprint( 'Decrementing from U for sibling', children, 'from node', node, use=debug )
+            dprint( 'Decrementing from U for sibling', siblingsForNode, 'from node', node, use=debug )
 
         # Decrement vSem for mates that aren't current edge
-        mates = self.mates( nodes, edges=notCurrentEdge, split=False )
-        downEdges = self.downEdges( nodes, skipEdges=edges, split=True )
-        for m, e in zip( mates, downEdges ):
-            vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] -= 1
-            dprint( 'Decrementing from V for mates', vSem.row[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ], \
-                                        'at edges', vSem.col[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ], use=debug )
+        matesAndEdges = self.mates( nodes, splitByEdge=True, split=True, noFBS=True )
+        print( nodes )
+        print( matesAndEdges )
+        for node, edge, mateAndEdge in zip( nodes, edges, matesAndEdges ):
+            for e, m in mateAndEdge:
+                if( e == edge ):
+                    continue
+                vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] -= 1
+                dprint( 'Decrementing from V for mates', m, 'at edge', e, 'from node', node, use=debug )
 
         # Decrement vSem for parents over up edges
-        parents = self.parents( nodes, split=True )
+        parents = self.parents( nodes, split=True, noFBS=True )
         upEdges = self.upEdges( nodes, split=True )
-        for p, e in zip( parents, upEdges ):
+        for _e, p, e in zip( edges, parents, upEdges ):
+            if( _e is None ):
+                # If this node doesn't have a down edge, then we don't want to decrement
+                continue
             vSem.data[ np.in1d( vSem.row, p ) & np.in1d( vSem.col, e ) ] -= 1
             dprint( 'Decrementing from V for parents', vSem.row[ np.in1d( vSem.row, p ) & np.in1d( vSem.col, e ) ], \
                                           'at edges', vSem.col[ np.in1d( vSem.row, p ) & np.in1d( vSem.col, e ) ], use=debug )
 
-        vDone.data[ np.in1d( vDone.row, nodes ) & np.in1d( vDone.col, edges ) ] = True
+        vDone.data[ np.in1d( vDone.row, nodes ) & np.in1d( vDone.col, edgesWithoutNone ) ] = True
 
     ######################################################################
 
@@ -423,6 +609,9 @@ class GraphMessagePasser():
 
         self.updateU( nodes, newU, U, conditioning )
 
+    def convergence( self, nodes ):
+        return False
+
     ######################################################################
 
     def messagePassing( self, uWork, vWork, **kwargs ):
@@ -439,21 +628,25 @@ class GraphMessagePasser():
         print( 'uList: \n', uList )
         print( 'vList: \n', vList )
 
+        print( '\nInitial done list' )
+        print( 'uDone: \n', uDone )
+        print( 'vDone: \n', vDone )
+
         i = 1
         debug = True
 
         # Filter over all of the graphs
         while( uList.size > 0 or vList[ 0 ].size > 0 ):
 
-            dprint( '\n----------------\n', 'Iteration', i, '\n----------------\n', use=True )
+            dprint( '\n----------------\n', 'Iteration', i, '\n----------------\n', use=debug )
 
             # Do work for each of the nodes
             uWork( uList, **kwargs )
             vWork( vList, **kwargs )
 
             # Mark that we're done with the current nodes
-            self.UDone( uList, uSem, vSem, uDone, debug=False )
-            self.VDone( vList, uSem, vSem, vDone, debug=False )
+            self.UDone( uList, uSem, vSem, uDone, debug=True )
+            self.VDone( vList, uSem, vSem, vDone, debug=True )
 
             if( debug ):
                 print( '\nSemaphore count after marking nodes done' )
@@ -470,12 +663,17 @@ class GraphMessagePasser():
                 print( 'vList: \n', vList )
 
                 print( '\nCompleted list' )
-                print( 'uDone: \n', np.arange( uDone.shape[ 0 ] )[ uDone ] )
+                print( 'uDone: \n', self.nodes[ uDone ] )
                 print( 'vDone: \n', sorted( list( zip( vDone.row, vDone.col ) ), key=lambda x:x[0] ) )
 
             i += 1
             # if( i == 5 ):
                 # assert 0
+
+            # Check if we need to do loopy propogation belief
+            if( ( uList.size == 0 and vList[ 0 ].size == 0 ) and \
+                ( not np.any( uDone ) or not np.any( vDone.data ) ) ):
+                loopy = True
 
     ######################################################################
 

@@ -6,20 +6,34 @@ def graph1():
     graph = Graph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 2 ] )
-
-    pMask, cMask = graph.toMatrix()
-    fbs = np.zeros( pMask.shape[ 0 ], dtype=bool )
-
-    parentMasks = [ pMask ]
-    childMasks = [ cMask ]
-    feedbackSets = [ fbs ]
-
-    msg = GraphMessagePasser()
-    msg.updateParams( parentMasks, childMasks, feedbackSets )
-
-    return msg
+    return graph
 
 def graph2():
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0, 1 ], children=[ 4 ] )
+    graph.addEdge( parents=[ 2, 3 ], children=[ 5 ] )
+    graph.addEdge( parents=[ 4, 5 ], children=[ 6, 7 ] )
+
+    return graph
+
+def graph3():
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0, 1 ], children=[ 3 ] )
+    graph.addEdge( parents=[ 1, 2 ], children=[ 4 ] )
+
+    return graph
+
+def graph4():
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0, 1, 2 ], children=[ 4, 5 ] )
+    graph.addEdge( parents=[ 2, 3 ], children=[ 6 ] )
+
+    return graph
+
+def graph5():
     graph = Graph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 6, 7 ] )
@@ -30,47 +44,20 @@ def graph2():
     graph.addEdge( parents=[ 15, 16 ], children=[ 17 ] )
     graph.addEdge( parents=[ 13, 17 ], children=[ 14 ] )
 
-    pMask, cMask = graph.toMatrix()
-    fbs = np.zeros( pMask.shape[ 0 ], dtype=bool )
-
-    parentMasks = [ pMask ]
-    childMasks = [ cMask ]
-    feedbackSets = [ fbs ]
-
-    msg = GraphMessagePasser()
-    msg.updateParams( parentMasks, childMasks, feedbackSets )
-
-    return msg
-
-def messagePassingTest():
-    # Simulate message passing but do nothing at the filter step
-
-    msg = graph2()
-
-    nothing = lambda x: 0
-
-    msg.messagePassing( nothing, nothing )
-    return
-
-    USem, VSem = msg.countSemaphoreInit()
-
-    uList, vList = msg.baseCaseNodes()
-
-    msg.UDone( uList, USem, VSem )
-    msg.VDone( vList, USem, VSem )
-
-    print( '\nSemaphore count after marking nodes done' )
-    print( 'USem: \n', USem )
-    print( 'VSem: \n', VSem.todense() )
-
-    uList = msg.readyForU( USem, uList )
-    vList = msg.readyForV( VSem, vList )
-
-    print( '\nNext node list' )
-    print( 'uList: \n', uList )
-    print( 'vList: \n', vList )
+    return graph
 
 def cycleGraph1():
+
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0, 1 ], children=[ 2, 3 ] )
+    graph.addEdge( parents=[ 2, 3 ], children=[ 4 ] )
+
+    fbs = np.array( [ 2 ] )
+
+    return graph, fbs
+
+def cycleGraph2():
 
     graph = Graph()
 
@@ -78,52 +65,44 @@ def cycleGraph1():
     graph.addEdge( parents=[ 1, 2 ], children=[ 4 ] )
     graph.addEdge( parents=[ 2, 3, 4 ], children=[ 5, 6 ] )
 
-    pMask, cMask = graph.toMatrix()
-    fbs = coo_matrix( pMask.shape, dtype=bool )
+    fbs = np.array( [ 2, 4 ] )
 
-    parentMasks = [ pMask ]
-    childMasks = [ cMask ]
-    feedbackSets = [ fbs ]
+    return graph, fbs
+
+def messagePassingTest( graphs, feedbackSets=None ):
+    # Simulate message passing but do nothing at the filter step
+    parentMasks = []
+    childMasks = []
+    for graph in graphs:
+        pMask, cMask = graph.toMatrix()
+        parentMasks.append( pMask )
+        childMasks.append( cMask )
+
+    if( feedbackSets is not None ):
+        assert len( graphs ) == len( feedbackSets )
 
     msg = GraphMessagePasser()
-    msg.updateParams( parentMasks, childMasks, feedbackSets )
+    msg.updateParams( parentMasks, childMasks, feedbackSets=feedbackSets )
 
-    return msg
-def loopyMessagePassingTest():
-    # Simulate message passing but do nothing at the filter step
+    bigGraph = msg.toGraph()
+    bigGraph.draw()
 
-    msg = cycleGraph1()
+    nothing = lambda x: 0
+    msg.messagePassing( nothing, nothing )
 
-    USem, VSem = msg.countSemaphoreInit()
+def noCycleTest():
+    # graphs = [ graph3() ]
+    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
+    messagePassingTest( graphs )
 
-    print( '\nInitial semaphore count' )
-    print( 'USem: \n', USem )
-    print( 'VSem: \n', VSem.todense() )
+def cycleTest():
 
-    uList, vList = msg.baseCaseNodes()
-
-    print( '\nInitial node list' )
-    print( 'uList: \n', uList )
-    print( 'vList: \n', vList )
-
-    msg.UDone( uList, USem, VSem )
-    msg.VDone( vList, None, USem, VSem )
-
-
-    print( '\nSemaphore count after marking nodes done' )
-    print( 'USem: \n', USem )
-    print( 'VSem: \n', VSem.todense() )
-
-    uList = msg.readyForU( USem )
-    vList = msg.readyForV( VSem )
-
-    print( '\nNext node list' )
-    print( 'uList: \n', uList )
-    print( 'vList: \n', vList )
-
+    graphs, fbs = zip( *[ cycleGraph1(), cycleGraph2() ] )
+    # graphs, fbs = zip( *[ cycleGraph1() ] )
+    messagePassingTest( graphs, feedbackSets=fbs )
 
 def tests():
-    messagePassingTest()
-    # loopyMessagePassingTest()
+    # noCycleTest()
+    cycleTest()
 
 tests()
