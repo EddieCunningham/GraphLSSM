@@ -76,7 +76,7 @@ def testGaussianForwardBackward():
     ( initialDist, ) = Dirichlet.sample( params=onesK )
     transDist = Dirichlet.sample( params=onesK, size=K )
 
-    muSigmas = [ NormalInverseWishart.basicSample( obsDim ) for _ in range( K ) ]
+    muSigmas = [ NormalInverseWishart.sample( obsDim ) for _ in range( K ) ]
     mus = [ mu for mu, sigma in muSigmas ]
     sigmas = [ sigma for mu, sigma in muSigmas ]
 
@@ -119,9 +119,9 @@ def testSLDSForwardBackward():
     transDist = Dirichlet.sample( params=onesK, size=D_latent )
 
     u = np.random.random( ( T, D_latent ) )
-    mu0, sigma0 = NormalInverseWishart.basicSample( D_latent )
+    mu0, sigma0 = NormalInverseWishart.sample( D_latent )
 
-    ASigmas = [ MatrixNormalInverseWishart.basicSample( D_latent, D_latent ) for _ in range( D_latent ) ]
+    ASigmas = [ MatrixNormalInverseWishart.sample( D_latent, D_latent ) for _ in range( D_latent ) ]
     As = [ A for A, sigma in ASigmas ]
     sigmas = [ sigma for A, sigma in ASigmas ]
 
@@ -157,12 +157,12 @@ def testKalmanFilter():
     mp = KalmanFilter( T, D_latent, D_obs )
 
     u = np.random.random( ( T, D_latent ) )
-    A, sigma = MatrixNormalInverseWishart.basicSample( D_latent, D_latent )
+    A, sigma = MatrixNormalInverseWishart.sample( D_latent, D_latent )
 
-    C, R = MatrixNormalInverseWishart.basicSample( D_obs, D_latent )
+    C, R = MatrixNormalInverseWishart.sample( D_obs, D_latent )
     ys = [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ]
 
-    mu0, sigma0 = NormalInverseWishart.basicSample( D_latent )
+    mu0, sigma0 = NormalInverseWishart.sample( D_latent )
 
     start = time.time()
     mp.updateParams( ys, u, A, sigma, C, R, mu0, sigma0 )
@@ -207,17 +207,17 @@ def testSwitchingKalmanFilter():
     mp = SwitchingKalmanFilter( T, D_latent, D_obs )
 
     u = np.random.random( ( T, D_latent ) )
-    ASigmas = [ MatrixNormalInverseWishart.basicSample( D_latent, D_latent ) for _ in range( K ) ]
+    ASigmas = [ MatrixNormalInverseWishart.sample( D_latent, D_latent ) for _ in range( K ) ]
     As = [ A for A, sigma in ASigmas ]
     sigmas = [ sigma for A, sigma in ASigmas ]
 
-    C, R = MatrixNormalInverseWishart.basicSample( D_obs, D_latent )
+    C, R = MatrixNormalInverseWishart.sample( D_obs, D_latent )
     ys = [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ]
 
     ( p, ) = Dirichlet.sample( params=np.ones( K ) )
     z = Categorical.sample( params=p, size=T )
 
-    mu0, sigma0 = NormalInverseWishart.basicSample( D_latent )
+    mu0, sigma0 = NormalInverseWishart.sample( D_latent )
 
     start = time.time()
     mp.updateParams( ys, u, z, As, sigmas, C, R, mu0, sigma0 )
@@ -251,8 +251,8 @@ def testSwitchingKalmanFilter():
 ######################################################################
 
 testCategoricalForwardBackward()
-testGaussianForwardBackward()
-testSLDSForwardBackward()
-testKalmanFilter()
-testSwitchingKalmanFilter()
+# testGaussianForwardBackward()
+# testSLDSForwardBackward()
+# testKalmanFilter()
+# testSwitchingKalmanFilter()
 

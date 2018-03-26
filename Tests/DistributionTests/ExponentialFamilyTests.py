@@ -11,7 +11,8 @@ from GM.Distributions import ExponentialFam, \
                              Categorical, \
                              Dirichlet, \
                              TensorNormal, \
-                             TensorRegression
+                             TensorRegression, \
+                             TensorCategorical
 from scipy.stats import invwishart
 
 def testsForDistWithoutPrior( dist ):
@@ -104,6 +105,33 @@ def tensorTests():
     tr = TensorRegression( **trParams )
     testsForDistWithoutPrior( tr )
 
+    p = np.random.random( ( D1, D2, D3, D4 ) )
+    tcParams = {
+        'p': p / p.sum()
+    }
 
-standardTests()
-tensorTests()
+    tc = TensorCategorical( **tcParams )
+    testsForDistWithoutPrior( tc )
+
+def tensorNormalMarginalizationTest():
+
+    D = 4
+    N = 3
+
+    trParams = {
+        'A': TensorNormal.sample( Ds=tuple( [ D for _ in range( N ) ] ) )[ 0 ],
+        'sigma': InverseWishart.sample( D=D )
+    }
+
+    tr = TensorRegression( **trParams )
+    # To test this, graph out some stats about part of a vector sampled
+    # from a tensor regression distribution and compare the plots to vectors
+    # sampled from the marginalized tensor regression distribution
+
+
+
+
+# standardTests()
+# tensorTests()
+
+tensorNormalMarginalizationTest()

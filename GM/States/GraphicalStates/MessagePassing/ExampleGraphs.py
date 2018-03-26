@@ -2,6 +2,15 @@ from GraphicalMessagePassingBase import Graph, GraphMessagePasser
 import numpy as np
 from scipy.sparse import coo_matrix
 
+__all__ = [ 'graph1', \
+            'graph2', \
+            'graph3', \
+            'graph4', \
+            'graph5', \
+            'cycleGraph1', \
+            'cycleGraph2', \
+            'cycleGraph3' ]
+
 def graph1():
     graph = Graph()
 
@@ -69,7 +78,46 @@ def cycleGraph2():
 
     return graph, fbs
 
-def messagePassingTest( graphs, feedbackSets=None ):
+def cycleGraph3():
+
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0, 1 ], children=[ 2, 3, 9 ] )
+    graph.addEdge( parents=[ 2, 3 ], children=[ 4 ] )
+    graph.addEdge( parents=[ 1, 2, 3, 8 ], children=[ 5, 6 ] )
+    graph.addEdge( parents=[ 1, 2, 4, 5, 6, 9 ], children=[ 7, 10 ] )
+
+    fbs = np.array( [ 1, 2, 3, 4, 6 ] )
+
+    return graph, fbs
+
+def cycleGraph4():
+
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0 ], children=[ 1 ] )
+    graph.addEdge( parents=[ 1 ], children=[ 0 ] )
+
+    fbs = np.array( [ 0 ] )
+
+    return graph, fbs
+
+def cycleGraph5():
+
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0, 1 ], children=[ 2, 3, 9 ] )
+    graph.addEdge( parents=[ 2, 3 ], children=[ 4 ] )
+    graph.addEdge( parents=[ 1, 2, 3, 8 ], children=[ 5, 6 ] )
+    graph.addEdge( parents=[ 1, 2, 4, 5, 6, 9 ], children=[ 7, 10 ] )
+    graph.addEdge( parents=[ 7, 10 ], children=[ 0 ] )
+
+    fbs = np.array( [ 0, 1, 2, 3, 4, 6 ] )
+
+    return graph, fbs
+
+
+def loadGraphs( graphs, feedbackSets=None, run=True ):
     # Simulate message passing but do nothing at the filter step
     parentMasks = []
     childMasks = []
@@ -83,26 +131,47 @@ def messagePassingTest( graphs, feedbackSets=None ):
 
     msg = GraphMessagePasser()
     msg.updateParams( parentMasks, childMasks, feedbackSets=feedbackSets )
-
-    bigGraph = msg.toGraph()
-    bigGraph.draw()
-
-    nothing = lambda x: 0
-    msg.messagePassing( nothing, nothing )
+    return msg
 
 def noCycleTest():
     # graphs = [ graph3() ]
     graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
-    messagePassingTest( graphs )
+    msg = loadGraphs( graphs )
+
+    def nothing( a, b ):
+        return
+    msg.messagePassing( nothing, nothing )
+
 
 def cycleTest():
 
-    graphs, fbs = zip( *[ cycleGraph1(), cycleGraph2() ] )
-    # graphs, fbs = zip( *[ cycleGraph1() ] )
-    messagePassingTest( graphs, feedbackSets=fbs )
+    graphs, fbs = zip( *[ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5() ] )
+    # graphs, fbs = zip( *[ cycleGraph5() ] )
+    msg = loadGraphs( graphs, feedbackSets=fbs )
+
+    def nothing( a, b ):
+        return
+    msg.messagePassing( nothing, nothing )
+
+
+def allTest():
+    cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5() ]
+    regGraphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
+
+    graphs, fbs = zip( *cycleGraphs )
+    graphs = list( graphs ) + regGraphs
+    fbs = list( fbs ) + [ None for _ in enumerate( regGraphs ) ]
+
+    msg = loadGraphs( graphs, feedbackSets=fbs )
+
+    def nothing( a, b ):
+        return
+    msg.messagePassing( nothing, nothing )
+
 
 def tests():
     # noCycleTest()
-    cycleTest()
+    # cycleTest()
+    allTest()
 
-tests()
+# tests()

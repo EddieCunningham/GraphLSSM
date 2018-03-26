@@ -48,8 +48,14 @@ class Normal( ExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def constParams( self ):
+        return None
+
+    ##########################################################################
+
     @classmethod
-    def sufficientStats( cls, x, forPost=False ):
+    def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
         if( x.ndim == 1 ):
             x = x.reshape( ( 1, -1 ) )

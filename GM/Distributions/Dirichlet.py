@@ -35,8 +35,14 @@ class Dirichlet( ExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def constParams( self ):
+        return None
+
+    ##########################################################################
+
     @classmethod
-    def sufficientStats( cls, x, forPost=False ):
+    def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
         # if( cls.dataN( x ) > 1 ):
         if( x.ndim == 2 ):

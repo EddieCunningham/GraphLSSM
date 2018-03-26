@@ -98,20 +98,9 @@ class Graph():
         return d
 
 class GraphMessagePasser():
-    # Base message passing class for hyper graphs.
-    # Will use a sparse matrix to hold graph structure
 
     def __init__( self ):
         pass
-
-    def genFilterProbs( self ):
-        assert 0
-
-    def genWorkspace( self ):
-        assert 0
-
-    def genChildMasks( self ):
-        assert 0
 
     def toGraph( self ):
         return Graph.fromParentChildMask( self.pmask, self.cmask )
@@ -139,7 +128,8 @@ class GraphMessagePasser():
         bigFBS = []
         totalN = 0
         for fbs, N in zip( feedbackSets, nodeCounts ):
-            bigFBS.append( fbs + totalN )
+            if( fbs is not None ):
+                bigFBS.append( fbs + totalN )
             totalN += N
         return np.concatenate( bigFBS )
 
@@ -166,7 +156,6 @@ class GraphMessagePasser():
         if( feedbackSets is not None ):
             nodeCounts = [ mat.shape[ 0 ] for mat in parentMasks ]
             self.fbsMask = np.in1d( self.nodes, self.fbsConcat( feedbackSets, nodeCounts ) )
-            # self.fbsMask = np.in1d( self.nodes, np.concatenate( feedbackSets ) )
         else:
             self.fbsMask = np.zeros( self.pmask.shape[ 0 ], dtype=bool )
 
@@ -174,126 +163,221 @@ class GraphMessagePasser():
         self.fbsPMask = np.in1d( self.pmask.row, fbs )
         self.fbsCMask = np.in1d( self.cmask.row, fbs )
 
-    def transitionProb( self, t, t1 ):
-        assert 0
+    ######################################################################
 
-    def emissionProb( self, t ):
-        assert 0
+    @staticmethod
+    def _upEdges( cmask, nodes, split=False ):
+        if( split ):
+            return [ GraphMessagePasser._upEdges( cmask, n, split=False ) for n in nodes ]
+        rows, cols = cmask.nonzero()
+        return np.unique( cols[ np.in1d( rows, nodes ) ] )
 
-    def combineTerms( self, *terms ):
-        assert 0
-
-    def integrate( self, integrand, outMem ):
-        assert 0
-
-    def upBaseCase( self, leaves ):
-        assert 0
-
-    def downBaseCase( self, roots ):
-        assert 0
+    @staticmethod
+    def _downEdges( pmask, nodes, skipEdges=None, split=False ):
+        if( split ):
+            return [ GraphMessagePasser._downEdges( pmask, n, skipEdges=skipEdges, split=False ) for n in nodes ]
+        if( skipEdges is not None ):
+            return np.setdiff1d( GraphMessagePasser._downEdges( pmask, nodes, skipEdges=None, split=False ), skipEdges )
+        rows, cols = pmask.nonzero()
+        return np.unique( cols[ np.in1d( rows, nodes ) ] )
 
     ######################################################################
 
-    def upEdges( self, nodes, split=False ):
-        if( split ):
-            return [ self.upEdges( n, split=False ) for n in nodes ]
-        rows, cols = self.cmask.nonzero()
-        return np.unique( cols[ np.in1d( rows, nodes ) ] )
+    @staticmethod
+    def _nodesFromEdges( cmask, pmask, fbsCMask, fbsPMask, nodes, edges, getChildren=True, diffNodes=False, noFBS=False ):
 
-    def downEdges( self, nodes, skipEdges=None, split=False ):
-        if( split ):
-            return [ self.downEdges( n, skipEdges=skipEdges, split=False ) for n in nodes ]
-        if( skipEdges is not None ):
-            return np.setdiff1d( self.downEdges( nodes, skipEdges=None, split=False ), skipEdges )
-        rows, cols = self.pmask.nonzero()
-        return np.unique( cols[ np.in1d( rows, nodes ) ] )
-
-    def _nodesFromEdges( self, nodes, edges, getChildren=True, diffNodes=False, noFBS=False ):
-
-        mask = self.cmask if getChildren else self.pmask
-        fbsmask = self.fbsCMask if getChildren else self.fbsPMask
+        mask = cmask if getChildren else pmask
+        fbsmask = fbsCMask if getChildren else fbsPMask
 
         edgeMask = np.in1d( mask.col, edges )
 
         if( noFBS == True ):
-            edgeMask &= np.logical_not( fbsmask )
+            edgeMask &= ~fbsmask
 
         if( diffNodes ):
             return np.setdiff1d( mask.row[ edgeMask ], nodes )
 
         return np.unique( mask.row[ edgeMask ] )
 
-    def _nodeSelectFromEdge( self, nodes, edges=None, upEdge=False, getChildren=True, diffNodes=False, splitByEdge=False, split=False, noFBS=False ):
+    @staticmethod
+    def _nodeSelectFromEdge( cmask, \
+                             pmask, \
+                             fbsCMask, \
+                             fbsPMask, \
+                             nodes, \
+                             edges=None, \
+                             upEdge=False, \
+                             getChildren=True, \
+                             diffNodes=False, \
+                             splitByEdge=False, \
+                             split=False, \
+                             noFBS=False ):
 
         if( split ):
             if( edges is None ):
-                return [ self._nodeSelectFromEdge( n, edges=None, \
-                                                      upEdge=upEdge, \
-                                                      getChildren=getChildren, \
-                                                      diffNodes=diffNodes, \
-                                                      splitByEdge=splitByEdge, \
-                                                      split=False, \
-                                                      noFBS=noFBS ) for n in nodes ]
+                return [ GraphMessagePasser._nodeSelectFromEdge( cmask, \
+                                                                 pmask, \
+                                                                 fbsCMask, \
+                                                                 fbsPMask,
+                                                                 n, \
+                                                                 edges=None, \
+                                                                 upEdge=upEdge, \
+                                                                 getChildren=getChildren, \
+                                                                 diffNodes=diffNodes, \
+                                                                 splitByEdge=splitByEdge, \
+                                                                 split=False, \
+                                                                 noFBS=noFBS ) for n in nodes ]
             else:
-                return [ self._nodeSelectFromEdge( n, edges=e, \
-                                                      upEdge=upEdge, \
-                                                      getChildren=getChildren, \
-                                                      diffNodes=diffNodes, \
-                                                      splitByEdge=splitByEdge, \
-                                                      split=False, \
-                                                      noFBS=noFBS ) for n, e in zip( nodes, edges ) ]
+                return [ GraphMessagePasser._nodeSelectFromEdge( cmask, \
+                                                                 pmask, \
+                                                                 fbsCMask, \
+                                                                 fbsPMask,
+                                                                 n, \
+                                                                 edges=e, \
+                                                                 upEdge=upEdge, \
+                                                                 getChildren=getChildren, \
+                                                                 diffNodes=diffNodes, \
+                                                                 splitByEdge=splitByEdge, \
+                                                                 split=False, \
+                                                                 noFBS=noFBS ) for n, e in zip( nodes, edges ) ]
 
-        _edges = self.upEdges( nodes ) if upEdge else self.downEdges( nodes )
+        _edges = GraphMessagePasser._upEdges( cmask, nodes ) if upEdge else GraphMessagePasser._downEdges( pmask, nodes )
 
         if( edges is not None ):
             _edges = np.intersect1d( _edges, edges )
 
         if( splitByEdge == True ):
-            return [ [ e, self._nodeSelectFromEdge( nodes, edges=e, \
-                                                           upEdge=upEdge, \
-                                                           getChildren=getChildren, \
-                                                           diffNodes=diffNodes, \
-                                                           splitByEdge=False, \
-                                                           split=False, \
-                                                           noFBS=noFBS ) ] for e in _edges ]
+            return [ [ e, GraphMessagePasser._nodeSelectFromEdge( cmask, \
+                                                                  pmask, \
+                                                                  fbsCMask, \
+                                                                  fbsPMask,
+                                                                  nodes, \
+                                                                  edges=e, \
+                                                                  upEdge=upEdge, \
+                                                                  getChildren=getChildren, \
+                                                                  diffNodes=diffNodes, \
+                                                                  splitByEdge=False, \
+                                                                  split=False, \
+                                                                  noFBS=noFBS ) ] for e in _edges ]
 
-        return self._nodesFromEdges( nodes, _edges, getChildren=getChildren, diffNodes=diffNodes, noFBS=noFBS )
+        return GraphMessagePasser._nodesFromEdges( cmask, \
+                                                   pmask, \
+                                                   fbsCMask, \
+                                                   fbsPMask, \
+                                                   nodes, \
+                                                   _edges, \
+                                                   getChildren=getChildren, \
+                                                   diffNodes=diffNodes, \
+                                                   noFBS=noFBS )
+
+    ######################################################################
+
+    @staticmethod
+    def _parents( cmask, pmask, fbsCMask, fbsPMask, nodes, split=False, noFBS=False ):
+        return GraphMessagePasser._nodeSelectFromEdge( cmask, \
+                                                       pmask, \
+                                                       fbsCMask, \
+                                                       fbsPMask, \
+                                                       nodes, \
+                                                       edges=None, \
+                                                       upEdge=True, \
+                                                       getChildren=False, \
+                                                       diffNodes=False, \
+                                                       splitByEdge=False, \
+                                                       split=split, \
+                                                       noFBS=noFBS )
+
+    @staticmethod
+    def _siblings( cmask, pmask, fbsCMask, fbsPMask, nodes, split=False, noFBS=False ):
+        return GraphMessagePasser._nodeSelectFromEdge( cmask, \
+                                                       pmask, \
+                                                       fbsCMask, \
+                                                       fbsPMask, \
+                                                       nodes, edges=None, \
+                                                       upEdge=True, \
+                                                       getChildren=True, \
+                                                       diffNodes=True, \
+                                                       splitByEdge=False, \
+                                                       split=split, \
+                                                       noFBS=noFBS )
+
+    @staticmethod
+    def _children( cmask, pmask, fbsCMask, fbsPMask, nodes, edges=None, splitByEdge=False, split=False, noFBS=False ):
+        return GraphMessagePasser._nodeSelectFromEdge( cmask, \
+                                                       pmask, \
+                                                       fbsCMask, \
+                                                       fbsPMask, \
+                                                       nodes, edges=edges, \
+                                                       upEdge=False, \
+                                                       getChildren=True, \
+                                                       diffNodes=False, \
+                                                       splitByEdge=splitByEdge, \
+                                                       split=split, \
+                                                       noFBS=noFBS )
+
+    @staticmethod
+    def _mates( cmask, pmask, fbsCMask, fbsPMask, nodes, edges=None, splitByEdge=False, split=False, noFBS=False ):
+        return GraphMessagePasser._nodeSelectFromEdge( cmask, \
+                                                       pmask, \
+                                                       fbsCMask, \
+                                                       fbsPMask, \
+                                                       nodes, edges=edges, \
+                                                       upEdge=False, \
+                                                       getChildren=False, \
+                                                       diffNodes=True, \
+                                                       splitByEdge=splitByEdge, \
+                                                       split=split, \
+                                                       noFBS=noFBS )
+
+    ######################################################################
+
+    def upEdges( self, nodes, split=False ):
+        return GraphMessagePasser._upEdges( self.cmask, nodes, split=split )
+
+    def downEdges( self, nodes, skipEdges=None, split=False ):
+        return GraphMessagePasser._downEdges( self.pmask, nodes, skipEdges=skipEdges, split=split )
+
+    ######################################################################
 
     def parents( self, nodes, split=False, noFBS=False ):
-        return self._nodeSelectFromEdge( nodes, edges=None, \
-                                                upEdge=True, \
-                                                getChildren=False, \
-                                                diffNodes=False, \
-                                                splitByEdge=False, \
-                                                split=split, \
-                                                noFBS=noFBS )
+        return GraphMessagePasser._parents( self.cmask, \
+                                            self.pmask, \
+                                            self.fbsCMask, \
+                                            self.fbsPMask, \
+                                            nodes, \
+                                            split=split, \
+                                            noFBS=noFBS )
 
     def siblings( self, nodes, split=False, noFBS=False ):
-        return self._nodeSelectFromEdge( nodes, edges=None, \
-                                                upEdge=True, \
-                                                getChildren=True, \
-                                                diffNodes=True, \
-                                                splitByEdge=False, \
-                                                split=split, \
-                                                noFBS=noFBS )
+        return GraphMessagePasser._siblings( self.cmask, \
+                                             self.pmask, \
+                                             self.fbsCMask, \
+                                             self.fbsPMask, \
+                                             nodes, \
+                                             split=split, \
+                                             noFBS=noFBS )
 
     def children( self, nodes, edges=None, splitByEdge=False, split=False, noFBS=False ):
-        return self._nodeSelectFromEdge( nodes, edges=edges, \
-                                                upEdge=False, \
-                                                getChildren=True, \
-                                                diffNodes=False, \
-                                                splitByEdge=splitByEdge, \
-                                                split=split, \
-                                                noFBS=noFBS )
+        return GraphMessagePasser._children( self.cmask, \
+                                             self.pmask, \
+                                             self.fbsCMask, \
+                                             self.fbsPMask, \
+                                             nodes, \
+                                             edges=edges, \
+                                             splitByEdge=splitByEdge, \
+                                             split=split, \
+                                             noFBS=noFBS )
 
     def mates( self, nodes, edges=None, splitByEdge=False, split=False, noFBS=False ):
-        return self._nodeSelectFromEdge( nodes, edges=edges, \
-                                                upEdge=False, \
-                                                getChildren=False, \
-                                                diffNodes=True, \
-                                                splitByEdge=splitByEdge, \
-                                                split=split, \
-                                                noFBS=noFBS )
+        return GraphMessagePasser._mates( self.cmask, \
+                                          self.pmask, \
+                                          self.fbsCMask, \
+                                          self.fbsPMask, \
+                                          nodes, \
+                                          edges=edges, \
+                                          splitByEdge=splitByEdge, \
+                                          split=split, \
+                                          noFBS=noFBS )
 
     ######################################################################
 
@@ -419,24 +503,19 @@ class GraphMessagePasser():
 
     ######################################################################
 
-    def condition( self, nodes ):
-        pass
-
-    ######################################################################
-
     def readyForU( self, uSem, uDone, debug=False ):
         dprint( '\nWorking on ready for U', use=debug )
         dprint( 'uSem mask', uSem == 0, use=debug )
         dprint( 'uDone', uDone, use=debug )
-        dprint( 'done mask', np.logical_not( uDone ), use=debug )
-        return self.nodes[ ( uSem == 0 ) & np.logical_not( uDone ) ]
+        dprint( 'done mask', ~uDone, use=debug )
+        return self.nodes[ ( uSem == 0 ) & ~uDone ]
 
     def readyForV( self, vSem, vDone, debug=False ):
         dprint( '\nWorking on ready for V', use=debug )
         dprint( 'vSem mask', vSem.data == 0, use=debug )
         dprint( 'vDone', vDone, use=debug )
-        dprint( 'vDone', np.logical_not( vDone.data ), use=debug )
-        mask = ( vSem.data == 0 ) & np.logical_not( vDone.data )
+        dprint( 'vDone', ~vDone.data, use=debug )
+        mask = ( vSem.data == 0 ) & ~vDone.data
         return vSem.row[ mask ], vSem.col[ mask ]
 
     ######################################################################
@@ -488,8 +567,6 @@ class GraphMessagePasser():
 
         # Decrement vSem for mates that aren't current edge
         matesAndEdges = self.mates( nodes, splitByEdge=True, split=True, noFBS=True )
-        print( nodes )
-        print( matesAndEdges )
         for node, edge, mateAndEdge in zip( nodes, edges, matesAndEdges ):
             for e, m in mateAndEdge:
                 if( e == edge ):
@@ -522,131 +599,43 @@ class GraphMessagePasser():
 
     ######################################################################
 
-    def uBaseCase( self, roots, U, conditioning, workspace ):
-        pass
-
-    def vBaseCase( self, leaves, V, conditioning, workspace ):
-        pass
-
-    ######################################################################
-
-    def uFilter( self, nodes, U, V, conditioning, workspace ):
-
-        # Compute P( ↑( n )_y, n_x )
-
-        upEdges = self.upEdges( nodes, split=True )
-        n_p = self.parents( nodes, split=True )
-        n_s = self.siblings( nodes, split=True )
-
-        # Generate P( n_s_x | x_t-^( n_s )_x ) as a function of [ n_s_x, *x_t-^( n_s )_x ]
-        transition = self.multiplyTerms( [ self.transitionProb( sibling, parents ) for sibling, parents in zip( n_s, n_p ) ] )
-
-        # Generate P( n_s_y | n_s_x ) as a function of n_s_x
-        emission = self.multiplyTerms( [ self.emissionProb( sibling ) for sibling in n_s ] )
-
-        # Get the relevant V terms for each sibling over each down edge
-        V_s = self.multiplyTerms( [ \
-              self.multiplyTerms( [ self.unpackV( sibling, edge, U, V, conditioning ) \
-                                                           for edge in self.downEdges( sibling ) \
-                                                       ] ) for sibling in n_s ] )
-
-        # Compute P( !( n_s, e↓( n_s ) )_y, n_s_x | ^( n_s )_x )
-        siblingIntegrands = self.multiplyTerms( ( transition, emission, V_s ) )
-
-        # Integrate out n_s_x to get P( !( n_s, e↓( n_s ) )_y | ^( n_s )_x )
-        siblingTerms = self.integrate( siblingIntegrands )
-
-        # Generate P( n_x | x_t-^( n )_x ) as a function of [ n_x, *x_t-^( n )_x ]
-        transition = self.multiplyTerms( [ self.transitionProb( node, parents ) for node, parents in zip( nodes, n_p ) ] )
-
-        # Get the relevant U terms for each parent
-        U_p = self.multiplyTerms( [ self.unpackU( parent, U, V, conditioning ) for parent in n_p ] )
-
-        # Get the relevant V terms for each parent and each down edge except the up edges of nodes
-        V_p = self.multiplyTerms( [ \
-              self.multiplyTerms( [ self.unpackV( parent, edge, U, V, conditioning ) \
-                                                           for edge in self.downEdges( parent, skipEdge=e ) \
-                                                       ] ) for parent, e in zip( n_p, upEdges ) ] )
-
-        # Compute P( {↑( n ) \ n }_y \ n_y, ↑( n )_x, n_x )
-        nodeIntegrands = self.multiplyTerms( ( transition, U_p, V_p, siblingTerms ) )
-
-        # Integrate out ^( n )_x to get P( {↑( n ) \ n }_y \ n_y, n_x )
-        nodeTerms = self.integrate( nodeIntegrands )
-
-        # Generate P( n_s_y | n_x ) as a function of n_x
-        emission = self.multiplyTerms( [ self.emissionProb( node ) for node in nodes ] )
-
-        # Compute P( ↑( n )_y, n_x )
-        newU = self.multiplyTerms( ( emission, nodeTerms ) )
-
-        self.updateU( nodes, newU, U, conditioning )
-
-    def vFilter( self, nodes, edges, U, V, conditioning, workspace ):
-
-        # Compute P( !( n, e )_y | n_x )
-        upEdges = self.upEdges( nodes, split=True )
-        n_m = self.parents( nodes, split=True )
-        n_c = self.siblings( nodes, split=True )
-
-        transition = self.multiplyTerms( [ self.transitionProb( child, parents ) for child, parents in zip( n_c, n_m ) ] )
-        emission = self.multiplyTerms( [ self.emissionProb( child ) for child in n_c ] )
-        V_s = self.multiplyTerms( [ \
-              self.multiplyTerms( [ self.unpackV( child, edge, U, V, conditioning ) \
-                                                           for edge in self.downEdges( child ) \
-                                                       ] ) for child in n_c ] )
-        childIntegrands = self.multiplyTerms( ( transition, emission, V_s ) )
-        childTerms = self.integrate( childIntegrands )
-
-        U_m = self.multiplyTerms( [ self.unpackU( parent, U, V, conditioning ) for parent in n_m ] )
-        V_m = self.multiplyTerms( [ \
-              self.multiplyTerms( [ self.unpackV( parent, edge, U, V, conditioning ) \
-                                                           for edge in self.downEdges( parent, skipEdge=e ) \
-                                                       ] ) for parent, e in zip( n_m, upEdges ) ] )
-
-        nodeIntegrands = self.multiplyTerms( ( U_m, V_m, childTerms ) )
-        newU = self.integrate( nodeIntegrands )
-
-        self.updateU( nodes, newU, U, conditioning )
-
-    def convergence( self, nodes ):
-        return False
-
-    ######################################################################
-
     def messagePassing( self, uWork, vWork, **kwargs ):
 
         uDone, vDone = self.progressInit()
         uSem, vSem = self.countSemaphoreInit( debug=False )
         uList, vList = self.baseCaseNodes()
 
-        print( '\nInitial semaphore count' )
-        print( 'uSem: \n', uSem )
-        print( 'vSem: \n', vSem.todense() )
+        debug = False
 
-        print( '\nInitial node list' )
-        print( 'uList: \n', uList )
-        print( 'vList: \n', vList )
+        dprint( '\nInitial semaphore count', use=debug )
+        dprint( 'uSem: \n', uSem, use=debug )
+        dprint( 'vSem: \n', vSem.todense(), use=debug )
+        dprint( '\nInitial node list', use=debug )
+        dprint( 'uList: \n', uList, use=debug )
+        dprint( 'vList: \n', vList, use=debug )
+        dprint( '\nInitial done list', use=debug )
+        dprint( 'uDone: \n', uDone, use=debug )
+        dprint( 'vDone: \n', vDone, use=debug )
 
-        print( '\nInitial done list' )
-        print( 'uDone: \n', uDone )
-        print( 'vDone: \n', vDone )
+        # Do work for base case nodes
+        uWork( True, uList, **kwargs )
+        vWork( True, vList, **kwargs )
 
         i = 1
-        debug = True
 
         # Filter over all of the graphs
         while( uList.size > 0 or vList[ 0 ].size > 0 ):
 
             dprint( '\n----------------\n', 'Iteration', i, '\n----------------\n', use=debug )
 
-            # Do work for each of the nodes
-            uWork( uList, **kwargs )
-            vWork( vList, **kwargs )
+            if( i > 1 ):
+              # Do work for each of the nodes
+              uWork( False, uList, **kwargs )
+              vWork( False, vList, **kwargs )
 
             # Mark that we're done with the current nodes
-            self.UDone( uList, uSem, vSem, uDone, debug=True )
-            self.VDone( vList, uSem, vSem, vDone, debug=True )
+            self.UDone( uList, uSem, vSem, uDone, debug=False )
+            self.VDone( vList, uSem, vSem, vDone, debug=False )
 
             if( debug ):
                 print( '\nSemaphore count after marking nodes done' )
@@ -670,33 +659,7 @@ class GraphMessagePasser():
             # if( i == 5 ):
                 # assert 0
 
-            # Check if we need to do loopy propogation belief
-            if( ( uList.size == 0 and vList[ 0 ].size == 0 ) and \
-                ( not np.any( uDone ) or not np.any( vDone.data ) ) ):
-                loopy = True
-
-    ######################################################################
-
-    def filter( self ):
-
-        workspace = self.genWorkspace()
-        conditioning = self.condition( self.fbsMask )
-        U, V = self.genFilterProbs()
-
-        kwargs = {
-            'U': U,
-            'V': V,
-            'workspace': workspace,
-            'conditioning': conditioning
-        }
-
-        # Run the message passing algorithm over the graph
-        self.messagePassing( self.uFilter, self.vFilter, kwargs )
-
-        # Integrate out the nodes that we cut
-        self.integrateOutConditioning( U, V, conditioning, workspace )
-
-        # Update the filter probs for the cut nodes
-        self.filterCutNodes( U, V, conditioning, workspace )
-
-        return alphas
+            # # Check if we need to do loopy propogation belief
+            # if( ( uList.size == 0 and vList[ 0 ].size == 0 ) and \
+            #     ( not np.any( uDone ) or not np.any( vDone.data ) ) ):
+            #     loopy = True

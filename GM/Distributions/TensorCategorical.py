@@ -1,15 +1,14 @@
 import numpy as np
-from Base import ExponentialFam
+from Base import TensorExponentialFam
 from Dirichlet import Dirichlet
 
+class TensorCategorical( TensorExponentialFam ):
 
-class Categorical( ExponentialFam ):
-
-    priorClass = Dirichlet
+    priorClass = None
 
     def __init__( self, p=None, prior=None, hypers=None ):
-        super( Categorical, self ).__init__( p, prior=prior, hypers=hypers )
-        self.D = self.p.shape[ 0 ]
+        super( TensorCategorical, self ).__init__( p, prior=prior, hypers=hypers )
+        self.Ds = self.p.shape
 
     ##########################################################################
 
@@ -39,19 +38,16 @@ class Categorical( ExponentialFam ):
 
     @property
     def constParams( self ):
-        return self.D
+        return self.Ds
 
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
-    # def sufficientStats( cls, x, D=None, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, Ds=None, constParams=None, forPost=False ):
         # Compute T( x )
-        assert isinstance( x, np.ndarray ) and x.ndim == 1
-        # assert D is not None
-        D = constParams
-        t1 = np.bincount( x, minlength=D )
-        return ( t1, )
+        # Return the indices of chosen values.  Will deal with everything else
+        # in combine
+        return ( x, )
 
     @classmethod
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
@@ -64,14 +60,32 @@ class Categorical( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, Ds=None, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        if( params is not None ):
-            if( not isinstance( params, tuple ) ):
-                params = ( params, )
+        if( params is None and natParams is None ):
+            assert Ds is not None
+            assert isinstance( Ds, tuple ) or isinstance( Ds, list )
+            p = np.random.random( Ds )
+            p /= p.sum()
+            ( p, ) = params
+
         assert ( params is None ) ^ ( natParams is None )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
-        return np.random.choice( p.shape[ 0 ], size, p=p )
+
+        Ds = p.shape
+        totalD = np.prod( Ds )
+
+        def placement( val ):
+            total = totalD
+            ans = np.empty_like( Ds )
+            for i, d in enumerate( Ds ):
+                total /= d
+                ans[ i ] = val // total
+                val -= ( val // total ) * total
+            return ans
+
+        choice = np.random.choice( totalD, size, p=p.ravel() )
+        return np.array( list( map( placement, choice ) ) )
 
     ##########################################################################
 
@@ -80,6 +94,13 @@ class Categorical( ExponentialFam ):
         # Compute P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
-        assert isinstance( x, np.ndarray )
-        assert x.ndim == 1
-        return np.log( p[ x ] ).sum()
+        assert isinstance( x, np.ndarray ) and x.ndim == 2
+        return np.log( p[ [ x[ :, i ] for i in range( len( p.shape ) ) ] ] ).sum()
+
+    ##########################################################################
+
+    @classmethod
+    def combine( cls, stat, nat ):
+        log_p = nat
+        indices = stat
+        return log_p[ [ indices[ :, i ] for i in range( len( log_p.shape ) ) ] ].sum()

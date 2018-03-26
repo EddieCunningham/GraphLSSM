@@ -54,8 +54,14 @@ class TensorNormal( TensorExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def constParams( self ):
+        return None
+
+    ##########################################################################
+
     @classmethod
-    def sufficientStats( cls, x, forPost=False ):
+    def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
         if( x.ndim == 1 ):
             x = x.reshape( ( 1, -1 ) )
@@ -213,29 +219,3 @@ class TensorNormal( TensorExponentialFam ):
             contract = t + ind1 + ',' + t + ind2 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->'
 
         return np.einsum( contract, *stat, *nat, optimize=( N > 2 ) )
-
-    ##########################################################################
-
-    def likelihoodDefinitionTestNoPartition( self ):
-        x = self.isample( size=10 )
-        ans1 = self.ilog_likelihood( x )
-        trueAns1 = self.ilog_likelihood( x, ravel=True )
-
-        x = self.isample( size=10 )
-        ans2 = self.ilog_likelihood( x )
-        trueAns2 = self.ilog_likelihood( x, ravel=True )
-        assert np.isclose( ans1 - ans2, trueAns1 - trueAns2 ), ( ans1 - ans2 ) - ( trueAns1 - trueAns2 )
-
-    def likelihoodNoPartitionTest( self ):
-        self.likelihoodDefinitionTestNoPartition()
-        super( TensorNormal, self ).likelihoodNoPartitionTest()
-
-    def likelihoodDefinitionTest( self ):
-        x = self.isample( size=10 )
-        ans1 = self.ilog_likelihood( x )
-        ans2 = self.ilog_likelihood( x, ravel=True )
-        assert np.isclose( ans1, ans2 ), ans1 - ans2
-
-    def likelihoodTest( self ):
-        self.likelihoodDefinitionTest()
-        super( TensorNormal, self ).likelihoodTest()

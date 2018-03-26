@@ -64,8 +64,14 @@ class NormalInverseWishart( ExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def constParams( self ):
+        return None
+
+    ##########################################################################
+
     @classmethod
-    def sufficientStats( cls, x, forPost=False ):
+    def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
         if( cls.dataN( x ) > 1 ):
             t = ( 0, 0, 0, 0, 0 )

@@ -56,8 +56,14 @@ class TensorRegression( TensorExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def constParams( self ):
+        return None
+
+    ##########################################################################
+
     @classmethod
-    def sufficientStats( cls, x, forPost=False ):
+    def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
 
         xs, y = x
