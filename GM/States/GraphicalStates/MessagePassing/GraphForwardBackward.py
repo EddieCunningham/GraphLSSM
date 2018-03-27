@@ -15,17 +15,18 @@ from GM.Distributions import Normal
 sys.path.append( path )
 
 class GraphCategoricalForwardBackward( GraphFilter ):
-    # Assumes that the number of parents per child is fixed to N
-    def __init__( self, K, N ):
+    def __init__( self, K ):
         super( GraphCategoricalForwardBackward, self ).__init__()
         self.K = K
-        self.N = N
 
     def genFilterProbs( self ):
         U = np.zeros( ( self.nodes.shape[ 0 ], self.K ) )
+        U[ : ] = np.nan
         V_row = self.pmask.row
         V_col = self.pmask.col
-        V_data = np.zeros( ( self.K, self.pmask.row.shape[ 0 ] ) )
+        V_data = np.zeros( ( self.pmask.row.shape[ 0 ], self.K ) )
+        # V_data = np.zeros( ( self.K, self.pmask.row.shape[ 0 ] ) )
+        V_data[ : ] = np.nan
         return U, ( V_row, V_col, V_data )
 
     def genWorkspace( self ):
@@ -33,16 +34,22 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
     ######################################################################
 
-    def updateParams( self, ys, initialDist, transDist, emissionDist, parentMasks, childMasks, feedbackSets=None ):
+    def updateParams( self, ys, initialDist, transDists, emissionDist, parentMasks, childMasks, feedbackSets=None ):
         super( GraphFilter, self ).updateParams( parentMasks, childMasks, feedbackSets=feedbackSets )
         assert initialDist.shape == ( self.K, )
-        assert transDist.shape == tuple( [ self.K ] * ( self.N + 1 ) ), transDist.shape
+        for transDist in transDists:
+            assert np.allclose( np.ones( self.K ), transDist.sum( axis=-1 ) )
         assert emissionDist.shape[ 0 ] == self.K
         assert np.isclose( 1.0, initialDist.sum() )
-        assert np.allclose( np.ones( self.K ), transDist.sum( axis=-1 ) )
         assert np.allclose( np.ones( self.K ), emissionDist.sum( axis=1 ) )
         self.pi0 = np.log( initialDist )
-        self.pi  = np.log( transDist )
+        self.pis = {}
+        for dist in transDists:
+            ndim = dist.ndim
+            assert ndim not in self.pis
+            self.pis[ ndim ] = np.log( dist )
+
+        print( 'There are ', len( self.pis ), 'transition matrices with dims', list( self.pis.keys() ) )
         _L = np.log( emissionDist )
 
         if( not isinstance( ys, np.ndarray ) ):
@@ -55,7 +62,8 @@ class GraphCategoricalForwardBackward( GraphFilter ):
     ######################################################################
 
     def transitionProb( self, children, parents ):
-        return self.pi
+        ndim = len( parents ) + 1
+        return self.pis[ ndim ]
 
     ######################################################################
 
@@ -156,7 +164,11 @@ class GraphCategoricalForwardBackward( GraphFilter ):
                         print( 'term.shape[ _ax ]', term.shape[ _ax ] )
                         assert 0
 
+        shape[ shape == -1 ] = 1
+
         # print( 'shape', shape )
+        # print( 'relevantAxes', relevantAxes )
+        # print( 'reshapedTerms', reshapedTerms )
 
         # Build a meshgrid out of each of the terms over the right axes
         # and sum.  Doing it this way because np.einsum doesn't work
@@ -167,9 +179,10 @@ class GraphCategoricalForwardBackward( GraphFilter ):
             reps = np.copy( shape )
             for _ax in ax:
                 reps[ _ax ] = 1
+            # print( 'adding\n', np.tile( term, reps ) )
             ans += np.tile( term, reps )
 
-        # print( 'ans', ans )
+        # print( 'ans\n-----------', ans, '-------------' )
 
         return ans
 
@@ -180,7 +193,7 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         axes = np.array( axes )
 
         if( integrand.size == 0 ):
-            ans.append( np.array( [] ) )
+            return np.array( [] )
         else:
             # Make sure we integrate over the correct axes at each step
             axes[ axes < 0 ] += len( integrand.shape )
@@ -206,6 +219,7 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         return newU
 
     def vBaseCase( self, leaves, V, conditioning, workspace ):
+        # Don't need to do anything because P( ∅ | ... ) = 1
         return
 
     ######################################################################

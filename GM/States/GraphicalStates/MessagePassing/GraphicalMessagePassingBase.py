@@ -5,7 +5,7 @@ import graphviz
 
 def dprint( *args, use=False ):
     if( use ):
-        print( *args )
+        print( *args, flush=True )
 
 class Graph():
     # This class is how we make sparse matrices
@@ -46,15 +46,17 @@ class Graph():
         data = []
 
         for i, nodeGroup in enumerate( edges ):
-            for node in nodeGroup:
+            for j, node in enumerate( nodeGroup ):
                 rowIndex = nodes.index( node )
                 colIndex = i
 
                 rows.append( rowIndex )
                 cols.append( colIndex )
-                data.append( True )
 
-        mask = coo_matrix( ( data, ( rows, cols ) ), shape=( nRows, nCols ), dtype=bool )
+                # Use an integer so that we can have an ordering of nodes within edges!!!!
+                data.append( j + 1 )
+
+        mask = coo_matrix( ( data, ( rows, cols ) ), shape=( nRows, nCols ), dtype=int )
         return mask
 
     def toMatrix( self ):
@@ -68,7 +70,7 @@ class Graph():
 
     def draw( self, render=True ):
 
-        """ Draws the hypergraph using graphviz """
+        # Draws the graph using graphviz
         d = graphviz.Digraph()
         for e, ( parents, children ) in enumerate( zip( self.edgeParents, self.edgeChildren ) ):
             for p in parents:
@@ -105,6 +107,9 @@ class GraphMessagePasser():
     def toGraph( self ):
         return Graph.fromParentChildMask( self.pmask, self.cmask )
 
+    def draw( self ):
+        return self.toGraph().draw()
+
     def concatSparseMatrix( self, sparseMatrices ):
         # Builds a big block diagonal matrix where each diagonal matrix
         # is an element in sparseMatrices
@@ -121,7 +126,7 @@ class GraphMessagePasser():
             data = np.hstack( ( data, mat.data ) )
             nRows += m
             nCols += n
-        return coo_matrix( ( data, ( row, col ) ), shape=( nRows, nCols ), dtype=bool )
+        return coo_matrix( ( data, ( row, col ) ), shape=( nRows, nCols ), dtype=int )
 
     def fbsConcat( self, feedbackSets, nodeCounts ):
         assert len( feedbackSets ) == len( nodeCounts )
@@ -183,8 +188,25 @@ class GraphMessagePasser():
 
     ######################################################################
 
+    def upEdges( self, nodes, split=False ):
+        return GraphMessagePasser._upEdges( self.cmask, nodes, split=split )
+
+    def downEdges( self, nodes, skipEdges=None, split=False ):
+        return GraphMessagePasser._downEdges( self.pmask, nodes, skipEdges=skipEdges, split=split )
+
+    ######################################################################
+
     @staticmethod
-    def _nodesFromEdges( cmask, pmask, fbsCMask, fbsPMask, nodes, edges, getChildren=True, diffNodes=False, noFBS=False ):
+    def _nodesFromEdges( cmask, \
+                         pmask, \
+                         fbsCMask, \
+                         fbsPMask, \
+                         nodes, \
+                         edges, \
+                         getChildren=True, \
+                         diffNodes=False, \
+                         noFBS=False, \
+                         getOrder=False ):
 
         mask = cmask if getChildren else pmask
         fbsmask = fbsCMask if getChildren else fbsPMask
@@ -195,9 +217,13 @@ class GraphMessagePasser():
             edgeMask &= ~fbsmask
 
         if( diffNodes ):
-            return np.setdiff1d( mask.row[ edgeMask ], nodes )
+            finalMask = edgeMask & ~np.in1d( mask.row, nodes )
+        else:
+            finalMask = edgeMask
 
-        return np.unique( mask.row[ edgeMask ] )
+        if( getOrder is False ):
+            return np.unique( mask.row[ finalMask ] )
+        return mask.row[ finalMask ], mask.data[ finalMask ] - 1 # Subtract one to use 0 indexing
 
     @staticmethod
     def _nodeSelectFromEdge( cmask, \
@@ -211,7 +237,8 @@ class GraphMessagePasser():
                              diffNodes=False, \
                              splitByEdge=False, \
                              split=False, \
-                             noFBS=False ):
+                             noFBS=False, \
+                             getOrder=False ):
 
         if( split ):
             if( edges is None ):
@@ -226,7 +253,8 @@ class GraphMessagePasser():
                                                                  diffNodes=diffNodes, \
                                                                  splitByEdge=splitByEdge, \
                                                                  split=False, \
-                                                                 noFBS=noFBS ) for n in nodes ]
+                                                                 noFBS=noFBS, \
+                                                                 getOrder=getOrder ) for n in nodes ]
             else:
                 return [ GraphMessagePasser._nodeSelectFromEdge( cmask, \
                                                                  pmask, \
@@ -239,7 +267,8 @@ class GraphMessagePasser():
                                                                  diffNodes=diffNodes, \
                                                                  splitByEdge=splitByEdge, \
                                                                  split=False, \
-                                                                 noFBS=noFBS ) for n, e in zip( nodes, edges ) ]
+                                                                 noFBS=noFBS, \
+                                                                 getOrder=getOrder ) for n, e in zip( nodes, edges ) ]
 
         _edges = GraphMessagePasser._upEdges( cmask, nodes ) if upEdge else GraphMessagePasser._downEdges( pmask, nodes )
 
@@ -258,7 +287,8 @@ class GraphMessagePasser():
                                                                   diffNodes=diffNodes, \
                                                                   splitByEdge=False, \
                                                                   split=False, \
-                                                                  noFBS=noFBS ) ] for e in _edges ]
+                                                                  noFBS=noFBS, \
+                                                                  getOrder=getOrder ) ] for e in _edges ]
 
         return GraphMessagePasser._nodesFromEdges( cmask, \
                                                    pmask, \
@@ -268,12 +298,13 @@ class GraphMessagePasser():
                                                    _edges, \
                                                    getChildren=getChildren, \
                                                    diffNodes=diffNodes, \
-                                                   noFBS=noFBS )
+                                                   noFBS=noFBS, \
+                                                   getOrder=getOrder )
 
     ######################################################################
 
     @staticmethod
-    def _parents( cmask, pmask, fbsCMask, fbsPMask, nodes, split=False, noFBS=False ):
+    def _parents( cmask, pmask, fbsCMask, fbsPMask, nodes, split=False, noFBS=False, getOrder=False ):
         return GraphMessagePasser._nodeSelectFromEdge( cmask, \
                                                        pmask, \
                                                        fbsCMask, \
@@ -285,10 +316,11 @@ class GraphMessagePasser():
                                                        diffNodes=False, \
                                                        splitByEdge=False, \
                                                        split=split, \
-                                                       noFBS=noFBS )
+                                                       noFBS=noFBS, \
+                                                       getOrder=getOrder )
 
     @staticmethod
-    def _siblings( cmask, pmask, fbsCMask, fbsPMask, nodes, split=False, noFBS=False ):
+    def _siblings( cmask, pmask, fbsCMask, fbsPMask, nodes, split=False, noFBS=False, getOrder=False ):
         return GraphMessagePasser._nodeSelectFromEdge( cmask, \
                                                        pmask, \
                                                        fbsCMask, \
@@ -299,10 +331,11 @@ class GraphMessagePasser():
                                                        diffNodes=True, \
                                                        splitByEdge=False, \
                                                        split=split, \
-                                                       noFBS=noFBS )
+                                                       noFBS=noFBS, \
+                                                       getOrder=getOrder )
 
     @staticmethod
-    def _children( cmask, pmask, fbsCMask, fbsPMask, nodes, edges=None, splitByEdge=False, split=False, noFBS=False ):
+    def _children( cmask, pmask, fbsCMask, fbsPMask, nodes, edges=None, splitByEdge=False, split=False, noFBS=False, getOrder=False ):
         return GraphMessagePasser._nodeSelectFromEdge( cmask, \
                                                        pmask, \
                                                        fbsCMask, \
@@ -313,10 +346,11 @@ class GraphMessagePasser():
                                                        diffNodes=False, \
                                                        splitByEdge=splitByEdge, \
                                                        split=split, \
-                                                       noFBS=noFBS )
+                                                       noFBS=noFBS, \
+                                                       getOrder=getOrder )
 
     @staticmethod
-    def _mates( cmask, pmask, fbsCMask, fbsPMask, nodes, edges=None, splitByEdge=False, split=False, noFBS=False ):
+    def _mates( cmask, pmask, fbsCMask, fbsPMask, nodes, edges=None, splitByEdge=False, split=False, noFBS=False, getOrder=False ):
         return GraphMessagePasser._nodeSelectFromEdge( cmask, \
                                                        pmask, \
                                                        fbsCMask, \
@@ -327,26 +361,20 @@ class GraphMessagePasser():
                                                        diffNodes=True, \
                                                        splitByEdge=splitByEdge, \
                                                        split=split, \
-                                                       noFBS=noFBS )
+                                                       noFBS=noFBS, \
+                                                       getOrder=getOrder )
 
     ######################################################################
 
-    def upEdges( self, nodes, split=False ):
-        return GraphMessagePasser._upEdges( self.cmask, nodes, split=split )
-
-    def downEdges( self, nodes, skipEdges=None, split=False ):
-        return GraphMessagePasser._downEdges( self.pmask, nodes, skipEdges=skipEdges, split=split )
-
-    ######################################################################
-
-    def parents( self, nodes, split=False, noFBS=False ):
+    def parents( self, nodes, split=False, noFBS=False, getOrder=False ):
         return GraphMessagePasser._parents( self.cmask, \
                                             self.pmask, \
                                             self.fbsCMask, \
                                             self.fbsPMask, \
                                             nodes, \
                                             split=split, \
-                                            noFBS=noFBS )
+                                            noFBS=noFBS, \
+                                            getOrder=getOrder )
 
     def siblings( self, nodes, split=False, noFBS=False ):
         return GraphMessagePasser._siblings( self.cmask, \
@@ -368,7 +396,7 @@ class GraphMessagePasser():
                                              split=split, \
                                              noFBS=noFBS )
 
-    def mates( self, nodes, edges=None, splitByEdge=False, split=False, noFBS=False ):
+    def mates( self, nodes, edges=None, splitByEdge=False, split=False, noFBS=False, getOrder=False ):
         return GraphMessagePasser._mates( self.cmask, \
                                           self.pmask, \
                                           self.fbsCMask, \
@@ -377,7 +405,8 @@ class GraphMessagePasser():
                                           edges=edges, \
                                           splitByEdge=splitByEdge, \
                                           split=split, \
-                                          noFBS=noFBS )
+                                          noFBS=noFBS, \
+                                          getOrder=getOrder )
 
     ######################################################################
 

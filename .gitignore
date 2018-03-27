@@ -2,3 +2,5 @@
 *.DS_Store
 *.ipynb
 *.pyc
+*.gv
+*.pdf
