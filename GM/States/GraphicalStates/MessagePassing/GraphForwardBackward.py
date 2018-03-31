@@ -34,8 +34,9 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
     ######################################################################
 
-    def updateParams( self, ys, initialDist, transDists, emissionDist, parentMasks, childMasks, feedbackSets=None ):
-        super( GraphFilter, self ).updateParams( parentMasks, childMasks, feedbackSets=feedbackSets )
+    def updateParamsFromGraphs( self, ys, initialDist, transDists, emissionDist, graphs ):
+        super( GraphFilter, self ).updateParamsFromGraphs( graphs )
+        # super( GraphFilter, self ).updateParams( parentMasks, childMasks, feedbackSets=feedbackSets )
         assert initialDist.shape == ( self.K, )
         for transDist in transDists:
             assert np.allclose( np.ones( self.K ), transDist.sum( axis=-1 ) )
@@ -224,8 +225,8 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
     ######################################################################
 
-    def condition( self, nodes ):
-        pass
+    def condition( self, nodeMask ):
+        return np.arange( nodeMask.shape[ 0 ] )[ nodeMask ]
 
     ######################################################################
 

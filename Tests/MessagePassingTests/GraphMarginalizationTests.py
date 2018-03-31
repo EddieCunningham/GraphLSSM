@@ -3,11 +3,7 @@ import numpy as np
 import sys
 sys.path.append( '/Users/Eddie/GenModels' )
 
-from GM.States.GraphicalStates.MessagePassing import Graph, \
-                                                     GraphMessagePasser, \
-                                                     GraphFilter, \
-                                                     GraphCategoricalForwardBackward, \
-                                                     graph1, graph2, graph3, graph4, graph5
+from GM.States.GraphicalStates.MessagePassing import *
 
 from GM.Distributions import MatrixNormalInverseWishart, \
                              NormalInverseWishart, \
@@ -17,42 +13,39 @@ from GM.Distributions import MatrixNormalInverseWishart, \
                              Normal
 from scipy.stats import dirichlet
 import time
+from collections import Iterable
 
 def testGraphCategoricalForwardBackwardNoCycle():
 
-    # graphs = [ graph1() ]
-    # graphs = [ graph2() ]
-    # graphs = [ graph3() ]
-    # graphs = [ graph4() ]
-    # graphs = [ graph5() ]
-    # graphs = [ graph1(), graph2(), graph3() ]
-    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
+    # graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
+    # cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5(), cycleGraph6() ]
+    graphs = [ cycleGraph1() ]
+
 
     # Check how many transition distributions we need
     allTransitionCounts = set()
     for graph in graphs:
+        if( isinstance( graph, Iterable ) ):
+            graph, fbs = graph
         for parents in graph.edgeParents:
             ndim = len( parents ) + 1
             allTransitionCounts.add( ndim )
 
-    parentMasks = []
-    childMasks = []
-    T = 0
+    nNodes = 0
     for graph in graphs:
-        pMask, cMask = graph.toMatrix()
-        parentMasks.append( pMask )
-        childMasks.append( cMask )
-        T += len( graph.nodes )
+        if( isinstance( graph, Iterable ) ):
+            graph, fbs = graph
+        nNodes += len( graph.nodes )
 
     K = 2      # Latent state size
-    obsDim = 2 # Obs state size
-    D = 1      # Data sets
+    obsDim = 5 # Obs state size
+    D = 2      # Data sets
 
     onesK = np.ones( K )
     onesObs = np.ones( obsDim )
 
     ( p, ) = Dirichlet.sample( params=onesObs )
-    ys = [ Categorical.sample( params=p, size=T ) for _ in range( D ) ]
+    ys = [ Categorical.sample( params=p, size=nNodes ) for _ in range( D ) ]
     ( initialDist, ) = Dirichlet.sample( params=onesK )
     transitionDists = []
     for ndim in allTransitionCounts:
@@ -80,27 +73,22 @@ def testGraphCategoricalForwardBackwardNoCycle():
     print('\n\n')
 
     msg = GraphCategoricalForwardBackward( K=K )
-    msg.updateParams( ys, initialDist, transitionDists, emissionDist, parentMasks, childMasks )
+    msg.updateParamsFromGraphs( ys, initialDist, transitionDists, emissionDist, graphs )
 
     msg.draw()
 
     U, V = msg.filter()
 
+    # Make sure that things sum to 1
     returnLog = True
     for n, probs in zip( msg.nodes, msg.nodeSmoothed( U, V, msg.nodes, returnLog=returnLog ) ):
         reduced = np.logaddexp.reduce( probs ) if returnLog else np.sum( probs )
-        print( 'P( %d | Y ) for'%( n ), ':', probs, '->', reduced )
-
-    # for n, probs in zip( msg.nodes, msg.jointParents( U, V, msg.nodes ) ):
-    #     reduced = np.exp( probs )
-    #     print( '\nP( x_p1..pN | Y ) for', n, ':\n', reduced )
+        print( '\nP( x_%d | Y ) for'%( n ), ':', probs, '->', reduced )
 
     for n, probs in zip( msg.nodes, msg.conditionalParentChild( U, V, msg.nodes, returnLog=returnLog ) ):
         reduced = np.logaddexp.reduce( probs, axis=-1 ) if returnLog else probs.sum( axis=-1 )
-        print( '\nP( x_c | x_p1..pN, Y ) for', n, ':\n', reduced )
-
-    # print( np.exp( U ) )
-    # print( np.exp( V[ 2 ] ) )
+        # print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), ':', probs, '->', reduced )
+        print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), '->', reduced.sum() )
 
 
 testGraphCategoricalForwardBackwardNoCycle()

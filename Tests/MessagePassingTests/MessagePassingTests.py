@@ -21,30 +21,9 @@ def loadGraphs( graphs, feedbackSets=None, run=True ):
     msg.updateParams( parentMasks, childMasks, feedbackSets=feedbackSets )
     return msg
 
-def noCycleTest():
-    # graphs = [ graph3() ]
-    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
-    msg = loadGraphs( graphs )
-
-    def nothing( a, b ):
-        return
-    msg.messagePassing( nothing, nothing )
-
-
-def cycleTest():
-
-    graphs, fbs = zip( *[ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5() ] )
-    msg = loadGraphs( graphs, feedbackSets=fbs )
-
-    def nothing( a, b ):
-        return
-    msg.messagePassing( nothing, nothing )
-
-
 def allTest():
     cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5(), cycleGraph6() ]
     regGraphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
-    regGraphs = []
 
     graphs, fbs = zip( *cycleGraphs )
     graphs = list( graphs ) + regGraphs
