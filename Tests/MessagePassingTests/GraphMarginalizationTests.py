@@ -17,10 +17,9 @@ from collections import Iterable
 
 def testGraphCategoricalForwardBackwardNoCycle():
 
-    # graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
+    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
     # cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5(), cycleGraph6() ]
-    graphs = [ cycleGraph1() ]
-
+    # graphs = [ cycleGraph1() ]
 
     # Check how many transition distributions we need
     allTransitionCounts = set()

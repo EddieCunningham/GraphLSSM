@@ -205,7 +205,7 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
     ######################################################################
 
-    def uBaseCase( self, roots, U, conditioning, workspace, debug=False ):
+    def uBaseCase( self, roots, U, workspace, debug=False ):
         dprint( '\n\nComputing base case U for', roots, use=debug )
 
         initialDist = self.pi0
@@ -219,7 +219,7 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
         return newU
 
-    def vBaseCase( self, leaves, V, conditioning, workspace ):
+    def vBaseCase( self, leaves, V, workspace ):
         # Don't need to do anything because P( ∅ | ... ) = 1
         return
 
@@ -230,11 +230,11 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
     ######################################################################
 
-    def updateU( self, nodes, newU, U, conditioning ):
+    def updateU( self, nodes, newU, U ):
         for u, node in zip( newU, nodes ):
             U[ node ] = u
 
-    def updateV( self, nodes, edges, newV, V, conditioning ):
+    def updateV( self, nodes, edges, newV, V ):
         goodEdgeMask = ~np.in1d( np.array( edges ), None )
 
         _nodes = np.array( nodes )[ goodEdgeMask ]
@@ -250,10 +250,10 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
     ######################################################################
 
-    def integrateOutConditioning( self, U, V, conditioning, workspace ):
+    def integrateOutFeedbackSet( self, U, V, workspace ):
         return
 
-    def filterCutNodes( self, U, V, conditioning, workspace ):
+    def filterCutNodes( self, U, V, workspace ):
         return
 
     ######################################################################

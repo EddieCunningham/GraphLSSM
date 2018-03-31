@@ -34,31 +34,26 @@ class GraphFilter( GraphMessagePasser ):
 
     ######################################################################
 
-    def condition( self, nodes ):
+    def uBaseCase( self, roots, U, workspace ):
+        assert 0
+
+    def vBaseCase( self, leaves, V, workspace ):
         assert 0
 
     ######################################################################
 
-    def uBaseCase( self, roots, U, conditioning, workspace ):
+    def updateU( self, nodes, newU, U ):
         assert 0
 
-    def vBaseCase( self, leaves, V, conditioning, workspace ):
-        assert 0
-
-    ######################################################################
-
-    def updateU( self, nodes, newU, U, conditioning ):
-        assert 0
-
-    def updateV( self, nodes, edges, newV, V, conditioning ):
+    def updateV( self, nodes, edges, newV, V ):
         assert 0
 
     ######################################################################
 
-    def integrateOutConditioning( self, U, V, conditioning, workspace ):
+    def integrateOutFeedbackSet( self, U, V, workspace ):
         assert 0
 
-    def filterCutNodes( self, U, V, conditioning, workspace ):
+    def filterCutNodes( self, U, V, workspace ):
         assert 0
 
     ######################################################################
@@ -281,7 +276,7 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'transitionAxes:\n', transitionAxes, use=debug )
 
         # Get the a values for all parents (skip this nodes up edge)
-        parentTerms = [ self.a( U, V, p, upEdge, conditioning, debug=debug ) for p in parents ]
+        parentTerms = [ self.a( U, V, p, upEdge, debug=debug ) for p in parents ]
         parentAxes = [ self.ithAxis( i ) for i in parentOrder ]
         dprint( 'parentTerms:\n', np.exp( parentTerms ), use=debug )
         dprint( 'parentAxes:\n', parentAxes, use=debug )
@@ -289,7 +284,7 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'parentExpansion:\n', np.exp( parentExpansion ), use=debug )
 
         # Get the b values for all siblings.  These are all over the parents' axes
-        siblingTerms = [ self.b( U, V, s, conditioning, debug=debug ) for s in siblings ]
+        siblingTerms = [ self.b( U, V, s, debug=debug ) for s in siblings ]
         siblingAxes = [ upToLastAxes for _ in siblings ]
         dprint( 'siblingTerms:\n', np.exp( siblingTerms ), use=debug )
         dprint( 'siblingAxes:\n', siblingAxes, use=debug )
@@ -390,7 +385,7 @@ class GraphFilter( GraphMessagePasser ):
 
     ######################################################################
 
-    def uFilter( self, baseCase, nodes, U, V, conditioning, workspace, debug=True ):
+    def uFilter( self, baseCase, nodes, U, V, workspace, debug=True ):
         # Compute P( ↑( n )_y, n_x )
         # Probability of all emissions that can be reached by going up node's up edge
 
@@ -398,13 +393,13 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'conditioning', conditioning, use=debug )
 
         if( baseCase ):
-            newU = self.uBaseCase( nodes, U, conditioning, workspace, debug=debug )
+            newU = self.uBaseCase( nodes, U, workspace, debug=debug )
         else:
             newU = [ self.u( U, V, node, conditioning, debug=debug ) for node in nodes ]
 
-        self.updateU( nodes, newU, U, conditioning )
+        self.updateU( nodes, newU, U )
 
-    def vFilter( self, baseCase, nodesAndEdges, U, V, conditioning, workspace, debug=True ):
+    def vFilter( self, baseCase, nodesAndEdges, U, V, workspace, debug=True ):
 
         nodes, edges = nodesAndEdges
 
@@ -412,10 +407,10 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'conditioning', conditioning, use=debug )
 
         if( baseCase ):
-            self.vBaseCase( nodes, V, conditioning, workspace )
+            self.vBaseCase( nodes, V, workspace )
         else:
-            newV = [ self.v( U, V, n, e, conditioning, debug=debug ) for n, e in zip( nodes, edges ) ]
-            self.updateV( nodes, edges, newV, V, conditioning )
+            newV = [ self.v( U, V, n, e, debug=debug ) for n, e in zip( nodes, edges ) ]
+            self.updateV( nodes, edges, newV, V )
 
     def convergence( self, nodes ):
         return False
@@ -425,14 +420,12 @@ class GraphFilter( GraphMessagePasser ):
     def filter( self ):
 
         workspace = self.genWorkspace()
-        conditioning = self.condition( self.fbsMask )
         U, V = self.genFilterProbs()
 
         kwargs = {
             'U': U,
             'V': V,
-            'workspace': workspace,
-            'conditioning': conditioning
+            'workspace': workspace
         }
 
         debug = True
@@ -441,10 +434,10 @@ class GraphFilter( GraphMessagePasser ):
         self.messagePassing( self.uFilter, self.vFilter, **kwargs )
 
         # Integrate out the nodes that we cut
-        self.integrateOutConditioning( U, V, conditioning, workspace )
+        self.integrateOutFeedbackSet( U, V, workspace )
 
         # Update the filter probs for the cut nodes
-        self.filterCutNodes( U, V, conditioning, workspace )
+        self.filterCutNodes( U, V, workspace )
 
         return U, V
 
