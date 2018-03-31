@@ -120,7 +120,7 @@ class GraphFilter( GraphMessagePasser ):
 
     ######################################################################
 
-    def a( self, U, V, node, downEdge, conditioning=None, debug=True ):
+    def a( self, U, V, node, downEdge, debug=True ):
         # Compute P( Y \ !( e, n )_y, n_x )
         #
         # Probability of all emissions that can be reached without going down downEdge from node.
@@ -134,7 +134,6 @@ class GraphFilter( GraphMessagePasser ):
         #
         # Return array should be of size ( K, ) where K is the latent state size
         dprint( '\n\nComputing a for', node, 'at downEdge', downEdge, use=debug )
-        dprint( 'conditioning', conditioning, use=debug )
 
         firstAxis = self.firstAxis()
 
@@ -164,7 +163,7 @@ class GraphFilter( GraphMessagePasser ):
 
     ######################################################################
 
-    def b( self, U, V, node, conditioning=None, debug=True ):
+    def b( self, U, V, node, debug=True ):
         # Compute P( n_y, Y \ ↑( n )_y | ↑( n )_x )
         #
         # Probability of all emissions that can be reached without going up node's upEdge
@@ -184,7 +183,6 @@ class GraphFilter( GraphMessagePasser ):
         # Return array should be of size ( K, ) *  N where K is the latent state size
         # and N is the number of parents
         dprint( '\n\nComputing b for', node, use=debug )
-        dprint( 'conditioning', conditioning, use=debug )
 
         parents, parentAxes = self.parents( node, getOrder=True )
         dprint( 'parents:\n', parents, use=debug )
@@ -230,7 +228,7 @@ class GraphFilter( GraphMessagePasser ):
 
     ######################################################################
 
-    def u( self, U, V, node, conditioning=None, debug=True ):
+    def u( self, U, V, node, debug=True ):
         # Compute P( ↑( n )_y, n_x )
         #
         # Joint probability of all emissions that can be reached by going up node's
@@ -254,7 +252,6 @@ class GraphFilter( GraphMessagePasser ):
         #
         # Return array should be of size ( K, ) where K is the latent state size
         dprint( '\n\nComputing u for', node, use=debug )
-        dprint( 'conditioning', conditioning, use=debug )
 
         upEdge = self.upEdges( node )
         parents, parentOrder = self.parents( node, getOrder=True )
@@ -321,7 +318,7 @@ class GraphFilter( GraphMessagePasser ):
 
     ######################################################################
 
-    def v( self, U, V, node, edge, conditioning=None, debug=True ):
+    def v( self, U, V, node, edge, debug=True ):
         # Compute P( !( n, e )_y | n_x )
         #
         # Probability of all emissions reached by going down edge, conditioned on node's latent state
@@ -339,7 +336,6 @@ class GraphFilter( GraphMessagePasser ):
         #
         # Return array should be of size ( K, ) where K is the latent state size
         dprint( '\n\nComputing v for', node, 'at edge', edge, use=debug )
-        dprint( 'conditioning', conditioning, use=debug )
 
         mates, mateOrder = self.mates( node, getOrder=True, edges=edge )
         children = self.children( node, edges=edge )
@@ -355,13 +351,13 @@ class GraphFilter( GraphMessagePasser ):
         upToLastAxes = self.sequentialAxes( N=nParents, skip=thisNodesOrder ) # Make sure that we integrate over mates only
 
         # Get the a values for each of the mates (skip edge)
-        mateTerms = [ self.a( U, V, m, edge, conditioning, debug=debug ) for m in mates ]
+        mateTerms = [ self.a( U, V, m, edge, debug=debug ) for m in mates ]
         mateAxes = [ self.ithAxis( i ) for i in mateOrder ]
         dprint( 'mateTerms:\n', mateTerms, use=debug )
         dprint( 'mateAxes:\n', mateAxes, use=debug )
 
         # Get the b values for each of the children.  These are all over the parents' axes
-        childTerms = [ self.b( U, V, c, conditioning, debug=debug ) for c in children ]
+        childTerms = [ self.b( U, V, c, debug=debug ) for c in children ]
         childAxes = [ allAxes for _ in children ]
         dprint( 'childTerms:\n', childTerms, use=debug )
         dprint( 'childAxes:\n', childAxes, use=debug )
@@ -390,12 +386,11 @@ class GraphFilter( GraphMessagePasser ):
         # Probability of all emissions that can be reached by going up node's up edge
 
         dprint( '\n\nComputing U for', nodes, use=debug )
-        dprint( 'conditioning', conditioning, use=debug )
 
         if( baseCase ):
             newU = self.uBaseCase( nodes, U, workspace, debug=debug )
         else:
-            newU = [ self.u( U, V, node, conditioning, debug=debug ) for node in nodes ]
+            newU = [ self.u( U, V, node, debug=debug ) for node in nodes ]
 
         self.updateU( nodes, newU, U )
 
@@ -404,7 +399,6 @@ class GraphFilter( GraphMessagePasser ):
         nodes, edges = nodesAndEdges
 
         dprint( '\n\nComputing V for', nodes, 'at edges', edges, use=debug )
-        dprint( 'conditioning', conditioning, use=debug )
 
         if( baseCase ):
             self.vBaseCase( nodes, V, workspace )
