@@ -9,7 +9,10 @@ __all__ = [ 'graph1', \
             'graph5', \
             'cycleGraph1', \
             'cycleGraph2', \
-            'cycleGraph3' ]
+            'cycleGraph3', \
+            'cycleGraph4', \
+            'cycleGraph5', \
+            'cycleGraph6' ]
 
 def graph1():
     graph = Graph()
@@ -116,62 +119,13 @@ def cycleGraph5():
 
     return graph, fbs
 
+def cycleGraph6():
 
-def loadGraphs( graphs, feedbackSets=None, run=True ):
-    # Simulate message passing but do nothing at the filter step
-    parentMasks = []
-    childMasks = []
-    for graph in graphs:
-        pMask, cMask = graph.toMatrix()
-        parentMasks.append( pMask )
-        childMasks.append( cMask )
+    graph = Graph()
 
-    if( feedbackSets is not None ):
-        assert len( graphs ) == len( feedbackSets )
+    graph.addEdge( parents=[ 0, 1 ], children=[ 2 ] )
+    graph.addEdge( parents=[ 2, 3 ], children=[ 0 ] )
 
-    msg = GraphMessagePasser()
-    msg.updateParams( parentMasks, childMasks, feedbackSets=feedbackSets )
-    return msg
+    fbs = np.array( [ 0 ] )
 
-def noCycleTest():
-    # graphs = [ graph3() ]
-    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
-    msg = loadGraphs( graphs )
-
-    def nothing( a, b ):
-        return
-    msg.messagePassing( nothing, nothing )
-
-
-def cycleTest():
-
-    graphs, fbs = zip( *[ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5() ] )
-    # graphs, fbs = zip( *[ cycleGraph5() ] )
-    msg = loadGraphs( graphs, feedbackSets=fbs )
-
-    def nothing( a, b ):
-        return
-    msg.messagePassing( nothing, nothing )
-
-
-def allTest():
-    cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5() ]
-    regGraphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
-
-    graphs, fbs = zip( *cycleGraphs )
-    graphs = list( graphs ) + regGraphs
-    fbs = list( fbs ) + [ None for _ in enumerate( regGraphs ) ]
-
-    msg = loadGraphs( graphs, feedbackSets=fbs )
-
-    def nothing( a, b ):
-        return
-    msg.messagePassing( nothing, nothing )
-
-
-def tests():
-    # noCycleTest()
-    # cycleTest()
-    allTest()
-
-# tests()
+    return graph, fbs

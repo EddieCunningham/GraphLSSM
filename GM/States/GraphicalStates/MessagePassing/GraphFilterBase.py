@@ -528,7 +528,9 @@ class GraphFilter( GraphMessagePasser ):
     def marginalProb( self, U, V ):
         # P( Y )
         # THIS MIGHT NOT BE TRUE.  IF WE HAVE DISJOINT GRAPHS, THEN
-        # WE'D NEED A LEAF FOR EACH COMPONENT
+        # WE'D NEED A LEAF FOR EACH COMPONENT.
+        # Really don't need this because this can be calculated at any
+        # node, but for testing purposes keep it like this
         parentOfEdgeCount = self.pmask.getnnz( axis=1 )
         childOfEdgeCount = self.cmask.getnnz( axis=1 )
         leafIndex = self.nodes[ ( childOfEdgeCount != 0 ) & ( parentOfEdgeCount == 0 ) ][ 0 ]
@@ -550,16 +552,11 @@ class GraphFilter( GraphMessagePasser ):
             else:
                 jpc = self._jointParentChild( U, V, node )
                 jpcAxes = self.sequentialAxes( N=nParents + 1 )
-                print( 'jpc\n', np.exp( jpc ) )
-                print( 'jpcAxes\n', np.exp( jpcAxes ) )
 
                 jp = -self._jointParents( U, V, node )
                 jpAxes = self.sequentialAxes( N=nParents )
-                print( 'jp\n', np.exp( jp ) )
-                print( 'jpAxes\n', np.exp( jpAxes ) )
 
                 _ans = self.multiplyTerms( ( jpc, jp ), axes=( jpcAxes, jpAxes ) )
-                print( '_ans\n', np.exp( _ans ) )
 
             if( returnLog == True ):
                 ans.append( _ans )

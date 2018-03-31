@@ -75,14 +75,12 @@ class Graph():
         for e, ( parents, children ) in enumerate( zip( self.edgeParents, self.edgeChildren ) ):
             for p in parents:
                 d.edge( 'n( '+str( p )+' )', 'E( '+str( e )+' )', **{
-                    'arrowhead': 'none',
                     'fixedsize': 'true'
-                })
+                } )
             for c in children:
                 d.edge( 'E( '+str( e )+' )', 'n( '+str( c )+' )', **{
-                    'arrowhead': 'none',
                     'fixedsize': 'true'
-                })
+                } )
 
             d.node('E( '+str( e )+' )', **{
                 'width': '0.25',
@@ -340,7 +338,8 @@ class GraphMessagePasser():
                                                        pmask, \
                                                        fbsCMask, \
                                                        fbsPMask, \
-                                                       nodes, edges=edges, \
+                                                       nodes, \
+                                                       edges=edges, \
                                                        upEdge=False, \
                                                        getChildren=True, \
                                                        diffNodes=False, \
@@ -355,7 +354,8 @@ class GraphMessagePasser():
                                                        pmask, \
                                                        fbsCMask, \
                                                        fbsPMask, \
-                                                       nodes, edges=edges, \
+                                                       nodes, \
+                                                       edges=edges, \
                                                        upEdge=False, \
                                                        getChildren=False, \
                                                        diffNodes=True, \
@@ -448,7 +448,19 @@ class GraphMessagePasser():
         uList = np.setdiff1d( np.hstack( ( rootIndices, np.array( pseudoRoots, dtype=int ) ) ), fbs )
         vList = np.setdiff1d( np.hstack( ( leafIndices, np.array( pseudoLeaves, dtype=int ) ) ), fbs )
 
-        return uList, [ vList, [ None for _ in vList ] ]
+        vListNodes = []
+        vListEdges = []
+        for v in vList:
+            if( v in pseudoLeaves ):
+                downEdges = self.downEdges( v )
+                for e in downEdges:
+                    vListNodes.append( v )
+                    vListEdges.append( e )
+            else:
+                vListNodes.append( v )
+                vListEdges.append( None )
+
+        return uList, [ vListNodes, vListEdges ]
 
     ######################################################################
 
@@ -558,6 +570,7 @@ class GraphMessagePasser():
         for node, childrenForNode in zip( nodes, children ):
             uSem[ childrenForNode ] -= 1
             dprint( 'Decrementing from U for child', childrenForNode, 'from parent', node, use=debug )
+            assert np.all( uSem[ childrenForNode ] >= 0 )
 
         # Decrement vSem for all mates over down edges that node and mate are a part of
         matesAndEdges = self.mates( nodes, splitByEdge=True, split=True, noFBS=True )
@@ -565,6 +578,7 @@ class GraphMessagePasser():
             for e, m in mateAndEdge:
                 vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] -= 1
                 dprint( 'Decrementing from V for mates', m, 'at edge', e, 'from node', node, use=debug )
+                assert np.all( vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] >= 0 )
 
         uDone[ nodes ] = True
 
@@ -584,6 +598,7 @@ class GraphMessagePasser():
                     continue
                 uSem[ c ] -= 1
                 dprint( 'Decrementing from U for child', c, 'from parent', node, use=debug )
+                assert np.all( uSem[ c ] >= 0 )
 
         # Decrement uSem for all siblings
         siblings = self.siblings( nodes, split=True, noFBS=True )
@@ -593,6 +608,7 @@ class GraphMessagePasser():
                 continue
             uSem[ siblingsForNode ] -= 1
             dprint( 'Decrementing from U for sibling', siblingsForNode, 'from node', node, use=debug )
+            assert np.all( uSem[ siblingsForNode ] >= 0 )
 
         # Decrement vSem for mates that aren't current edge
         matesAndEdges = self.mates( nodes, splitByEdge=True, split=True, noFBS=True )
@@ -602,6 +618,7 @@ class GraphMessagePasser():
                     continue
                 vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] -= 1
                 dprint( 'Decrementing from V for mates', m, 'at edge', e, 'from node', node, use=debug )
+                assert np.all( vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] >= 0 )
 
         # Decrement vSem for parents over up edges
         parents = self.parents( nodes, split=True, noFBS=True )
@@ -613,6 +630,7 @@ class GraphMessagePasser():
             vSem.data[ np.in1d( vSem.row, p ) & np.in1d( vSem.col, e ) ] -= 1
             dprint( 'Decrementing from V for parents', vSem.row[ np.in1d( vSem.row, p ) & np.in1d( vSem.col, e ) ], \
                                           'at edges', vSem.col[ np.in1d( vSem.row, p ) & np.in1d( vSem.col, e ) ], use=debug )
+            assert np.all( vSem.data[ np.in1d( vSem.row, p ) & np.in1d( vSem.col, e ) ] >= 0 )
 
         vDone.data[ np.in1d( vDone.row, nodes ) & np.in1d( vDone.col, edgesWithoutNone ) ] = True
 
@@ -628,13 +646,11 @@ class GraphMessagePasser():
 
     ######################################################################
 
-    def messagePassing( self, uWork, vWork, **kwargs ):
+    def messagePassing( self, uWork, vWork, debug=False, **kwargs ):
 
         uDone, vDone = self.progressInit()
-        uSem, vSem = self.countSemaphoreInit( debug=False )
+        uSem, vSem = self.countSemaphoreInit( debug=debug )
         uList, vList = self.baseCaseNodes()
-
-        debug = False
 
         dprint( '\nInitial semaphore count', use=debug )
         dprint( 'uSem: \n', uSem, use=debug )
@@ -663,8 +679,8 @@ class GraphMessagePasser():
               vWork( False, vList, **kwargs )
 
             # Mark that we're done with the current nodes
-            self.UDone( uList, uSem, vSem, uDone, debug=False )
-            self.VDone( vList, uSem, vSem, vDone, debug=False )
+            self.UDone( uList, uSem, vSem, uDone, debug=debug )
+            self.VDone( vList, uSem, vSem, vDone, debug=debug )
 
             if( debug ):
                 print( '\nSemaphore count after marking nodes done' )
@@ -672,8 +688,8 @@ class GraphMessagePasser():
                 print( 'vSem: \n', vSem.todense() )
 
             # Find the next nodes that are ready
-            uList = self.readyForU( uSem, uDone, debug=False )
-            vList = self.readyForV( vSem, vDone, debug=False )
+            uList = self.readyForU( uSem, uDone, debug=debug )
+            vList = self.readyForV( vSem, vDone, debug=debug )
 
             if( debug ):
                 print( '\nNext node list' )
@@ -692,3 +708,5 @@ class GraphMessagePasser():
             # if( ( uList.size == 0 and vList[ 0 ].size == 0 ) and \
             #     ( not np.any( uDone ) or not np.any( vDone.data ) ) ):
             #     loopy = True
+        assert np.any( uSem != 0 ) == False
+        assert np.any( vSem.data != 0 ) == False
