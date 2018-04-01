@@ -69,21 +69,21 @@ class Graph():
 
         return parentMask, childMask
 
-    def draw( self, render=True ):
+    def draw( self, render=True, cutNodes=None ):
 
         # Draws the graph using graphviz
         d = graphviz.Digraph()
         for e, ( parents, children ) in enumerate( zip( self.edgeParents, self.edgeChildren ) ):
             for p in parents:
-                d.edge( 'n( '+str( p )+' )', 'E( '+str( e )+' )', **{
+                d.edge( 'n( %d )'%( p ), 'E( %d )'%( e ), **{
                     'fixedsize': 'true'
                 } )
             for c in children:
-                d.edge( 'E( '+str( e )+' )', 'n( '+str( c )+' )', **{
+                d.edge( 'E( %d )'%( e ), 'n( %d )'%( c ), **{
                     'fixedsize': 'true'
                 } )
 
-            d.node('E( '+str( e )+' )', **{
+            d.node( 'E( %d )'%( e ), **{
                 'width': '0.25',
                 'height': '0.25',
                 'fontcolor': 'white',
@@ -91,7 +91,16 @@ class Graph():
                 'fillcolor': 'black',
                 'fixedsize': 'true',
                 'fontsize': '6'
-            })
+            } )
+
+        if( cutNodes is not None ):
+            for n in cutNodes:
+                print( n )
+                d.node( 'n( %d )'%( n ), **{
+                       'style': 'filled',
+                       'fontcolor': 'white',
+                       'fillcolor':'blue'
+                       } )
 
         if( render ):
             d.render()
@@ -107,7 +116,7 @@ class GraphMessagePasser():
         return Graph.fromParentChildMask( self.pmask, self.cmask )
 
     def draw( self ):
-        return self.toGraph().draw()
+        return self.toGraph().draw( cutNodes=self.fbs )
 
     def concatSparseMatrix( self, sparseMatrices ):
         # Builds a big block diagonal matrix where each diagonal matrix
@@ -184,9 +193,9 @@ class GraphMessagePasser():
         else:
             self.fbsMask = np.zeros( self.pmask.shape[ 0 ], dtype=bool )
 
-        fbs = self.nodes[ self.fbsMask ]
-        self.fbsPMask = np.in1d( self.pmask.row, fbs )
-        self.fbsCMask = np.in1d( self.cmask.row, fbs )
+        self.fbs = self.nodes[ self.fbsMask ]
+        self.fbsPMask = np.in1d( self.pmask.row, self.fbs )
+        self.fbsCMask = np.in1d( self.cmask.row, self.fbs )
 
     ######################################################################
 
@@ -446,29 +455,26 @@ class GraphMessagePasser():
         rootIndices = self.nodes[ ( parentOfEdgeCount != 0 ) & ( childOfEdgeCount == 0 ) ]
         leafIndices = self.nodes[ ( childOfEdgeCount != 0 ) & ( parentOfEdgeCount == 0 ) ]
 
-        # Explicitely get the feedback set
-        fbs = self.nodes[ self.fbsMask ]
-
         # Nodes whose parents are all in the fbs are roots, and nodes whose
         # children are all in the fbs are leaves
         pseudoRoots = []
         pseudoLeaves = []
 
-        fbsParents = self.parents( fbs )
+        fbsParents = self.parents( self.fbs )
         childrenOfFBSParents = self.children( fbsParents, split=True )
         for children, fbsParent in zip( childrenOfFBSParents, fbsParents ):
-            if( np.all( np.in1d( children, fbs ) ) == True ):
+            if( np.all( np.in1d( children, self.fbs ) ) == True ):
                 pseudoLeaves.append( fbsParent )
 
-        fbsChildren = self.children( fbs )
+        fbsChildren = self.children( self.fbs )
         parentsOfFBSChildren = self.parents( fbsChildren, split=True )
         for parents, fbsChild in zip( parentsOfFBSChildren, fbsChildren ):
-            if( np.all( np.in1d( parents, fbs ) ) == True ):
+            if( np.all( np.in1d( parents, self.fbs ) ) == True ):
                 pseudoRoots.append( fbsChild )
 
         # Generate the up and down base arrays
-        uList = np.setdiff1d( np.hstack( ( rootIndices, np.array( pseudoRoots, dtype=int ) ) ), fbs )
-        vList = np.setdiff1d( np.hstack( ( leafIndices, np.array( pseudoLeaves, dtype=int ) ) ), fbs )
+        uList = np.setdiff1d( np.hstack( ( rootIndices, np.array( pseudoRoots, dtype=int ) ) ), self.fbs )
+        vList = np.setdiff1d( np.hstack( ( leafIndices, np.array( pseudoLeaves, dtype=int ) ) ), self.fbs )
 
         # Make sure that fbs children have the correct down edges
         vListNodes = []
@@ -490,8 +496,7 @@ class GraphMessagePasser():
     def progressInit( self ):
         uDone = np.copy( self.fbsMask )
         vDone = coo_matrix( ( np.zeros_like( self.pmask.row ), ( self.pmask.row, self.pmask.col ) ), shape=self.pmask.shape, dtype=bool )
-        fbs = self.nodes[ self.fbsMask ]
-        vDone.data[ np.in1d( vDone.row, fbs ) ] = True
+        vDone.data[ np.in1d( vDone.row, self.fbs ) ] = True
 
         return uDone, vDone
 

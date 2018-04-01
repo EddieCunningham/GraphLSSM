@@ -53,70 +53,99 @@ class GraphFilter( GraphMessagePasser ):
     def integrateOutFeedbackSet( self, U, V, workspace ):
         assert 0
 
-    def filterCutNodes( self, U, V, workspace ):
-        assert 0
+    def filterFeedbackSet( self, U, V, workspace ):
+        return
+        uList = self.fbs
+        vListNodes = []
+        vListEdges = []
+        for node in self.fbs:
+            downEdges = self.downEdges( node )
+            if( len( downEdges ) == 0 ):
+                vListNodes.append( node )
+                vListEdges.append( None )
+            else:
+                for edge in downEdges:
+                    vListNodes.append( node )
+                    vListEdges.append( edge )
+
+        # This might not be correct.  what if nodes in the fbs depend on each other???
+        # Probably best to pass something to the message passer instead.....
+        self.uFilter( False, uList, U, V, workspace )
+        self.vFilter( False, [ vListNodes, vListEdges ], U, V, workspace )
 
     ######################################################################
 
-    @classmethod
-    def firstAxis( cls ):
+    def firstAxis( self ):
         return ( 0, )
 
-    @classmethod
-    def lastAxis( cls, N ):
+    def lastAxis( self, N ):
         return ( N - 1, )
 
-    @classmethod
-    def ithAxis( cls, i ):
+    def ithAxis( self, i ):
         return ( i, )
 
-    @classmethod
-    def sequentialAxes( cls, N, skip=None ):
+    def sequentialAxes( self, N, skip=None ):
         if( skip is not None ):
-            return tuple( np.setdiff1d( np.arange( N, dtype=int ), skip ).tolist() )
-        return tuple( np.arange( N, dtype=int ).tolist() )
+            return list( np.setdiff1d( np.arange( N, dtype=int ), skip ).tolist() )
+        return list( np.arange( N, dtype=int ).tolist() )
 
-    @classmethod
-    def latentStateSize( cls, U, V, node ):
+    def latentStateSize( self, U, V, node ):
         return U[ node ].shape[ 0 ]
 
     def nParents( self, node ):
         return self.parents( node ).shape[ 0 ]
 
-    @classmethod
-    def uData( cls, U, node ):
+    def uData( self, U, node ):
         return U[ node ]
 
-    @classmethod
-    def vData( cls, V, node, edges=None, debug=False ):
+    def vData( self, V, node, edges=None, debug=False ):
         V_row, V_col, V_data = V
 
-        if( ~np.any( np.in1d( V_row, node ) ) ):
+        if( np.any( np.in1d( self.fbs, node ) ) ):
+            # If node is part of the skip array (if its in the fbs)
+            ans = np.array( [] )
+        elif( ~np.any( np.in1d( V_row, node ) ) ):
+            # IF the node isn't in the V object (node is a leaf)
             ans = np.array( [] )
         elif( edges is None ):
             # Return the data over all down edges
-            if( ~np.any( np.in1d( V_row, node ) ) ):
-                ans = np.array( [] )
-            else:
-                ans = V_data[ np.in1d( V_row, node ) ]
+            ans = V_data[ np.in1d( V_row, node ) ]
         elif( isinstance( edges, Iterable ) and len( edges ) > 0 ):
             # Return over only certain edges
             mask = np.in1d( V_row, node )
             for e in edges:
                 mask &= np.in1d( V_col, e )
             ans = V_data[ mask ]
+        elif( isinstance( edges, Iterable ) and len( edges ) == 0 ):
+            # This happens when we're not passed a down edge.  In this
+            # case, we should return an invalid v value, not a leaf v value
+            return np.array( [] )
         else:
-            # Only looking at one edges
+            # Only looking at one edge
             ans = V_data[ np.in1d( V_col, edges ) ]
 
-        dprint( 'V_row', V_row, use=debug )
-        dprint( 'V_col', V_col, use=debug )
-        dprint( 'V_data', V_data, use=debug )
-        dprint( 'node', node, use=debug )
-        dprint( 'edges', edges, use=debug )
-        dprint( 'ans', ans, use=debug )
+        if( ans.size == 0 ):
+            # If we're looking at a leaf, return all 0s
+            depth = 1 if edges is None else len( edges )
+            baseCase = np.zeros( ( depth, V_data[ 0 ].shape[ 0 ] ) )
+            ans = baseCase
+
         assert np.any( np.isnan( ans ) ) == False
+
         return ans
+
+    ######################################################################
+
+    def fbsAxesCorrection( self, totalDim, nodes, axes ):
+        if( isinstance( nodes, Iterable ) == False ):
+            nodes = np.array( [ nodes ] )
+
+        newAxes = np.copy( axes )
+        nodeInFBS = nodes[ np.in1d( nodes, self.fbs ) ]
+        for i, fbsNode in enumerate( nodeInFBS ):
+            fbsIndex = np.where( self.fbs == fbsNode )[ 0 ]
+            axes[ i ] = totalDim + fbsIndex
+        return newAxes
 
     ######################################################################
 
@@ -155,8 +184,6 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'term:\n', term, use=debug )
 
         assert isinstance( term, np.ndarray )
-        K = self.latentStateSize( U, V, node )
-        assert term.shape == ( K, )
         assert np.any( np.isnan( term ) ) == False
 
         return term
@@ -184,12 +211,13 @@ class GraphFilter( GraphMessagePasser ):
         # and N is the number of parents
         dprint( '\n\nComputing b for', node, use=debug )
 
-        parents, parentAxes = self.parents( node, getOrder=True )
+        parents, parentOrder = self.parents( node, getOrder=True )
         dprint( 'parents:\n', parents, use=debug )
         nParents = parents.shape[ 0 ]
+        totalDim = nParents + 1
 
-        allAxes = self.sequentialAxes( N=nParents + 1 )
-        lastAxis = self.lastAxis( N=nParents + 1 )
+        allAxes = self.sequentialAxes( N=totalDim )
+        lastAxis = self.lastAxis( N=totalDim )
 
         # Get the transition matrix between node and parents
         nodeTransition = self.transitionProb( node, parents )
@@ -209,6 +237,10 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'v:\n', v, use=debug )
         dprint( 'vAxes:\n', vAxes, use=debug )
 
+        # # Change all of the axes that correspond to nodes in the feedback set
+        # transitionAxes = self.fbsAxesCorrection( totalDim, parents, transitionAxes )
+        # dprint( 'adjusted transitionAxes:\n', transitionAxes, use=debug )
+
         # Multiply together the transition, emission and Vs
         integrand = self.multiplyTerms( ( nodeEmission, *v, nodeTransition ), axes=( emissionAxes, *vAxes, transitionAxes ) )
         intAxes = lastAxis
@@ -220,8 +252,6 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'term:\n', term, use=debug )
 
         assert isinstance( term, np.ndarray )
-        K = self.latentStateSize( U, V, node )
-        assert term.shape == ( K, ) * nParents
         assert np.any( np.isnan( term ) ) == False
 
         return term
@@ -261,8 +291,9 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'siblings:\n', siblings, use=debug )
 
         nParents = parents.shape[ 0 ]
+        totalDim = nParents + 1
 
-        allAxes = self.sequentialAxes( N=nParents + 1 )
+        allAxes = self.sequentialAxes( N=totalDim )
         upToLastAxes = self.sequentialAxes( N=nParents )
         firstAxis = self.firstAxis()
 
@@ -277,14 +308,25 @@ class GraphFilter( GraphMessagePasser ):
         parentAxes = [ self.ithAxis( i ) for i in parentOrder ]
         dprint( 'parentTerms:\n', np.exp( parentTerms ), use=debug )
         dprint( 'parentAxes:\n', parentAxes, use=debug )
-        parentExpansion = self.multiplyTerms( ( *parentTerms, ), axes=( *parentAxes, ) )
-        dprint( 'parentExpansion:\n', np.exp( parentExpansion ), use=debug )
 
         # Get the b values for all siblings.  These are all over the parents' axes
         siblingTerms = [ self.b( U, V, s, debug=debug ) for s in siblings ]
         siblingAxes = [ upToLastAxes for _ in siblings ]
         dprint( 'siblingTerms:\n', np.exp( siblingTerms ), use=debug )
         dprint( 'siblingAxes:\n', siblingAxes, use=debug )
+
+        # # Change all of the axes that correspond to nodes in the feedback set
+        # transitionAxes = self.fbsAxesCorrection( totalDim, parents, transitionAxes )
+        # dprint( 'adjusted transitionAxes:\n', transitionAxes, use=debug )
+
+        # for i, ( p, pAx ) in enumerate( zip( parents, parentAxes ) ):
+        #     parentAxes[ i ] = self.fbsAxesCorrection( totalDim, p, pAx )
+        # dprint( 'adjusted parentAxes:\n', parentAxes, use=debug )
+
+        # for i, ( s, sAx ) in enumerate( zip( siblings, siblingAxes ) ):
+        #     # The axes for b terms should be aligned to the parents
+        #     siblingAxes[ i ] = self.fbsAxesCorrection( totalDim, parents, sAx )
+        # dprint( 'adjusted siblingAxes:\n', siblingAxes, use=debug )
 
         # Multiply all of the terms together
         integrand = self.multiplyTerms( ( *siblingTerms, *parentTerms, nodeTransition ), axes=( *siblingAxes, *parentAxes, transitionAxes ) )
@@ -309,8 +351,6 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'newU:\n', np.exp( newU ), use=debug )
 
         assert isinstance( newU, np.ndarray )
-        K = self.latentStateSize( U, V, node )
-        assert newU.shape == ( K, )
         assert np.any( np.isnan( newU ) ) == False
 
 
@@ -344,6 +384,7 @@ class GraphFilter( GraphMessagePasser ):
 
         nMates = mates.shape[ 0 ]
         nParents = mates.shape[ 0 ] + 1
+        totalDim = nParents + 1
 
         thisNodesOrder = np.setdiff1d( np.arange( nParents ), mateOrder )
 
@@ -362,6 +403,17 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'childTerms:\n', childTerms, use=debug )
         dprint( 'childAxes:\n', childAxes, use=debug )
 
+        # # Change all of the axes that correspond to nodes in the feedback set
+        # for i, ( m, mAx ) in enumerate( zip( mates, mateAxes ) ):
+        #     mateAxes[ i ] = self.fbsAxesCorrection( totalDim, m, mAx )
+        # dprint( 'adjusted mateAxes:\n', mateAxes, use=debug )
+
+
+        # for i, ( c, cAx ) in enumerate( zip( children, childAxes ) ):
+        #     # The axes for b terms should be aligned to the parents
+        #     childAxes[ i ] = self.fbsAxesCorrection( totalDim, mates, cAx )
+        # dprint( 'adjusted childAxes:\n', childAxes, use=debug )
+
         # Combine the terms
         integrand = self.multiplyTerms( ( *childTerms, *mateTerms ), axes=( *childAxes, *mateAxes ) )
         intAxes = upToLastAxes
@@ -373,8 +425,6 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'newV:\n', newV, use=debug )
 
         assert isinstance( newV, np.ndarray )
-        K = self.latentStateSize( U, V, node )
-        assert newV.shape == ( K, )
         assert np.any( np.isnan( newV ) ) == False
 
         return newV
@@ -431,7 +481,7 @@ class GraphFilter( GraphMessagePasser ):
         self.integrateOutFeedbackSet( U, V, workspace )
 
         # Update the filter probs for the cut nodes
-        self.filterCutNodes( U, V, workspace )
+        self.filterFeedbackSet( U, V, workspace )
 
         return U, V
 

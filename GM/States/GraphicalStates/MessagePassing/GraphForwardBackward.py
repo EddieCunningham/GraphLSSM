@@ -20,12 +20,14 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         self.K = K
 
     def genFilterProbs( self ):
-        U = np.zeros( ( self.nodes.shape[ 0 ], self.K ) )
-        U[ : ] = np.nan
+        fbsSize = self.fbs.shape[ 0 ]
+        U = np.zeros( ( self.nodes.shape[ 0 ], self.K + fbsSize ) )
         V_row = self.pmask.row
         V_col = self.pmask.col
-        V_data = np.zeros( ( self.pmask.row.shape[ 0 ], self.K ) )
-        # V_data = np.zeros( ( self.K, self.pmask.row.shape[ 0 ] ) )
+        V_data = np.zeros( ( self.pmask.row.shape[ 0 ], self.K + fbsSize ) )
+
+        # So that its easy to see if a value is being computed out of order
+        U[ : ] = np.nan
         V_data[ : ] = np.nan
         return U, ( V_row, V_col, V_data )
 
@@ -118,7 +120,7 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         #     print('---')
 
         assert axes is not None
-        assert isinstance( terms, Iterable ) and isinstance( axes, Iterable )
+        assert isinstance( terms, Iterable )
         assert len( axes ) == len( terms )
 
         # Get the number of dimensions
@@ -134,7 +136,7 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         relevantAxes = []
         reshapedTerms = []
         for ax, term in zip( axes, terms ):
-            assert isinstance( ax, tuple )
+            assert isinstance( ax, Iterable )
 
             if( term.size == 0 ):
                 continue
@@ -251,9 +253,6 @@ class GraphCategoricalForwardBackward( GraphFilter ):
     ######################################################################
 
     def integrateOutFeedbackSet( self, U, V, workspace ):
-        return
-
-    def filterCutNodes( self, U, V, workspace ):
         return
 
     ######################################################################
