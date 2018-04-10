@@ -17,9 +17,9 @@ from collections import Iterable
 
 def testGraphCategoricalForwardBackwardNoCycle():
 
-    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
-    # cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5(), cycleGraph6() ]
-    # graphs = [ cycleGraph1() ]
+    # cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5(), cycleGraph6(), cycleGraph7() ]
+    graphs = [ cycleGraph7() ]
+    # graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
 
     # Check how many transition distributions we need
     allTransitionCounts = set()
@@ -52,9 +52,8 @@ def testGraphCategoricalForwardBackwardNoCycle():
     emissionDist = Dirichlet.sample( params=onesObs, size=K )
 
     # asdf = 0.1
-    # fdsa = 0.2
+    # fdsa = 0.1
     # initialDist = np.array( [ 1. - fdsa, fdsa ] )
-    # # initialDist = np.array( [ 1. - fdsa, fdsa ] )
     # emissionDist = np.array( [ [ asdf     , 1. - asdf ],
     #                            [ 1. - asdf, asdf      ] ] )
 
@@ -65,7 +64,7 @@ def testGraphCategoricalForwardBackwardNoCycle():
 
     # print( 'TRANSITION', transDist)
 
-    # ys = [ np.array( [ 0, 0, 0 ] ) ]
+    # ys = [ np.array( [ 0, 0, 0, 0, 0 ] ) ]
 
     print('\n\nys:', ys)
     print( 'emissionDist', emissionDist )
@@ -84,10 +83,10 @@ def testGraphCategoricalForwardBackwardNoCycle():
         reduced = np.logaddexp.reduce( probs ) if returnLog else np.sum( probs )
         print( '\nP( x_%d | Y ) for'%( n ), ':', probs, '->', reduced )
 
-    for n, probs in zip( msg.nodes, msg.conditionalParentChild( U, V, msg.nodes, returnLog=returnLog ) ):
-        reduced = np.logaddexp.reduce( probs, axis=-1 ) if returnLog else probs.sum( axis=-1 )
-        # print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), ':', probs, '->', reduced )
-        print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), '->', reduced.sum() )
+    # for n, probs in zip( msg.nodes, msg.conditionalParentChild( U, V, msg.nodes, returnLog=returnLog ) ):
+    #     reduced = np.logaddexp.reduce( probs, axis=-1 ) if returnLog else probs.sum( axis=-1 )
+    #     # print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), ':', probs, '->', reduced )
+    #     print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), '->', reduced.sum() )
 
 
 testGraphCategoricalForwardBackwardNoCycle()
