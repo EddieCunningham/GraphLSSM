@@ -51,25 +51,36 @@ class GraphFilter( GraphMessagePasser ):
     ######################################################################
 
     def integrateOutFeedbackSet( self, U, V, workspace ):
+
+        # This isn't a valid thing to do! Can't integrate V because
+        # doesn't make sense to integrate over something being conditioned on
+        assert 0
+
         V_row, V_col, V_data = V
 
         # ( node, latent state )
         normalAxes = ( 0, 1 )
         allAxes = ( 0, 1 ) + self.fbsAxes( 2 )
 
+        print( '\n-----------------------\n')
+        print( '\n\n\n\nU before integration\n', U )
+        print( '\n-----------------------\n')
+        print( '\nV before integration\n', V_data )
+        print( '\n-----------------------\n')
+
         newU, _ = self.integrate( U, integrandAxes=allAxes, axes=self.fbsAxes( 2 ) )
         newV, _ = self.integrate( V_data, integrandAxes=allAxes, axes=self.fbsAxes( 2 ) )
 
-        print( 'newU', newU )
+        print( '\n\n\n\nnewU', newU )
         print( 'newV', newV )
-
-        self.fbs = np.array( [] )
 
         return newU, ( V_row, V_col, newV )
 
     def filterFeedbackSet( self, U, V, workspace ):
-        return
+
         uList = self.fbs
+        self.fbs = np.array( [] )
+
         vListNodes = []
         vListEdges = []
         for node in self.fbs:
@@ -86,6 +97,10 @@ class GraphFilter( GraphMessagePasser ):
         # Probably best to pass something to the message passer instead.....
         self.uFilter( False, uList, U, V, workspace )
         self.vFilter( False, [ vListNodes, vListEdges ], U, V, workspace )
+
+        self.fbs = np.array( [] )
+
+        return U, V
 
     ######################################################################
 
@@ -544,21 +559,20 @@ class GraphFilter( GraphMessagePasser ):
 
         debug = True
 
-        # Run the message passing algorithm over the graph
+        # Run the message passing algorithm over the graph.
+        # We will end up with the extended U and V values for all of
+        # the nodes except the feedback set nodes.
+        # To get the filtered probs for the smoothed probs for the
+        # feedback set nodes, marginalize over the non fbs nodes
+        # at any extended smoothed prob
         self.messagePassing( self.uFilter, self.vFilter, **kwargs )
-
-        # Integrate out the nodes that we cut
-        U, V = self.integrateOutFeedbackSet( U, V, workspace )
-
-        # Update the filter probs for the cut nodes
-        self.filterFeedbackSet( U, V, workspace )
 
         return U, V
 
     ######################################################################
 
-    def _nodeJoint( self, U, V, node, debug=True ):
-        # P( x, Y )
+    def _fullJoint( self, U, V, node, debug=True ):
+        # P( x, x_{feedback set}, Y )
 
         parents, parentOrder = self.parents( node, getOrder=True )
         totalDim = parents.shape[ 0 ] + 1
@@ -575,9 +589,45 @@ class GraphFilter( GraphMessagePasser ):
         dprint( 'v:\n', v, use=debug )
         dprint( 'vAxes:\n', vAxes, use=debug )
 
-        return self.multiplyTerms( terms=( u, *v ), \
-                                   axes=( uAxes, *vAxes ), \
-                                   ndim=1 )[ 0 ]
+        joint, jointAxes =  self.multiplyTerms( terms=( u, *v ), \
+                                                axes=( uAxes, *vAxes ), \
+                                                ndim=totalDim + self.fbs.shape[ 0 ] )
+        dprint( 'joint:\n', joint, use=debug )
+        dprint( 'jointAxes:\n', jointAxes, use=debug )
+        return joint, jointAxes
+
+    def _nodeJointForFBS( self, U, V, node, debug=True ):
+        # If node is a root, get a child and if it is a leaf, get a parent
+        if( self.nParents( node ) == 0 ):
+            useNode = self.children( node )[ 0 ]
+        else:
+            useNode = self.parents( node )[ 0 ]
+
+        joint, jointAxes = self._fullJoint( U, V, useNode, debug=debug )
+
+        # Integration axes are all axes but node
+        fbsIndex = self.fbs.tolist().index( node )
+        intAxes = [ i for i in ( 0, ) + self.fbsAxes( 1 ) if i != fbsIndex ]
+        dprint( 'intAxes:\n', intAxes, use=debug )
+        intJoint, _ = self.integrate( joint, jointAxes, axes=intAxes )
+        print( '\n\n\n\n\n' )
+        dprint( 'intJoint:\n', intJoint, '->', np.logaddexp.reduce( intJoint ), use=debug )
+        print( '\n\n\n\n\n' )
+        return intJoint
+
+    def _nodeJoint( self, U, V, node, debug=True ):
+        # P( x, Y )
+
+        if( node in self.fbs ):
+            return self._nodeJointForFBS( U, V, node, debug=debug )
+
+        joint, jointAxes = self._fullJoint( U, V, node, debug=debug )
+
+        intJoint, _ = self.integrate( joint, jointAxes, axes=self.fbsAxes( 0 ) )
+        print( '\n\n\n\n\n' )
+        dprint( 'intJoint:\n', intJoint, '->', np.logaddexp.reduce( intJoint ), use=debug )
+        print( '\n\n\n\n\n' )
+        return intJoint
 
     def _jointParentChild( self, U, V, node, debug=True ):
         # P( x_c, x_p1..pN, Y )
@@ -674,8 +724,9 @@ class GraphFilter( GraphMessagePasser ):
         parentOfEdgeCount = self.pmask.getnnz( axis=1 )
         childOfEdgeCount = self.cmask.getnnz( axis=1 )
         leafIndex = self.nodes[ ( childOfEdgeCount != 0 ) & ( parentOfEdgeCount == 0 ) ][ 0 ]
-        u = U[ leafIndex ]
-        return self.integrate( u, list( range( len( u.shape ) ) ), axes=np.array( [ 0 ] ) )[ 0 ]
+        ans = np.logaddexp.reduce( self._nodeJoint( U, V, leafIndex ) )
+        print( 'ANS', ans )
+        return ans
 
     def nodeSmoothed( self, U, V, nodes, returnLog=False ):
         # P( x | Y )

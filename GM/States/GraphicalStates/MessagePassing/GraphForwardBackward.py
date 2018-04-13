@@ -55,7 +55,7 @@ class GraphCategoricalForwardBackward( GraphFilter ):
                 ixArgs = [ range( self.K ) if node != _node else [ i ] for _node in self.fbs ]
                 ixArgs.append( [ i ] )
 
-                U[ node ][ np.ix_( *ixArgs ) ] = 1
+                U[ node ][ np.ix_( *ixArgs ) ] = 0
 
             # V values should be 0
             V_data[ node, : ] = np.NINF

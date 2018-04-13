@@ -57,12 +57,14 @@ def testGraphCategoricalForwardBackwardNoCycle():
     # emissionDist = np.array( [ [ asdf     , 1. - asdf ],
     #                            [ 1. - asdf, asdf      ] ] )
 
-    # transDist = np.array( [ [ [ 1. - asdf, asdf      ],
-    #                           [      asdf, 1. - asdf ] ] ,
-    #                         [ [ 1. - asdf, asdf      ],
-    #                           [      asdf, 1. - asdf ] ] ] )
+    # transitionDists = [ np.array( [ [ [ 1. - asdf, asdf      ],
+    #                                   [      asdf, 1. - asdf ] ] ,
+    #                                 [ [ 1. - asdf, asdf      ],
+    #                                   [      asdf, 1. - asdf ] ] ] ),
+    #                     np.array( [ [ 1. - asdf, asdf      ],
+    #                                 [      asdf, 1. - asdf ] ] ) ]
 
-    # print( 'TRANSITION', transDist)
+    # print( 'TRANSITION', transitionDists)
 
     # ys = [ np.array( [ 0, 0, 0, 0, 0 ] ) ]
 
