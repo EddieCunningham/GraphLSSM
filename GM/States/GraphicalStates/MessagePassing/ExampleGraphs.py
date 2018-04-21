@@ -7,13 +7,15 @@ __all__ = [ 'graph1', \
             'graph3', \
             'graph4', \
             'graph5', \
+            'graph6', \
             'cycleGraph1', \
             'cycleGraph2', \
             'cycleGraph3', \
             'cycleGraph4', \
             'cycleGraph5', \
             'cycleGraph6', \
-            'cycleGraph7' ]
+            'cycleGraph7', \
+            'cycleGraph8' ]
 
 def graph1():
     graph = Graph()
@@ -56,6 +58,13 @@ def graph5():
     graph.addEdge( parents=[ 6, 9 ], children=[ 13 ] )
     graph.addEdge( parents=[ 15, 16 ], children=[ 17 ] )
     graph.addEdge( parents=[ 13, 17 ], children=[ 14 ] )
+
+    return graph
+
+def graph6():
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0 ], children=[ 1 ] )
 
     return graph
 
@@ -132,6 +141,17 @@ def cycleGraph6():
     return graph, fbs
 
 def cycleGraph7():
+
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0 ], children=[ 1, 2 ] )
+    graph.addEdge( parents=[ 1, 2 ], children=[ 3 ] )
+
+    fbs = np.array( [ 2 ] )
+
+    return graph, fbs
+
+def cycleGraph8():
 
     graph = Graph()
 

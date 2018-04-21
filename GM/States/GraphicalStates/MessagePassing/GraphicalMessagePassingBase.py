@@ -125,16 +125,18 @@ class GraphMessagePasser():
         row = np.array( [], dtype=int )
         col = np.array( [], dtype=int )
         data = np.array( [], dtype=int )
+        graphAssignments = []
         nRows = 0
         nCols = 0
-        for mat in sparseMatrices:
+        for i, mat in enumerate( sparseMatrices ):
             m, n = mat.shape
             row = np.hstack( ( row, mat.row + nRows ) )
             col = np.hstack( ( col, mat.col + nCols ) )
             data = np.hstack( ( data, mat.data ) )
             nRows += m
             nCols += n
-        return coo_matrix( ( data, ( row, col ) ), shape=( nRows, nCols ), dtype=int )
+            graphAssignments.append( nRows )
+        return coo_matrix( ( data, ( row, col ) ), shape=( nRows, nCols ), dtype=int ), graphAssignments
 
     def fbsConcat( self, feedbackSets, nodeCounts ):
         assert len( feedbackSets ) == len( nodeCounts )
@@ -143,10 +145,12 @@ class GraphMessagePasser():
         for fbs, N in zip( feedbackSets, nodeCounts ):
             if( fbs is not None ):
                 bigFBS.append( fbs + totalN )
+            else:
+                bigFBS.append( np.array( []) )
             totalN += N
         if( len( bigFBS ) == 0 ):
-            return np.array( [] )
-        return np.concatenate( bigFBS )
+            return np.array( [] ), np.array( [] )
+        return np.concatenate( bigFBS ), bigFBS
 
     def updateParamsFromGraphs( self, graphs ):
 
@@ -182,20 +186,30 @@ class GraphMessagePasser():
                 assert isinstance( parentMask, coo_matrix )
                 assert childMask.shape == parentMask.shape
 
-        self.pmask = self.concatSparseMatrix( parentMasks )
-        self.cmask = self.concatSparseMatrix( childMasks )
+        self.pmask, self.parentGraphAssignments = self.concatSparseMatrix( parentMasks )
+        self.cmask, self.childGraphAssignments = self.concatSparseMatrix( childMasks )
 
         self.nodes = np.arange( self.pmask.shape[ 0 ] )
 
         if( feedbackSets is not None ):
             nodeCounts = [ mat.shape[ 0 ] for mat in parentMasks ]
-            self.fbsMask = np.in1d( self.nodes, self.fbsConcat( feedbackSets, nodeCounts ) )
+            # self.feedbackSets contains all of the feedback sets with the adjusted node indices
+            fbsNodes, self.feedbackSets = self.fbsConcat( feedbackSets, nodeCounts )
+            self.fbsMask = np.in1d( self.nodes, fbsNodes )
         else:
             self.fbsMask = np.zeros( self.pmask.shape[ 0 ], dtype=bool )
 
+        # All of the feedback sets together
         self.fbs = self.nodes[ self.fbsMask ]
+
+        # Parent and child mask for feedback set nodes
         self.fbsPMask = np.in1d( self.pmask.row, self.fbs )
         self.fbsCMask = np.in1d( self.cmask.row, self.fbs )
+
+    ######################################################################
+
+    def getGraphAssignment( self, node ):
+        pass
 
     ######################################################################
 
@@ -441,20 +455,7 @@ class GraphMessagePasser():
 
     ######################################################################
 
-    def baseCaseNodes( self ):
-
-        M, N = self.pmask.shape
-
-        # Get the number of edges that each node is a parent of
-        parentOfEdgeCount = self.pmask.getnnz( axis=1 )
-
-        # Get the number of edges that each node is a child of
-        childOfEdgeCount = self.cmask.getnnz( axis=1 )
-
-        # Get the indices of leaves and roots
-        rootIndices = self.nodes[ ( parentOfEdgeCount != 0 ) & ( childOfEdgeCount == 0 ) ]
-        leafIndices = self.nodes[ ( childOfEdgeCount != 0 ) & ( parentOfEdgeCount == 0 ) ]
-
+    def pseudoRootsAndLeaves( self ):
         # Nodes whose parents are all in the fbs are roots, and nodes whose
         # children are all in the fbs are leaves
         pseudoRoots = []
@@ -471,6 +472,26 @@ class GraphMessagePasser():
         for parents, fbsChild in zip( parentsOfFBSChildren, fbsChildren ):
             if( np.all( np.in1d( parents, self.fbs ) ) == True ):
                 pseudoRoots.append( fbsChild )
+
+        return pseudoRoots, pseudoLeaves
+
+    def baseCaseNodes( self ):
+
+        M, N = self.pmask.shape
+
+        # Get the number of edges that each node is a parent of
+        parentOfEdgeCount = self.pmask.getnnz( axis=1 )
+
+        # Get the number of edges that each node is a child of
+        childOfEdgeCount = self.cmask.getnnz( axis=1 )
+
+        # Get the indices of leaves and roots
+        rootIndices = self.nodes[ ( parentOfEdgeCount != 0 ) & ( childOfEdgeCount == 0 ) ]
+        leafIndices = self.nodes[ ( childOfEdgeCount != 0 ) & ( parentOfEdgeCount == 0 ) ]
+
+        # Nodes whose parents are all in the fbs are roots, and nodes whose
+        # children are all in the fbs are leaves
+        pseudoRoots, pseudoLeaves = self.pseudoRootsAndLeaves()
 
         # Generate the up and down base arrays
         uList = np.setdiff1d( np.hstack( ( rootIndices, np.array( pseudoRoots, dtype=int ) ) ), self.fbs )

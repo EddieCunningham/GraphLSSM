@@ -18,8 +18,12 @@ from collections import Iterable
 def testGraphCategoricalForwardBackwardNoCycle():
 
     # cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5(), cycleGraph6(), cycleGraph7() ]
-    graphs = [ cycleGraph7() ]
-    # graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
+    # graphs = [ cycleGraph4() ]
+    # graphs = [ cycleGraph8() ]
+    # graphs = [ cycleGraph1(), cycleGraph8() ]
+    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
+    # graphs = [ graph6() ]
+    # graphs = [ cycleGraph8(), graph1(), graph2(), graph3(), graph4(), graph5() ]
 
     # Check how many transition distributions we need
     allTransitionCounts = set()
@@ -66,7 +70,8 @@ def testGraphCategoricalForwardBackwardNoCycle():
 
     # print( 'TRANSITION', transitionDists)
 
-    # ys = [ np.array( [ 0, 0, 0, 0, 0 ] ) ]
+    # ys = [ np.array( [ 0, 0, 0 ] ) ]
+    # # ys = [ np.array( [ 0, 0, 0, 0, 0 ] ) ]
 
     print('\n\nys:', ys)
     print( 'emissionDist', emissionDist )
@@ -78,6 +83,10 @@ def testGraphCategoricalForwardBackwardNoCycle():
     msg.draw()
 
     U, V = msg.filter()
+
+    print( msg.nodes )
+
+    print( 'Done with filter' )
 
     # Make sure that things sum to 1
     returnLog = True

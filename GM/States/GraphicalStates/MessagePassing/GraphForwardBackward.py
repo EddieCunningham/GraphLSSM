@@ -30,35 +30,34 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         return U[ node ]
 
     def genFilterProbs( self ):
-        fbsSize = self.fbs.shape[ 0 ]
 
-        U = np.zeros( ( self.nodes.shape[ 0 ], ) + ( self.K, ) * ( fbsSize + 1 ) )
+        # Initialize U and V
+        U = []
+        for node in self.nodes:
+            U.append( np.zeros( ( self.K, ) ) )
 
         V_row = self.pmask.row
         V_col = self.pmask.col
-        V_data = np.zeros( ( self.pmask.row.shape[ 0 ], ) + ( self.K, ) * ( fbsSize + 1 ) )
+        V_data = []
+        for node in self.pmask.row:
+            V_data.append( np.zeros( ( self.K, ) ) )
 
-        U[ : ] = np.nan
-        V_data[ : ] = np.nan
+        # Invalidate all data elements
+        for node in self.nodes:
+            U[ node ][ : ] = np.nan
+            self.assignV( ( V_row, V_col, V_data ), node, np.nan, keepShape=True )
 
-        for node in self.fbs:
+        # Initialize U and V for fbs nodes.  This is a special case because
+        # we're basically cutting these nodes from the graph
+        for i, fbs in enumerate( self.feedbackSets ):
 
-            U[ node ] = np.NINF
-
-            # If node is in the fbs, the value of U for node should be zero everywhere except
-            # where the index of node in the fbs equals the index of the latent state for node
-            # (which should be the last dimension!)
-            for i in range( self.K ):
-
-                # ixArgs should look like [ range( k ), ..., [ i ], range( k ), ..., [ i ] ]
-                # where the index of the first [ i ] is the same index that node is in the feedback set
-                ixArgs = [ range( self.K ) if node != _node else [ i ] for _node in self.fbs ]
-                ixArgs.append( [ i ] )
-
-                U[ node ][ np.ix_( *ixArgs ) ] = 0
-
-            # V values should be 0
-            V_data[ node, : ] = np.NINF
+            for node in fbs:
+                fbsIndex = self.fbs.tolist().index( node )
+                newShape = np.ones( fbsIndex )
+                newShape[ 0 ] = self.K
+                newShape[ -1 ] = self.K
+                U[ node ] = np.eye( self.K ).reshape( newShape )
+                self.assignV( ( V_row, V_col, V_data ), node, np.zeros( ( self.K, self.K ) ).reshape( newShape ) )
 
         return U, ( V_row, V_col, V_data )
 
@@ -94,9 +93,13 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
     ######################################################################
 
-    def transitionProb( self, children, parents ):
+    def transitionProb( self, child, parents, parentOrder ):
         ndim = len( parents ) + 1
         pi = self.pis[ ndim ]
+        # Reshape pi's axes to match parent order
+        assert len( parents ) + 1 == pi.ndim
+        assert parentOrder.shape[ 0 ] == parents.shape[ 0 ]
+        pi = np.moveaxis( pi, np.arange( ndim ), np.hstack( ( parentOrder, ndim - 1 ) ) )
         return pi
 
     ######################################################################
@@ -107,27 +110,29 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
     ######################################################################
 
-    def multiplyTerms( self, terms, axes, ndim ):
+    @classmethod
+    def multiplyTerms( cls, terms ):
+        # Basically np.einsum but in log space
 
-        assert isinstance( terms, Iterable ), isinstance( axes, Iterable )
-        assert len( axes ) == len( terms )
-        for i, ( ax, term ) in enumerate( zip( axes, terms ) ):
-            assert isinstance( ax, Iterable )
-            assert len( ax ) == term.ndim, 'i: %d Ax: %s, term.shape: %s'%( i, str( ax ), str( term.shape ) )
+        assert isinstance( terms, Iterable )
+        for t in terms:
+            assert isinstance( t, Iterable )
 
         # Remove the empty terms
-        axes, terms = list( zip( *[ ( a, t ) for a, t in zip( axes, terms ) if term.size > 0 ] ) )
+        terms = [ t for t in terms if np.prod( t.shape ) > 1 ]
+
+        ndim = max( [ len( term.shape ) for term in terms ] )
+
+        axes = [ [ i for i, s in enumerate( t.shape ) if s != 1 ] for t in terms ]
 
         # Get the shape of the output
         shape = np.ones( ndim, dtype=int )
         for ax, term in zip( axes, terms ):
-            print( 'shape', shape )
-            print( 'ax', ax )
-            shape[ np.array( ax ) ] = term.shape
+            shape[ np.array( ax ) ] = term.squeeze().shape
 
-        # Make sure that the output shape is consistent with all of the axes
-        for ax, term in zip( axes, terms ):
-            assert np.all( shape[ np.array( ax ) ] == term.shape ), 'shape: %s, term.shape: %s'%( shape, term.shape )
+        totalElts = shape.prod()
+        if( totalElts > 1e8 ):
+            assert 0, 'Don\'t do this on a cpu!  Too many terms: %d'%( int( totalElts ) )
 
         # Build a meshgrid out of each of the terms over the right axes
         # and sum.  Doing it this way because np.einsum doesn't work
@@ -136,11 +141,10 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         ans = np.zeros( shape )
         for ax, term in zip( axes, terms ):
 
-            # Reshape the term to correspond to the axes
-            # If term.shape is (4,2) and ax is (0,3) -> (4,1,1,2)
-            newShape = np.ones( ndim, dtype=int )
-            newShape[ np.array( ax ) ] = term.shape
-            term = term.reshape( newShape )
+            ax = [ i for i, s in enumerate( term.shape ) if s != 1 ]
+
+            for _ in range( ndim - term.ndim ):
+                term = term[ ..., None ]
 
             # Build a meshgrid to correspond to the final shape and repeat
             # over axes that aren't in ax
@@ -149,60 +153,42 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
             ans += np.tile( term, reps )
 
-        # Squeeze the matrix and return the true axes that each axis spans
-        ans = np.squeeze( ans )
-        returnAxes = [ i for i, s in enumerate( shape ) if s != 1 ]
-
-        return ans, returnAxes
+        return ans
 
     ######################################################################
 
-    def integrate( self, integrand, integrandAxes, axes ):
+    @classmethod
+    def integrate( cls, integrand, axes ):
+        # Need adjusted axes because the relative axes in integrand change as we reduce
+        # over each axis
+        assert isinstance( axes, Iterable )
+        if( len( axes ) == 0 ):
+            return integrand
+
+        assert max( axes ) < integrand.ndim
         axes = np.array( axes )
-
-        # Make sure that all of the axes we are integrating over are valid
-        assert np.all( np.in1d( axes, np.array( integrandAxes ) ) ) == True
-
-        if( axes.size == 0 ):
-            return integrand, integrandAxes
-
-        if( integrand.size == 0 ):
-            return np.array( [] ), []
-
-        finalAxes = np.setdiff1d( np.array( integrandAxes ), np.array( axes ) )
-
-        # Make sure we integrate over the correct axes at each step
+        axes[ axes < 0 ] = integrand.ndim + axes[ axes < 0 ]
         adjustedAxes = np.array( sorted( axes ) ) - np.arange( len( axes ) )
         for ax in adjustedAxes:
             integrand = np.logaddexp.reduce( integrand, axis=ax )
-
-        assert len( integrand.shape ) == len( finalAxes ), 'integrand.shape: %s finalAxes: %s integrandAxes: %s axes: %s'%( integrand.shape, finalAxes, integrandAxes, axes )
-
-        return integrand, finalAxes
+        return integrand
 
     ######################################################################
 
     def uBaseCase( self, node, debug=True ):
 
         initialDist = self.pi0
-        initialDistAxes = ( 0, )
         dprint( 'initialDist:', initialDist, use=debug )
-        dprint( 'initialDistAxes:', initialDistAxes, use=debug )
 
         emission = self.emissionProb( node )
-        emissionAxes = ( 0, )
         dprint( 'emission:', emission, use=debug )
-        dprint( 'emissionAxes:', emissionAxes, use=debug )
 
-        newU, newUAxes = self.multiplyTerms( terms=( emission, initialDist ), \
-                                             axes=( emissionAxes, initialDistAxes ), \
-                                             ndim=1 )
+        newU = self.multiplyTerms( terms=( emission, initialDist ) )
         dprint( 'newU:', newU, use=debug )
         return newU
 
-    def vBaseCase( self, leaves, V, workspace ):
-        # Don't need to do anything because P( ∅ | ... ) = 1
-        return
+    def vBaseCase( self, node, debug=True ):
+        return np.zeros( self.K )
 
     ######################################################################
 
@@ -215,28 +201,39 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         fbsSize = len( self.fbs )
 
         for u, node in zip( newU, nodes ):
-            if( fbsSize == 0 ):
-                U[ node, : ] = u
-            else:
-                U[ node, :, 0: fbsSize + 1 ] = u
+            U[ node ] = u
 
     def updateV( self, nodes, edges, newV, V ):
-        goodEdgeMask = ~np.in1d( np.array( edges ), None )
-
-        _nodes = np.array( nodes )[ goodEdgeMask ]
-        _edges = np.array( edges )[ goodEdgeMask ]
-        _newV = np.array( newV )[ goodEdgeMask ]
 
         V_row, V_col, V_data = V
 
-        dataIndices = np.in1d( V_row, _nodes ) & np.in1d( V_col, _edges )
+        print( 'UPDATING V' )
+        print( 'nodes', nodes )
+        print( 'edges', edges )
+        print( 'newV', newV )
+        print( 'V_data', V_data )
 
-        fbsSize = len( self.fbs )
+        for node, edge, v in zip( nodes, edges, newV ):
+            if( edge is None ):
+                continue
 
-        if( np.any( dataIndices ) ):
-            if( fbsSize == 0 ):
-                V_data[ dataIndices, : ] = _newV
-            else:
-                V_data[ dataIndices, :, 0: fbsSize + 1 ] = _newV
+            dataIndices = np.in1d( V_row, node ) & np.in1d( V_col, edge )
+
+            print( 'dataIndices', dataIndices )
+            print( 'node', node )
+            print( 'edge', edge )
+            print( 'v', v )
+
+            for i, maskValue in enumerate( dataIndices ):
+
+                print( 'maskValue', maskValue )
+                print( 'i', i )
+                # Don't convert V_data to an np.array even though it makes this
+                # step faster because it messes up when we add fbs nodes
+                if( maskValue == True ):
+                    V_data[ i ] = v
+
+        print( 'finally, V_data is', V_data )
+
 
     ######################################################################
