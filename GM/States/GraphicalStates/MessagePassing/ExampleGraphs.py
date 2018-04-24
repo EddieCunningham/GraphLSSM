@@ -11,9 +11,6 @@ __all__ = [ 'graph1', \
             'cycleGraph1', \
             'cycleGraph2', \
             'cycleGraph3', \
-            'cycleGraph4', \
-            'cycleGraph5', \
-            'cycleGraph6', \
             'cycleGraph7', \
             'cycleGraph8' ]
 
@@ -113,6 +110,8 @@ def cycleGraph4():
 
     fbs = np.array( [ 0 ] )
 
+    assert 0, 'This graph has a feedback cycle'
+
     return graph, fbs
 
 def cycleGraph5():
@@ -127,6 +126,8 @@ def cycleGraph5():
 
     fbs = np.array( [ 0, 1, 2, 3, 4, 6 ] )
 
+    assert 0, 'This graph has a feedback cycle'
+
     return graph, fbs
 
 def cycleGraph6():
@@ -137,6 +138,8 @@ def cycleGraph6():
     graph.addEdge( parents=[ 2, 3 ], children=[ 0 ] )
 
     fbs = np.array( [ 0 ] )
+
+    assert 0, 'This graph has a feedback cycle'
 
     return graph, fbs
 

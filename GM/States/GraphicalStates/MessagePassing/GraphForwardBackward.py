@@ -21,30 +21,45 @@ def logEye( K ):
     return mat
 
 class GraphCategoricalForwardBackward( GraphFilter ):
+
     def __init__( self, K ):
         super( GraphCategoricalForwardBackward, self ).__init__()
         self.K = K
 
-    def aFBS( self, U, V, node, downEdge, debug=True  ):
-        # This should already be set when we generate the filter probs!
-        return U[ node ]
+    def fbsShape( self, node, totalDim ):
+        fbsOffset = self.fbs.tolist().index( node ) + 1
+        newShape = np.ones( totalDim + fbsOffset, dtype=int )
+        newShape[ 0 ] = self.K
+        newShape[ -1 ] = self.K
+        return newShape
+
+    def aFBS( self, U, V, node, downEdge, purpose, debug=True ):
+        totalDim = self.mates( node, edges=downEdge ).shape[ 0 ] + 1
+        if( purpose == 'U' ):
+            totalDim += 1
+        else:
+            assert purpose == 'V'
+
+        newShape = self.fbsShape( node, totalDim )
+
+        return np.eye( self.K ).reshape( newShape )
 
     def genFilterProbs( self ):
 
         # Initialize U and V
         U = []
         for node in self.nodes:
-            U.append( np.zeros( ( self.K, ) ) )
+            U.append( ( np.zeros( ( self.K, ) ), -1 ) )
 
         V_row = self.pmask.row
         V_col = self.pmask.col
         V_data = []
         for node in self.pmask.row:
-            V_data.append( np.zeros( ( self.K, ) ) )
+            V_data.append( ( np.zeros( ( self.K, ) ), -1 ) )
 
         # Invalidate all data elements
         for node in self.nodes:
-            U[ node ][ : ] = np.nan
+            U[ node ][ 0 ][ : ] = np.nan
             self.assignV( ( V_row, V_col, V_data ), node, np.nan, keepShape=True )
 
         # Initialize U and V for fbs nodes.  This is a special case because
@@ -52,12 +67,21 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         for i, fbs in enumerate( self.feedbackSets ):
 
             for node in fbs:
-                fbsIndex = self.fbs.tolist().index( node )
-                newShape = np.ones( fbsIndex )
-                newShape[ 0 ] = self.K
+
+                # # The shape for U depends on how many dimensions the transition
+                # # matrix for a child will have.  Want to start counting fbs nodes
+                # # on the next dim after that
+                totalDim = 1#self.mates( node ).shape[ 0 ] + 2
+                fbsOffset = self.fbs.tolist().index( node ) + 1
+
+                newShape = np.ones( fbsOffset, dtype=int )
+                # newShape[ 0 ] = self.K
                 newShape[ -1 ] = self.K
-                U[ node ] = np.eye( self.K ).reshape( newShape )
-                self.assignV( ( V_row, V_col, V_data ), node, np.zeros( ( self.K, self.K ) ).reshape( newShape ) )
+                # U[ node ] = np.eye( self.K ).reshape( newShape )
+                U[ node ] = ( np.zeros( newShape ), 0 )
+
+                # Shape doesn't really matter for V
+                self.assignV( ( V_row, V_col, V_data ), node, ( np.zeros( self.K ), 0 ) )
 
         return U, ( V_row, V_col, V_data )
 
@@ -100,13 +124,39 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         assert len( parents ) + 1 == pi.ndim
         assert parentOrder.shape[ 0 ] == parents.shape[ 0 ]
         pi = np.moveaxis( pi, np.arange( ndim ), np.hstack( ( parentOrder, ndim - 1 ) ) )
-        return pi
+
+        fbsOffset = lambda x: self.fbs.tolist().index( x ) + 1
+
+        # Check if there are nodes in [ child, *parents ] that are in the fbs.
+        # If there are, then move their axes
+        fbsIndices = [ fbsOffset( parent ) for parent in parents if parent in self.fbs ]
+        if( child in self.fbs ):
+            fbsIndices.append( fbsOffset( child ) )
+
+        if( len( fbsIndices ) > 0 ):
+            expandBy = max( fbsIndices )
+            for _ in range( expandBy ):
+                pi = pi[ ..., None ]
+
+            # If there are parents in the fbs, move them to the appropriate axes
+            for i, parent in enumerate( parents ):
+                if( parent in self.fbs ):
+                    pi = np.swapaxes( pi, i, fbsOffset( parent ) + ndim - 1 )
+
+            if( child in self.fbs ):
+                # If the child is in the fbs, then move it to the appropriate axis
+                pi = np.swapaxes( pi, ndim - 1, fbsOffset( child ) + ndim - 1 )
+
+            return ( pi, ndim )
+        return ( pi, -1 )
 
     ######################################################################
 
     def emissionProb( self, node, forward=False ):
         prob = self.L[ node ].reshape( ( -1, ) )
-        return prob
+        if( node in self.fbs ):
+            return ( prob, 0 )
+        return ( prob, -1 )
 
     ######################################################################
 
@@ -119,7 +169,28 @@ class GraphCategoricalForwardBackward( GraphFilter ):
             assert isinstance( t, Iterable )
 
         # Remove the empty terms
-        terms = [ t for t in terms if np.prod( t.shape ) > 1 ]
+        terms = [ t for t in terms if np.prod( t[ 0 ].shape ) > 1 ]
+
+        # Separate out where the feedback set axes start and get the largest fbsAxis.
+        # Need to handle case where ndim of term > all fbs axes
+        # terms, fbsAxesStart = list( zip( *terms ) )
+        fbsAxesStart = [ term[ 1 ] for term in terms ]
+        terms = [ term[ 0 ] for term in terms ]
+
+        if( max( fbsAxesStart ) != -1 ):
+            maxFBSAx = max( [ ax if ax != -1 else term.ndim for ax, term in zip( fbsAxesStart, terms ) ] )
+
+            if( maxFBSAx > 0 ):
+                # Pad extra dims at each term so that the fbs axes start the same way for every term
+                for i, ax in enumerate( fbsAxesStart ):
+                    if( ax == -1 ):
+                        for _ in range( maxFBSAx - terms[ i ].ndim + 1 ):
+                            terms[ i ] = terms[ i ][ ..., None ]
+                    else:
+                        for _ in range( maxFBSAx - ax ):
+                            terms[ i ] = np.expand_dims( terms[ i ], axis=ax )
+        else:
+            maxFBSAx = -1
 
         ndim = max( [ len( term.shape ) for term in terms ] )
 
@@ -153,17 +224,21 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
             ans += np.tile( term, reps )
 
-        return ans
+        return ans, maxFBSAx
 
     ######################################################################
 
     @classmethod
-    def integrate( cls, integrand, axes ):
+    def integrate( cls, integrand, axes, maxDim, ignoreFBSAxis=False ):
         # Need adjusted axes because the relative axes in integrand change as we reduce
         # over each axis
         assert isinstance( axes, Iterable )
         if( len( axes ) == 0 ):
+            if( ignoreFBSAxis is True ):
+                return integrand[ 0 ]
             return integrand
+
+        integrand, fbsAxisStart = integrand
 
         assert max( axes ) < integrand.ndim
         axes = np.array( axes )
@@ -171,13 +246,27 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         adjustedAxes = np.array( sorted( axes ) ) - np.arange( len( axes ) )
         for ax in adjustedAxes:
             integrand = np.logaddexp.reduce( integrand, axis=ax )
-        return integrand
+
+        # # Don't shift over fbs axes.
+        # # Shift maxDim - len( axes ) over by len( axes )
+        # for i in range( maxDim - len( axes ) ):
+        #     integrand = np.expand_dims( integrand, axis=i + maxDim - len( axes ) )
+
+        if( ignoreFBSAxis is True ):
+            return integrand
+
+        if( fbsAxisStart > -1 ):
+            fbsAxisStart -= len( adjustedAxes )
+            assert fbsAxisStart > -1
+
+        return integrand, fbsAxisStart
 
     ######################################################################
 
     def uBaseCase( self, node, debug=True ):
+        dprint( 'base case for:', node, use=debug )
 
-        initialDist = self.pi0
+        initialDist = ( self.pi0, -1 )
         dprint( 'initialDist:', initialDist, use=debug )
 
         emission = self.emissionProb( node )
@@ -207,11 +296,11 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
         V_row, V_col, V_data = V
 
-        print( 'UPDATING V' )
-        print( 'nodes', nodes )
-        print( 'edges', edges )
-        print( 'newV', newV )
-        print( 'V_data', V_data )
+        # print( 'UPDATING V' )
+        # print( 'nodes', nodes )
+        # print( 'edges', edges )
+        # print( 'newV', newV )
+        # print( 'V_data', V_data )
 
         for node, edge, v in zip( nodes, edges, newV ):
             if( edge is None ):
@@ -219,21 +308,21 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
             dataIndices = np.in1d( V_row, node ) & np.in1d( V_col, edge )
 
-            print( 'dataIndices', dataIndices )
-            print( 'node', node )
-            print( 'edge', edge )
-            print( 'v', v )
+            # print( 'dataIndices', dataIndices )
+            # print( 'node', node )
+            # print( 'edge', edge )
+            # print( 'v', v )
 
             for i, maskValue in enumerate( dataIndices ):
 
-                print( 'maskValue', maskValue )
-                print( 'i', i )
+                # print( 'maskValue', maskValue )
+                # print( 'i', i )
                 # Don't convert V_data to an np.array even though it makes this
                 # step faster because it messes up when we add fbs nodes
                 if( maskValue == True ):
                     V_data[ i ] = v
 
-        print( 'finally, V_data is', V_data )
+        # print( 'finally, V_data is', V_data )
 
 
     ######################################################################

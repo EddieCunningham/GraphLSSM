@@ -3,6 +3,65 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from functools import reduce
 from collections import Iterable
+import itertools
+import inspect
+
+
+__INDENT = 0
+
+def debugWorkFlow( function ):
+
+    def wrapper( *args, **kwargs  ):
+
+        global __INDENT
+
+        tab = '        '
+
+        ind = tab * __INDENT
+        __INDENT += 1
+
+        sig = inspect.signature( function )
+
+        namedArgs = []
+        skip = [ 'self', 'cls', 'U', 'V', 'debug', 'nodeTransition' ]
+
+        for name, val in zip( sig.parameters, args ):
+            if( name in skip ):
+                continue
+            namedArgs.append( ( name, val ) )
+
+        for name, val in kwargs.items():
+            if( name in skip ):
+                continue
+            namedArgs.append( ( name, val ) )
+
+        print( ind, '------- Start %s -------'%function.__name__, flush=True )
+
+        print( ind, 'Computing', function.__name__, 'with args:', flush=True )
+        for name, val in namedArgs:
+            if( isinstance( val, np.ndarray ) ):
+                val = str( val ).replace( '\n', '\n' + ind )
+            print( ind, name, ':\n', ind, val, flush=True )
+
+        print( ind, '------- Compute %s -------'%function.__name__, flush=True )
+
+        returnVals, printVals = function( *args, **kwargs )
+
+        for key, val in printVals.items():
+            if( isinstance( val, np.ndarray ) ):
+                val = str( val ).replace( '\n', '\n' + ind )
+            print( ind, key, ':\n', ind, val, flush=True )
+
+        print( ind, '------- End %s -------'%function.__name__, flush=True )
+
+        __INDENT -= 1
+
+        if( function.__name__ != 'filter' and function.__name__ != '_nodeJoint' and function.__name__ != '_nodeJointForFBS' ):
+            assert isinstance( returnVals[ 0 ], np.ndarray ) and np.any( np.isnan( returnVals[ 0 ] ) ) == False
+
+        return returnVals
+
+    return wrapper
 
 class GraphFilter( GraphMessagePasser ):
     # Base message passing class for hyper graphs.
@@ -58,7 +117,7 @@ class GraphFilter( GraphMessagePasser ):
             if( keepShape is False ):
                 V_data[ i ] = val
             else:
-                V_data[ i ][ : ] = val
+                V_data[ i ][ 0 ][ : ] = val
 
     def vDataFromMask( self, V, mask ):
         _, _, V_data = V
@@ -102,78 +161,94 @@ class GraphFilter( GraphMessagePasser ):
         return np.any( np.in1d( self.fbs, node ) )
 
     @classmethod
+    @debugWorkFlow
     def extendAxes( cls, term, targetAxis, maxDim ):
-        # Assuming term has the 1 + F dimensions, where F is the size of the relevant feedback set
-        # will align the first axis with target axis and the axes along the last F axes with
-        # the maxDim : maxDim + F axes
+        # Push the first axis out to targetAxis, but don't change
+        # the axes past maxDim
 
-        dprint( 'shape of term:', term.shape, use=True )
+        term, fbsAxisStart = term
+
+        originalShape = term.shape
 
         # Add axes before the fbsAxes
         for _ in range( maxDim - targetAxis - 1 ):
             term = np.expand_dims( term, 1 )
+            if( fbsAxisStart != -1 ):
+                fbsAxisStart += 1
 
         # Prepend axes
         for _ in range( targetAxis ):
             term = np.expand_dims( term, 0 )
+            if( fbsAxisStart != -1 ):
+                fbsAxisStart += 1
 
-        dprint( 'new shape of term:', term.shape, use=True )
+        returnVals = ( term, fbsAxisStart )
+        printVals = {
+            'originalShape': originalShape,
+            'returnVals[0].shape': returnVals[ 0 ].shape,
+            'returnVals[1]': returnVals[ 1 ]
+        }
 
-        return term
+        printVals = {}
+
+        return returnVals, printVals
 
     ######################################################################
-
-    def latentStateSize( self, U, V, node ):
-        return U[ node ].shape[ 0 ]
 
     def nParents( self, node ):
         return self.parents( node ).shape[ 0 ]
 
+    def nChildren( self, node ):
+        return self.children( node ).shape[ 0 ]
+
     def uData( self, U, node ):
         return U[ node ]
 
-    def vData( self, V, node, edges=None, debug=False ):
+    def vData( self, V, node, edges=None, ndim=None, debug=False ):
         V_row, V_col, V_data = V
 
         if( self.inFBS( node ) ):
+            # assert ndim is not None
             # If node is part of the skip array (if its in the fbs)
-            ans = np.array( [] )
+            ans = [ ( np.zeros( self.K ), 0 ) ]
+            # ans = np.zeros( ( self.K, self.K ) ).reshape( self.fbsShape( node, ndim ) )
         elif( ~np.any( np.in1d( V_row, node ) ) ):
             # If the node isn't in the V object (node is a leaf)
-            ans = np.array( [] )
+            ans = [ ( np.array( [] ), -1 ) ]
         elif( edges is None ):
             # Return the data over all down edges
             ans = self.vDataFromMask( V, np.in1d( V_row, node ) )
-            # ans = V_data[ np.in1d( V_row, node ) ]
         elif( isinstance( edges, Iterable ) and len( edges ) > 0 ):
             # Return over only certain edges
             mask = np.in1d( V_row, node )
             for e in edges:
                 mask &= np.in1d( V_col, e )
             ans = self.vDataFromMask( V, mask )
-            # ans = V_data[ mask ]
         elif( isinstance( edges, Iterable ) and len( edges ) == 0 ):
             # This happens when we're not passed a down edge.  In this
-            # case, we should return an invalid v value, not a leaf v value
-            return np.array( [] )
+            # case, we should return an empty v value, not a leaf v value
+            return [ ( np.array( [] ), -1 ) ]
         else:
             # Only looking at one edge
             ans = self.vDataFromMask( V, np.in1d( V_col, edges ) )
-            # ans = V_data[ np.in1d( V_col, edges ) ]
 
         if( len( ans ) == 0 ):
-        # if( ans.size == 0 ):
             # If we're looking at a leaf, return all 0s
             nVals = 1 if edges is None else len( edges )
-            ans = np.zeros( ( nVals, self.K ) )
+            ans = []
+            for _ in range( nVals ):
+                ans.append( ( np.zeros( self.K ), -1 ) )
 
-        assert sum( [ 0 if ~np.any( np.isnan( v ) ) else 1 for v in ans ] ) == 0, ans
+        assert sum( [ 0 if ~np.any( np.isnan( v ) ) else 1 for v, _ in ans ] ) == 0, ans
 
         return ans
 
     ######################################################################
 
-    def aFBS( self, U, V, node, downEdge, debug=True ):
+    def fbsShape( self, node, totalDim ):
+        assert 0
+
+    def aFBS( self, U, V, node, downEdge, purpose, debug=True ):
         # Compute a when node is in the feedback set.
         # This case is different from the regular one because we are treating
         # the node like it is cut from the graph.
@@ -182,7 +257,10 @@ class GraphFilter( GraphMessagePasser ):
         # with the conditioning
         assert 0
 
-    def a( self, U, V, node, downEdge, debug=True ):
+    ######################################################################
+
+    @debugWorkFlow
+    def a( self, U, V, node, downEdge, purpose, debug=True ):
         # Compute P( Y \ !( e, n )_y, n_x )
         #
         # Probability of all emissions that can be reached without going down downEdge from node.
@@ -198,34 +276,43 @@ class GraphFilter( GraphMessagePasser ):
         #   - U, V     : ans arrays
         #   - node     : n
         #   - downEdge : e
+        #   - purpose  : Whether this is called for U or V.  This matters because in U we need the fbs axes to start
+        #                after the dims of the parents + child for a node, but for V we only need them to start after
+        #                the dims of the parents
         #
         # Outputs:
         #   - term     : shape should be ( K, ) * ( F + 1 ) where K is the latent state size and F is the size of the fbs
 
-        dprint( '\n\nComputing a for', node, 'at downEdge', downEdge, use=debug )
-
         if( node in self.fbs ):
-            return self.aFBS( U, V, node, downEdge, debug=debug )
+            # term = self.aFBS( U, V, node, downEdge, purpose=purpose, debug=debug )
+            term = ( np.array( [] ), 0 )
+            return term, { 'term[0].shape': term[ 0 ].shape, 'term[1]': term[ 1 ] }
 
-        # Get the U data for node
+        # U over node
+        # V over node for each down edge that isn't downEdge
+        # Multiply U and all Vs
         u = self.uData( U, node )
-        dprint( 'u:\n', u, use=debug )
+        vs = self.vData( V, node, edges=self.downEdges( node, skipEdges=downEdge ) )
+        print( u )
+        print( vs )
+        term = self.multiplyTerms( terms=( u, *vs ) )
 
-        # Get the V data over all down edges except downEdge
-        v = self.vData( V, node, edges=self.downEdges( node, skipEdges=downEdge ) )
-        dprint( 'v:\n', v, use=debug )
+        returnVals = term
+        printVals = {
+            'u[0].shape': u[ 0 ].shape,
+            'u[1]': u[ 1 ],
+            'vs[0].shape': [ v[ 0 ].shape for v in vs ],
+            'vs[1]': [ v[ 1 ] for v in vs ],
+            'term[0].shape': term[ 0 ].shape,
+            'term[1]': term[ 1 ]
+        }
 
-        # Multiply U and all the Vs
-        term = self.multiplyTerms( terms=( u, *v ) )
-        dprint( 'term:\n', term, use=debug )
-
-        assert isinstance( term, np.ndarray ) and np.any( np.isnan( term ) ) == False
-
-        return term
+        return returnVals, printVals
 
     ######################################################################
 
-    def b( self, U, V, node, debug=True ):
+    @debugWorkFlow
+    def b( self, U, V, node, purpose, debug=True ):
         # Compute P( n_y, Y \ ↑( n )_y | ↑( n )_x )
         #
         # Probability of all emissions that can be reached without going up node's upEdge
@@ -244,40 +331,61 @@ class GraphFilter( GraphMessagePasser ):
         #
         # Return array should be of size ( K, ) *  N where K is the latent state size
         # and N is the number of parents.
-        dprint( '\n\nComputing b for', node, use=debug )
 
         parents, parentOrder = self.parents( node, getOrder=True )
-        dprint( 'parents:\n', parents, use=debug )
-        totalDim = parents.shape[ 0 ] + 1
+        nParents = parents.shape[ 0 ]
 
-        # Get the transition matrix between node and parents
+        # Transition prob to node
+        # Emission prob of node (aligned on last axis)
         nodeTransition = self.transitionProb( node, parents, parentOrder )
-        dprint( 'nodeTransition:\n', nodeTransition, use=debug )
 
-        # Get the emission vector for node.  Align on laslt axis
         nodeEmission = self.emissionProb( node )
-        nodeEmission = self.extendAxes( nodeEmission, totalDim - 1, totalDim )
-        dprint( 'nodeEmission:\n', nodeEmission, use=debug )
+        if( node not in self.fbs ):
+            nodeEmission = self.extendAxes( nodeEmission, nParents, nParents + 1 )
+        # else:
+        #     nodeEmission = ( nodeEmission, 0 )
+            # fbsOffset = self.fbs.tolist().index( node ) + 1
+            # newShape = np.ones( nParents + 1 + fbsOffset, dtype=int )
+            # newShape[ -1 ] = self.K
+            # nodeEmission.reshape( newShape )
 
-        # Get the V data over all down edges from node.  Align on last axis
-        v = self.vData( V, node )
-        v = [ self.extendAxes( _v, totalDim - 1, totalDim ) for _v in v ]
-        dprint( 'v:\n', v, use=debug )
+        # V over node for all down edges (aligned on last axis)
+        # totalDim = nParents + 1 if purpose == 'U' else nParents
+        vs = self.vData( V, node )
+        if( node not in self.fbs ):
+            vs = [ self.extendAxes( v, nParents, nParents + 1 ) for v in vs ]
+        else:
+            vs = []
 
         # Multiply together the transition, emission and Vs
-        integrand = self.multiplyTerms( terms=( nodeEmission, *v, nodeTransition ) )
-        dprint( 'integrand:\n', integrand, use=debug )
-
+        # Integrate over node's (last) axis unless node is in the fbs
         # Integrate over the node's latent states which is last axis
-        term = self.integrate( integrand, axes=[ totalDim - 1 ] )
-        dprint( 'term:\n', term, use=debug )
+        integrand = self.multiplyTerms( terms=( nodeTransition, nodeEmission, *vs ) )
+        intAxes = [ nParents ] if node not in self.fbs else []
+        term = self.integrate( integrand, axes=intAxes, maxDim=nParents + 1 )
 
-        assert isinstance( term, np.ndarray ) and np.any( np.isnan( term ) ) == False
+        returnVals = term
+        printVals = {
+            'parents': parents,
+            'parentOrder': parentOrder,
+            'nodeTransition[0].shape': nodeTransition[ 0 ].shape,
+            'nodeTransition[ 1 ]': nodeTransition[ 1 ],
+            'nodeEmission[ 0 ].shape': nodeEmission[ 0 ].shape,
+            'nodeEmission[ 1 ]': nodeEmission[ 1 ],
+            'vs[0].shape': [ v[ 0 ].shape for v in vs ],
+            'vs[1]': [ v[ 1 ] for v in vs ],
+            'integrand[0].shape': integrand[ 0 ].shape,
+            'integrand[1]': integrand[ 1 ],
+            'intAxes': intAxes,
+            'term[0].shape': term[ 0 ].shape,
+            'term[1]': term[ 1 ]
+        }
 
-        return term
+        return returnVals, printVals
 
     ######################################################################
 
+    @debugWorkFlow
     def u( self, U, V, node, debug=True ):
         # Compute P( ↑( n )_y, n_x )
         #
@@ -301,55 +409,72 @@ class GraphFilter( GraphMessagePasser ):
         #   - Probability of all emissions that can be reached down every siblings down branches
         #
         # Return array should be of size ( K, ) where K is the latent state size
-        dprint( '\n\nComputing u for', node, use=debug )
 
-        upEdge = self.upEdges( node )
         parents, parentOrder = self.parents( node, getOrder=True )
         siblings = self.siblings( node )
-        dprint( 'upEdge:\n', upEdge, use=debug )
-        dprint( 'parents:\n', parents, use=debug )
-        dprint( 'siblings:\n', siblings, use=debug )
 
         nParents = parents.shape[ 0 ]
 
-        # Get the transition matrix between node and parents
+        # Transition prob to node
         nodeTransition = self.transitionProb( node, parents, parentOrder )
-        dprint( 'nodeTransition:\n', np.exp( nodeTransition ), use=debug )
 
-        # Get the a values for all parents (skip this nodes up edge)
-        parentTerms = [ self.a( U, V, p, upEdge, debug=debug ) for p in parents ]
-        parentTerms = [ self.extendAxes( p, i, nParents ) for p, i in zip( parentTerms, parentOrder ) ]
-        dprint( 'parentTerms:\n', parentTerms, use=debug )
+        # A over each parent (aligned according to ordering of parents)
+        parentAs = [ self.a( U, V, p, self.upEdges( node ), purpose='U', debug=debug ) for p in parents ]
+        parentAs = [ self.extendAxes( a, i, nParents ) for a, i in zip( parentAs, parentOrder ) if a[ 0 ].size > 0 ]
 
-        # Get the b values for all siblings.  These are all over the parents' axes
-        if( len( siblings ) > 0 ):
-            siblingTerms = [ self.b( U, V, s, debug=debug ) for s in siblings ]
-        else:
-            siblingTerms = np.array( [] )
-        dprint( 'siblingTerms:\n', siblingTerms, use=debug )
+        # B over each sibling
+        siblingBs = [ self.b( U, V, s, purpose='U', debug=debug ) for s in siblings ]
 
         # Multiply all of the terms together
-        integrand = self.multiplyTerms( terms=( *siblingTerms, *parentTerms, nodeTransition ) )
-        dprint( 'integrand:\n', integrand, use=debug )
-
+        # Integrate out the parents (unless they are in the fbs)
         # Integrate out the parent latent states
-        nodeTerms = self.integrate( integrand, axes=list( range( nParents ) ) )
-        dprint( 'nodeTerms:\n', nodeTerms, use=debug )
+        integrand = self.multiplyTerms( terms=( nodeTransition, *parentAs, *siblingBs ) )
+        intAxes = [ i for i, parent in zip( parentOrder, parents ) if parent not in self.fbs ]
+        nodeTerms = self.integrate( integrand, axes=intAxes, maxDim=nParents )
 
-        # Get the emission vector for node
+        # Squeeze all of the left most dims.  This is because if a parent is in
+        # the fbs and we integrate out the other one, there will be an empty dim
+        # remaining
+        while( nodeTerms[ 0 ].shape[ 0 ] == 1 ):
+            nodeTerms = list( nodeTerms )
+            nodeTerms[ 0 ] = nodeTerms[ 0 ].squeeze( axis=0 )
+            if( nodeTerms[ 1 ] != -1 ):
+                nodeTerms[ 1 ] -= 1
+            nodeTerms = tuple( nodeTerms )
+
+        # Emission for this node
         nodeEmission = self.emissionProb( node )
-        dprint( 'nodeEmission:\n', nodeEmission, use=debug )
 
         # Combine this nodes emission with the rest of the calculation
         newU = self.multiplyTerms( terms=( nodeTerms, nodeEmission ) )
-        dprint( 'newU:\n', newU, use=debug )
 
-        assert isinstance( newU, np.ndarray ) and np.any( np.isnan( newU ) ) == False
+        returnVals = newU
+        printVals = {
+            'parents': parents,
+            'parentOrder': parentOrder,
+            'siblings': siblings,
+            'nodeTransition[0].shape': nodeTransition[ 0 ].shape,
+            'nodeTransition[ 1 ]': nodeTransition[ 1 ],
+            'parentAs[0].shape': [ a[ 0 ].shape for a in parentAs ],
+            'parentAs[1]': [ a[ 1 ] for a in parentAs ],
+            'siblingBs[0].shape': [ b[ 0 ].shape for b in siblingBs ],
+            'siblingBs[1]': [ b[ 1 ] for b in siblingBs ],
+            'integrand[0].shape': integrand[ 0 ].shape,
+            'integrand[ 1 ]': integrand[ 1 ],
+            'intAxes': intAxes,
+            'nodeTerms[0].shape': nodeTerms[ 0 ].shape,
+            'nodeTerms[ 1 ]': nodeTerms[ 1 ],
+            'nodeEmission[0].shape': nodeEmission[ 0 ].shape,
+            'nodeEmission[1]': nodeEmission[ 1 ],
+            'newU[ 0 ].shape': newU[ 0 ].shape,
+            'newU[ 1 ]': newU[ 1 ]
+        }
 
-        return newU
+        return returnVals, printVals
 
     ######################################################################
 
+    @debugWorkFlow
     def v( self, U, V, node, edge, debug=True ):
         # Compute P( !( n, e )_y | n_x )
         #
@@ -367,46 +492,60 @@ class GraphFilter( GraphMessagePasser ):
         #   - Probability of all emissions that can be reached down every child's down branches
         #
         # Return array should be of size ( K, ) where K is the latent state size
-        dprint( '\n\nComputing v for', node, 'at edge', edge, use=debug )
 
         mates, mateOrder = self.mates( node, getOrder=True, edges=edge )
         children = self.children( node, edges=edge )
         parents, parentOrder = self.parents( children[ 0 ], getOrder=True )
-        dprint( 'mates:\n', mates, use=debug )
-        dprint( 'children:\n', children, use=debug )
 
-        nMates = mates.shape[ 0 ]
-        nParents = mates.shape[ 0 ] + 1
+        nParents = parents.shape[ 0 ]
 
-        # Get the a values for each of the mates (skip edge)
-        if( len( mates ) > 0 ):
-            mateTerms = [ self.a( U, V, m, edge, debug=debug ) for m in mates ]
-            mateTerms = [ self.extendAxes( m, i, nParents ) for m, i in zip( mateTerms, mateOrder ) ]
-        else:
-            mateTerms = np.array( [] )
-        dprint( 'mateTerms:\n', mateTerms, use=debug )
-        dprint( 'mateTerms shapes:\n', [ m.shape for m in mateTerms ], use=debug )
+        # A values over each mate (aligned according to ordering of mates)
+        mateAs = [ self.a( U, V, m, edge, purpose='V', debug=debug ) for m in mates ]
+        mateAs = [ self.extendAxes( a, i, nParents ) for a, i in zip( mateAs, mateOrder ) if a[ 0 ].size > 0  ]
 
-        # Get the b values for each of the children.  These are all over the parents' axes
-        childTerms = [ self.b( U, V, c, debug=debug ) for c in children ]
-        dprint( 'childTerms:\n', childTerms, use=debug )
-        dprint( 'childTerm shapes:\n', [ c.shape for c in childTerms ], use=debug )
+        # B over each child
+        childBs = [ self.b( U, V, c, purpose='V', debug=debug ) for c in children ]
 
-        # Combine the terms
-        integrand = self.multiplyTerms( terms=( *childTerms, *mateTerms ) )
-        dprint( 'integrand:\n', integrand, use=debug )
-        dprint( 'integrand.shape:\n', integrand.shape, use=debug )
+        # Multiply all of the terms together
+        integrand = self.multiplyTerms( terms=( *childBs, *mateAs ) )
 
-        intAxes = mateOrder
-        dprint( 'intAxes:\n', intAxes, use=debug )
+        # Integrate out the mates.  It is important to note that we even integrate
+        # over fbs nodes.  This is because when we're computing V, we've conditioned on
+        # the fbs nodes.  However for the computation of b, we condition on the different
+        # configurations of the fbs nodes.  So we integrate over all possible values
+        # for the fbs nodes (which is why a is 2d for the fbs mates).
+        intAxes = [ i for i, mate in zip( mateOrder, mates ) if mate not in self.fbs ]
 
         # Integrate out the mates latent states
-        newV = self.integrate( integrand, axes=intAxes )
-        dprint( 'newV:\n', newV, use=debug )
+        newV = self.integrate( integrand, axes=intAxes, maxDim=nParents )
 
-        assert isinstance( newV, np.ndarray ) and np.any( np.isnan( newV ) ) == False
+        # Squeeze all of the left most dims.  This is because if a parent is in
+        # the fbs and we integrate out the other one, there will be an empty dim
+        # remaining
+        while( newV[ 0 ].shape[ 0 ] == 1 ):
+            newV = list( newV )
+            newV[ 0 ] = newV[ 0 ].squeeze( axis=0 )
+            if( newV[ 1 ] != -1 ):
+                newV[ 1 ] -= 1
+            newV = tuple( newV )
 
-        return newV
+        returnVals = newV
+        printVals = {
+            'mates': mates,
+            'mateOrder': mateOrder,
+            'children': children,
+            'mateAs[0].shape': [ a[ 0 ].shape for a in mateAs ],
+            'mateAs[1]': [ a[ 1 ] for a in mateAs ],
+            'childBs[0].shape': [ b[ 0 ].shape for b in childBs ],
+            'childBs[1]': [ b[ 1 ] for b in childBs ],
+            'integrand[0].shape': integrand[ 0 ].shape,
+            'integrand[1]': integrand[ 1 ],
+            'intAxes': intAxes,
+            'newV[ 0 ].shape': newV[ 0 ].shape,
+            'newV[ 1 ]': newV[ 1 ]
+        }
+
+        return returnVals, printVals
 
     ######################################################################
 
@@ -416,10 +555,13 @@ class GraphFilter( GraphMessagePasser ):
 
         dprint( '\n\nComputing U for', nodes, use=debug )
 
-        if( baseCase ):
-            newU = [ self.uBaseCase( node, debug=debug ) for node in nodes ]
-        else:
-            newU = [ self.u( U, V, node, debug=debug ) for node in nodes ]
+        newU = []
+        for node in nodes:
+            if( self.nParents( node ) == 0 ):
+                u = self.uBaseCase( node, debug=debug )
+            else:
+                u = self.u( U, V, node, debug=debug )
+            newU.append( u )
 
         self.updateU( nodes, newU, U )
 
@@ -429,10 +571,15 @@ class GraphFilter( GraphMessagePasser ):
 
         dprint( '\n\nComputing V for', nodes, 'at edges', edges, use=debug )
 
-        if( baseCase ):
-            newV = [ self.vBaseCase( node, debug=debug ) for node in nodes ]
-        else:
-            newV = [ self.v( U, V, n, e, debug=debug ) for n, e in zip( nodes, edges ) ]
+        newV = []
+        for node, edge in zip( nodes, edges ):
+            if( self.nChildren( node ) == 0 ):
+                assert edge == None
+                v = self.vBaseCase( node, debug=debug )
+            else:
+                assert edge is not None
+                v = self.v( U, V, node, edge, debug=debug )
+            newV.append( v )
 
         self.updateV( nodes, edges, newV, V )
 
@@ -441,6 +588,7 @@ class GraphFilter( GraphMessagePasser ):
 
     ######################################################################
 
+    @debugWorkFlow
     def filter( self ):
 
         workspace = self.genWorkspace()
@@ -462,82 +610,112 @@ class GraphFilter( GraphMessagePasser ):
         # at any extended smoothed prob
         self.messagePassing( self.uFilter, self.vFilter, **kwargs )
 
-        dprint( '\n\n------------\n\n', use=True )
+        returnVals = ( U, V )
+        printVals = {
+            'U[0].shape': [ ( n, u[ 0 ].shape ) for n, u in enumerate( U ) ],
+            'U[1]': [ ( n, u[ 1 ] ) for n, u in enumerate( U ) ],
+            'V[0].shape': [ ( n, e, v[ 0 ].shape ) for n, e, v in zip( *V ) ],
+            'V[1].shape': [ ( n, e, v[ 1 ] ) for n, e, v in zip( *V ) ]
+        }
 
-        dprint( 'U\n', use=True )
-        for u in U:
-            dprint( u, use=True )
-
-        dprint( '\n\n------------\n\n', use=True )
-
-        dprint( 'V\n', use=True )
-        for v in V[ 2 ]:
-            dprint( v, use=True )
-
-        dprint( '\n\n------------\n\n', use=True )
-
-
-        return U, V
+        return returnVals, printVals
 
     ######################################################################
 
+    @debugWorkFlow
     def _fullJoint( self, U, V, node, debug=True ):
         # P( x, x_{feedback set}, Y )
 
         parents, parentOrder = self.parents( node, getOrder=True )
 
         u = self.uData( U, node )
-        dprint( 'u:\n', u, use=debug )
 
-        v = self.vData( V, node )
-        v = [ self.extendAxes( _v, 0, 1 ) for _v in v ]
-        dprint( 'v:\n', v, use=debug )
+        vs = self.vData( V, node )
+        vs = [ self.extendAxes( v, 0, 1 ) for v in vs ]
 
-        joint =  self.multiplyTerms( terms=( u, *v ) )
-        dprint( 'joint:\n', joint, use=debug )
-        return joint
+        fullJoint =  self.multiplyTerms( terms=( u, *vs ) )
 
+        returnVals = fullJoint
+        printVals = {
+            'u[0].shape': u[ 0 ].shape,
+            'u[1]': u[ 1 ],
+            'vs[0].shape': [ v[ 0 ].shape for v in vs ],
+            'vs[1]': [ v[ 1 ] for v in vs ],
+            'fullJoint[0].shape': fullJoint[ 0 ].shape,
+            'fullJoint[1]': fullJoint[ 1 ]
+        }
+
+        return returnVals, printVals
+
+    ######################################################################
+
+    @debugWorkFlow
     def _nodeJointForFBS( self, U, V, node, debug=True ):
-        # If node is a root, get a child and if it is a leaf, get a parent
-        if( self.nParents( node ) == 0 ):
-            useNode = self.children( node )[ 0 ]
-        else:
-            useNode = self.parents( node )[ 0 ]
+        # P( x, Y ) for a fbs node
+
+        # Get any node in this graph that isn't in the fbs
+        useNode = None
+        for _node in itertools.chain( self.parents( node ), self.mates( node ), self.children( node ), self.siblings( node ) ):
+            if( not( _node in self.fbs ) ):
+                useNode = _node
+                break
+
+        assert useNode is not None, 'fuq'
 
         joint = self._fullJoint( U, V, useNode, debug=debug )
-        dprint( 'joint', joint, use=debug )
 
-        fbsIndex = self.fbsIndex.tolist().index( node )
-        intAxes = np.setdiff1d( np.arange( self.fbs.shape[ 0 ] + 1 ), fbsIndex + 1 )
-        dprint( 'intAxes', intAxes, use=debug )
+        fbsIndex = self.fbs.tolist().index( node )
+        intAxes = np.setdiff1d( np.arange( joint[ 0 ].ndim ), fbsIndex + 1 )
 
         # Integration axes are all axes but node
-        intJoint = self.integrate( joint, axes=intAxes )
-        print( '\n\n\n\n\n' )
-        dprint( 'intJoint:\n', intJoint, '->', np.logaddexp.reduce( intJoint ), use=debug )
-        print( '\n\n\n\n\n' )
-        return intJoint
+        intJoint = self.integrate( joint, axes=intAxes, maxDim=self.nParents( useNode ), ignoreFBSAxis=True )
 
+        returnVals = intJoint
+        printVals = {
+            'useNode': useNode,
+            'joint[0].shape': joint[ 0 ].shape,
+            'joint[1]': joint[ 1 ],
+            'intAxes': intAxes,
+            'intJoint.shape': intJoint.shape
+        }
+
+        return returnVals, printVals
+
+    @debugWorkFlow
     def _nodeJoint( self, U, V, node, debug=True ):
         # P( x, Y )
 
         if( node in self.fbs ):
-            return self._nodeJointForFBS( U, V, node, debug=debug )
+            intJoint = self._nodeJointForFBS( U, V, node, debug=debug )
+            printVals = {
+                'intJoint.shape': intJoint.shape
+            }
+        else:
+            joint = self._fullJoint( U, V, node, debug=debug )
+            intAxes = list( range( 1, joint[ 0 ].ndim ) )
+            intJoint = self.integrate( joint, axes=intAxes, maxDim=self.nParents( node ), ignoreFBSAxis=True )
+            printVals = {
+                'joint[0].shape': joint[ 0 ].shape,
+                'joint[1]': joint[ 1 ],
+                'intAxes': intAxes,
+                'intJoint.shape': intJoint.shape
+            }
 
-        joint = self._fullJoint( U, V, node, debug=debug )
-        dprint( 'joint', joint, use=debug )
+        returnVals = intJoint
 
-        intAxes = list( range( 1, self.fbs.shape[ 0 ] + 1 ) )
-        dprint( 'intAxes', intAxes, use=debug )
+        return returnVals, printVals
 
-        intJoint = self.integrate( joint, axes=intAxes )
-        print( '\n\n\n\n\n' )
-        dprint( 'intJoint:\n', intJoint, '->', np.logaddexp.reduce( intJoint ), use=debug )
-        print( '\n\n\n\n\n' )
-        return intJoint
+    ######################################################################
+
+    def nodeJoint( self, U, V, nodes ):
+        # P( x, Y )
+        return [ self._nodeJoint( U, V, node ) for node in nodes ]
+
+    ######################################################################
 
     def _jointParentChild( self, U, V, node, debug=True ):
         # P( x_c, x_p1..pN, Y )
+        dprint( '\n\nComputing joint parent child for:\n', node, use=debug )
 
         siblings = self.siblings( node )
         parents, parentOrder = self.parents( node, getOrder=True )
@@ -548,24 +726,35 @@ class GraphFilter( GraphMessagePasser ):
 
         # Down to this node
         nodeTransition = self.transitionProb( node, parents, parentOrder )
+        dprint( 'nodeTransition:\n', nodeTransition, use=debug )
+
         nodeEmission = self.emissionProb( node )
         nodeEmission = self.extendAxes( nodeEmission, totalDim - 1, totalDim )
+        dprint( 'nodeEmission:\n', nodeEmission, use=debug )
 
         # Out from each sibling
-        siblingTerms = [ self.b( U, V, s, debug=debug )[ 0 ] for s in siblings ]
+        siblingTerms = [ self.b( U, V, s, purpose='U', debug=debug ) for s in siblings ]
+        dprint( 'siblingTerms:\n', siblingTerms, use=debug )
 
         # Out from each parent
-        parentTerms = [ self.a( U, V, p, upEdge, debug=debug ) for p in parents ]
-        parentTerms = [ self.extendAxes( p, i, totalDim ) for p, i in zip( parentTerms, parentOrder ) ]
+        parentTerms = [ self.a( U, V, p, upEdge, purpose='U', debug=debug ) for p in parents ]
+        parentTerms = [ self.extendAxes( p, i, totalDim - 1 ) for p, i in zip( parentTerms, parentOrder ) ]
+        dprint( 'parentTerms:\n', parentTerms, use=debug )
 
         # Down this node
         v = self.vData( V, node )
         v = [ self.extendAxes( _v, totalDim - 1, totalDim ) for _v in v ]
+        dprint( 'v:\n', v, use=debug )
 
-        return self.multiplyTerms( terms=( *parentTerms, *siblingTerms, *v, nodeTransition, nodeEmission ) )
+        jointParentChild = self.multiplyTerms( terms=( *parentTerms, *siblingTerms, *v, nodeTransition, nodeEmission ) )
+        dprint( 'jointParentChild:\n', jointParentChild, use=debug )
+        dprint( 'jointParentChild.shape:\n', jointParentChild.shape, use=debug )
+
+        return jointParentChild
 
     def _jointParents( self, U, V, node, debug=True ):
         # P( x_p1..pN, Y )
+        dprint( '\n\nComputing joint parent for:\n', node, use=debug )
 
         parents, parentOrder = self.parents( node, getOrder=True )
         siblings = self.siblings( node )
@@ -575,22 +764,31 @@ class GraphFilter( GraphMessagePasser ):
         totalDim = nParents + 1
 
         # Down each child
-        siblingTerms = [ self.b( U, V, s, debug=debug )[ 0 ] for s in siblings ]
+        siblingTerms = [ self.b( U, V, s, purpose='V', debug=debug ) for s in siblings ]
+        dprint( 'siblingTerms:\n', siblingTerms, use=debug )
 
         # Down this node
-        nodeTerm = self.b( U, V, node, debug=debug )[ 0 ]
+        nodeTerm = self.b( U, V, node, purpose='V', debug=debug )
+        dprint( 'nodeTerm:\n', nodeTerm, use=debug )
+        dprint( 'nodeTerm.shape:\n', nodeTerm.shape, use=debug )
 
         # Out from each parent
-        parentTerms = [ self.a( U, V, p, upEdge, debug=debug ) for p in parents ]
-        parentTerms = [ self.extendAxes( p, i, totalDim ) for p, i in zip( parentTerms, parentOrder ) ]
+        parentTerms = [ self.a( U, V, p, upEdge, purpose='V', debug=debug ) for p in parents ]
+        parentTerms = [ self.extendAxes( p, i, totalDim - 1 ) for p, i in zip( parentTerms, parentOrder ) ]
+        dprint( 'parentTerms:\n', parentTerms, use=debug )
 
-        return self.multiplyTerms( terms=( nodeTerm, *parentTerms, *siblingTerms ) )
+        jointParents = self.multiplyTerms( terms=( nodeTerm, *parentTerms, *siblingTerms ) )
+        dprint( 'jointParents:\n', jointParents, use=debug )
+        dprint( 'jointParents.shape:\n', jointParents.shape, use=debug )
+
+        intAxes = list( range( 1, jointParents.ndim ) )
+        intJoint = self.integrate( jointParents, axes=intAxes )
+        dprint( 'intJoint:\n', intJoint, use=debug )
+        dprint( 'intJoint.shape:\n', intJoint.shape, use=debug )
+
+        return intJoint
 
     ######################################################################
-
-    def nodeJoint( self, U, V, nodes ):
-        # P( x, Y )
-        return [ self._nodeJoint( U, V, node ) for node in nodes ]
 
     def jointParentChild( self, U, V, nodes ):
         # P( x_c, x_p1..pN, Y )
@@ -610,17 +808,13 @@ class GraphFilter( GraphMessagePasser ):
                     ans.append( np.exp( _ans ) )
         return ans
 
+    ######################################################################
+
     def marginalProb( self, U, V ):
         # P( Y )
-        # THIS MIGHT NOT BE TRUE.  IF WE HAVE DISJOINT GRAPHS, THEN
-        # WE'D NEED A LEAF FOR EACH COMPONENT.
-        # Really don't need this because this can be calculated at any
-        # node, but for testing purposes keep it like this
-        parentOfEdgeCount = self.pmask.getnnz( axis=1 )
-        childOfEdgeCount = self.cmask.getnnz( axis=1 )
-        leafIndex = self.nodes[ ( childOfEdgeCount != 0 ) & ( parentOfEdgeCount == 0 ) ][ 0 ]
-        marginalProb = np.logaddexp.reduce( self._nodeJoint( U, V, leafIndex ) )
-        print( 'marginalProb', marginalProb )
+        # This isn't true when there are multiple graph components
+        randomNode = 0
+        marginalProb = np.logaddexp.reduce( self._nodeJoint( U, V, randomNode ) )
         return marginalProb
 
     def nodeSmoothed( self, U, V, nodes, returnLog=False ):
@@ -639,10 +833,6 @@ class GraphFilter( GraphMessagePasser ):
 
                 jpc = self._jointParentChild( U, V, node )
                 jp = -self._jointParents( U, V, node )
-
-                # print( 'node', node )
-                # print( 'jpc', jpc )
-                # print( 'jp', jp )
 
                 _ans = self.multiplyTerms( terms=( jpc, jp ) )
 

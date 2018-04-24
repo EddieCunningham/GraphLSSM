@@ -20,19 +20,33 @@ def multiplyTruth( terms, K ):
 def multiplyTest():
 
     K = 2
-    term1 = np.random.random( ( 1, K ) )
-    term2 = np.random.random( ( K, 1, 1, 1, K ) )
-    term3 = np.random.random( ( K, K ) )
-    term4 = np.random.random( ( 1, K, K, 1, 1, K, K, K ) )
+    term1 = ( np.random.random( ( 1, K ) )                   , 1 )
+    term2 = ( np.random.random( ( K, 1, K, 1, K, K, K ) )    , 2 )
+    term3 = ( np.random.random( ( K, K ) )                   , -1)
+    term4 = ( np.random.random( ( 1, K, K, 1, 1, K, K, K ) ) , 5 )
     terms = [ term1,
               term2,
               term3,
               term4 ]
 
-    true = multiplyTruth( terms, K )
-    comp = GraphCategoricalForwardBackward.multiplyTerms( terms )
+    mult1, ax1 = GraphCategoricalForwardBackward.multiplyTerms( terms )
 
-    print( ( true - comp ).sum() )
+    term1 = ( np.random.random( ( 1, 1, 1, 1, 1, K, 1, 1       ) ) , 5 )
+    term2 = ( np.random.random( ( K, 1, 1, 1, 1, K, 1, K, K, K ) ) , 5 )
+    term3 = ( np.random.random( ( K, K, 1, 1, 1, 1, 1, 1 ) )       , 5 )
+    term4 = ( np.random.random( ( 1, K, K, 1, 1, K, K, K ) )       , 5 )
+    terms = [ term1,
+              term2,
+              term3,
+              term4 ]
+
+    mult2, ax2 = GraphCategoricalForwardBackward.multiplyTerms( terms )
+
+    print( mult1.shape, ax1 )
+    print( mult2.shape, ax2 )
+    print( ( mult1 - mult2 ).sum() )
+
+    # print( ( true - comp ).sum() )
 
 def axesExtentionTest():
 
@@ -85,6 +99,6 @@ def integrateTest():
     integrated = GraphCategoricalForwardBackward.integrate( mult, axes=[ 0, 1, -1 ] )
     print( integrated.shape )
 
-# multiplyTest()
+multiplyTest()
 # axesExtentionTest()
-integrateTest()
+# integrateTest()

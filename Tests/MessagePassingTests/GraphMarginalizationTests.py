@@ -18,12 +18,12 @@ from collections import Iterable
 def testGraphCategoricalForwardBackwardNoCycle():
 
     # cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5(), cycleGraph6(), cycleGraph7() ]
-    # graphs = [ cycleGraph4() ]
+    # graphs = [ cycleGraph8(), cycleGraph8() ]
+    graphs = [ cycleGraph2(), cycleGraph8() ]
+    # graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
+    # graphs = [ cycleGraph2() ]
     # graphs = [ cycleGraph8() ]
-    # graphs = [ cycleGraph1(), cycleGraph8() ]
-    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
-    # graphs = [ graph6() ]
-    # graphs = [ cycleGraph8(), graph1(), graph2(), graph3(), graph4(), graph5() ]
+    graphs = [ cycleGraph8(), graph1(), graph2(), graph3(), graph4(), graph5() ]
 
     # Check how many transition distributions we need
     allTransitionCounts = set()
@@ -70,7 +70,8 @@ def testGraphCategoricalForwardBackwardNoCycle():
 
     # print( 'TRANSITION', transitionDists)
 
-    # ys = [ np.array( [ 0, 0, 0 ] ) ]
+    # ys = [ np.array( [ 0, 0 ] ) ]
+    # # ys = [ np.array( [ 0, 0, 0 ] ) ]
     # # ys = [ np.array( [ 0, 0, 0, 0, 0 ] ) ]
 
     print('\n\nys:', ys)
@@ -88,16 +89,25 @@ def testGraphCategoricalForwardBackwardNoCycle():
 
     print( 'Done with filter' )
 
+    finalProbs = []
+
     # Make sure that things sum to 1
     returnLog = True
     for n, probs in zip( msg.nodes, msg.nodeSmoothed( U, V, msg.nodes, returnLog=returnLog ) ):
         reduced = np.logaddexp.reduce( probs ) if returnLog else np.sum( probs )
         print( '\nP( x_%d | Y ) for'%( n ), ':', probs, '->', reduced )
+        finalProbs.append( ( probs, reduced ) )
 
     # for n, probs in zip( msg.nodes, msg.conditionalParentChild( U, V, msg.nodes, returnLog=returnLog ) ):
     #     reduced = np.logaddexp.reduce( probs, axis=-1 ) if returnLog else probs.sum( axis=-1 )
     #     # print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), ':', probs, '->', reduced )
     #     print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), '->', reduced.sum() )
+    #     finalProbs.append( ( probs, reduced.sum() ) )
+
+    print( '\n\n' )
+    print( 'Finally, all of these should be 1 (or the same number within graphs)' )
+    for f in finalProbs:
+        print( f[ 1 ] )
 
 
 testGraphCategoricalForwardBackwardNoCycle()
