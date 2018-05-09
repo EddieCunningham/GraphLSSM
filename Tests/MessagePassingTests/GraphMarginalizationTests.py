@@ -17,13 +17,14 @@ from collections import Iterable
 
 def testGraphCategoricalForwardBackwardNoCycle():
 
-    # cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5(), cycleGraph6(), cycleGraph7() ]
+    # graphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph7(), cycleGraph8() ]
     # graphs = [ cycleGraph8(), cycleGraph8() ]
-    graphs = [ cycleGraph2(), cycleGraph8() ]
+    # graphs = [ cycleGraph2(), cycleGraph8() ]
+    graphs = [ graph2() ]
     # graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
     # graphs = [ cycleGraph2() ]
     # graphs = [ cycleGraph8() ]
-    graphs = [ cycleGraph8(), graph1(), graph2(), graph3(), graph4(), graph5() ]
+    # graphs = [ cycleGraph8(), graph1(), graph2(), graph3(), graph4(), graph5() ]
 
     # Check how many transition distributions we need
     allTransitionCounts = set()
@@ -98,11 +99,11 @@ def testGraphCategoricalForwardBackwardNoCycle():
         print( '\nP( x_%d | Y ) for'%( n ), ':', probs, '->', reduced )
         finalProbs.append( ( probs, reduced ) )
 
-    # for n, probs in zip( msg.nodes, msg.conditionalParentChild( U, V, msg.nodes, returnLog=returnLog ) ):
-    #     reduced = np.logaddexp.reduce( probs, axis=-1 ) if returnLog else probs.sum( axis=-1 )
-    #     # print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), ':', probs, '->', reduced )
-    #     print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), '->', reduced.sum() )
-    #     finalProbs.append( ( probs, reduced.sum() ) )
+    for n, probs in msg.conditionalParentChild( U, V, msg.nodes, returnLog=returnLog ):
+        reduced = np.logaddexp.reduce( probs, axis=-1 ) if returnLog else probs.sum( axis=-1 )
+        # print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), ':', probs, '->', reduced )
+        print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), '->', reduced.sum() )
+        finalProbs.append( ( probs, reduced.sum() ) )
 
     print( '\n\n' )
     print( 'Finally, all of these should be 1 (or the same number within graphs)' )

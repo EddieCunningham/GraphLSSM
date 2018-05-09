@@ -229,7 +229,7 @@ class GraphCategoricalForwardBackward( GraphFilter ):
     ######################################################################
 
     @classmethod
-    def integrate( cls, integrand, axes, maxDim, ignoreFBSAxis=False ):
+    def integrate( cls, integrand, axes, ignoreFBSAxis=False ):
         # Need adjusted axes because the relative axes in integrand change as we reduce
         # over each axis
         assert isinstance( axes, Iterable )
@@ -246,11 +246,6 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         adjustedAxes = np.array( sorted( axes ) ) - np.arange( len( axes ) )
         for ax in adjustedAxes:
             integrand = np.logaddexp.reduce( integrand, axis=ax )
-
-        # # Don't shift over fbs axes.
-        # # Shift maxDim - len( axes ) over by len( axes )
-        # for i in range( maxDim - len( axes ) ):
-        #     integrand = np.expand_dims( integrand, axis=i + maxDim - len( axes ) )
 
         if( ignoreFBSAxis is True ):
             return integrand

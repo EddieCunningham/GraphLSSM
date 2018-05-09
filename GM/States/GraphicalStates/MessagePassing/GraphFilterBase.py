@@ -293,8 +293,6 @@ class GraphFilter( GraphMessagePasser ):
         # Multiply U and all Vs
         u = self.uData( U, node )
         vs = self.vData( V, node, edges=self.downEdges( node, skipEdges=downEdge ) )
-        print( u )
-        print( vs )
         term = self.multiplyTerms( terms=( u, *vs ) )
 
         returnVals = term
@@ -342,15 +340,8 @@ class GraphFilter( GraphMessagePasser ):
         nodeEmission = self.emissionProb( node )
         if( node not in self.fbs ):
             nodeEmission = self.extendAxes( nodeEmission, nParents, nParents + 1 )
-        # else:
-        #     nodeEmission = ( nodeEmission, 0 )
-            # fbsOffset = self.fbs.tolist().index( node ) + 1
-            # newShape = np.ones( nParents + 1 + fbsOffset, dtype=int )
-            # newShape[ -1 ] = self.K
-            # nodeEmission.reshape( newShape )
 
         # V over node for all down edges (aligned on last axis)
-        # totalDim = nParents + 1 if purpose == 'U' else nParents
         vs = self.vData( V, node )
         if( node not in self.fbs ):
             vs = [ self.extendAxes( v, nParents, nParents + 1 ) for v in vs ]
@@ -362,7 +353,7 @@ class GraphFilter( GraphMessagePasser ):
         # Integrate over the node's latent states which is last axis
         integrand = self.multiplyTerms( terms=( nodeTransition, nodeEmission, *vs ) )
         intAxes = [ nParents ] if node not in self.fbs else []
-        term = self.integrate( integrand, axes=intAxes, maxDim=nParents + 1 )
+        term = self.integrate( integrand, axes=intAxes )
 
         returnVals = term
         printVals = {
@@ -430,7 +421,7 @@ class GraphFilter( GraphMessagePasser ):
         # Integrate out the parent latent states
         integrand = self.multiplyTerms( terms=( nodeTransition, *parentAs, *siblingBs ) )
         intAxes = [ i for i, parent in zip( parentOrder, parents ) if parent not in self.fbs ]
-        nodeTerms = self.integrate( integrand, axes=intAxes, maxDim=nParents )
+        nodeTerms = self.integrate( integrand, axes=intAxes )
 
         # Squeeze all of the left most dims.  This is because if a parent is in
         # the fbs and we integrate out the other one, there will be an empty dim
@@ -517,7 +508,7 @@ class GraphFilter( GraphMessagePasser ):
         intAxes = [ i for i, mate in zip( mateOrder, mates ) if mate not in self.fbs ]
 
         # Integrate out the mates latent states
-        newV = self.integrate( integrand, axes=intAxes, maxDim=nParents )
+        newV = self.integrate( integrand, axes=intAxes )
 
         # Squeeze all of the left most dims.  This is because if a parent is in
         # the fbs and we integrate out the other one, there will be an empty dim
@@ -664,11 +655,11 @@ class GraphFilter( GraphMessagePasser ):
 
         joint = self._fullJoint( U, V, useNode, debug=debug )
 
-        fbsIndex = self.fbs.tolist().index( node )
-        intAxes = np.setdiff1d( np.arange( joint[ 0 ].ndim ), fbsIndex + 1 )
+        fbsIndex = joint[ 1 ]
+        intAxes = np.setdiff1d( np.arange( joint[ 0 ].ndim ), fbsIndex )
 
         # Integration axes are all axes but node
-        intJoint = self.integrate( joint, axes=intAxes, maxDim=self.nParents( useNode ), ignoreFBSAxis=True )
+        intJoint = self.integrate( joint, axes=intAxes, ignoreFBSAxis=True )
 
         returnVals = intJoint
         printVals = {
@@ -693,7 +684,7 @@ class GraphFilter( GraphMessagePasser ):
         else:
             joint = self._fullJoint( U, V, node, debug=debug )
             intAxes = list( range( 1, joint[ 0 ].ndim ) )
-            intJoint = self.integrate( joint, axes=intAxes, maxDim=self.nParents( node ), ignoreFBSAxis=True )
+            intJoint = self.integrate( joint, axes=intAxes, ignoreFBSAxis=True )
             printVals = {
                 'joint[0].shape': joint[ 0 ].shape,
                 'joint[1]': joint[ 1 ],
@@ -713,80 +704,97 @@ class GraphFilter( GraphMessagePasser ):
 
     ######################################################################
 
+    @debugWorkFlow
     def _jointParentChild( self, U, V, node, debug=True ):
         # P( x_c, x_p1..pN, Y )
-        dprint( '\n\nComputing joint parent child for:\n', node, use=debug )
 
         siblings = self.siblings( node )
         parents, parentOrder = self.parents( node, getOrder=True )
         upEdge = self.upEdges( node )
 
         nParents = parents.shape[ 0 ]
-        totalDim = nParents + 1
 
         # Down to this node
         nodeTransition = self.transitionProb( node, parents, parentOrder )
-        dprint( 'nodeTransition:\n', nodeTransition, use=debug )
 
         nodeEmission = self.emissionProb( node )
-        nodeEmission = self.extendAxes( nodeEmission, totalDim - 1, totalDim )
-        dprint( 'nodeEmission:\n', nodeEmission, use=debug )
+        nodeEmission = self.extendAxes( nodeEmission, nParents, nParents + 1 )
 
         # Out from each sibling
-        siblingTerms = [ self.b( U, V, s, purpose='U', debug=debug ) for s in siblings ]
-        dprint( 'siblingTerms:\n', siblingTerms, use=debug )
+        siblingBs = [ self.b( U, V, s, purpose='U', debug=debug ) for s in siblings ]
 
         # Out from each parent
-        parentTerms = [ self.a( U, V, p, upEdge, purpose='U', debug=debug ) for p in parents ]
-        parentTerms = [ self.extendAxes( p, i, totalDim - 1 ) for p, i in zip( parentTerms, parentOrder ) ]
-        dprint( 'parentTerms:\n', parentTerms, use=debug )
+        parentAs = [ self.a( U, V, p, upEdge, purpose='U', debug=debug ) for p in parents ]
+        parentAs = [ self.extendAxes( a, i, nParents ) for a, i in zip( parentAs, parentOrder ) ]
 
         # Down this node
-        v = self.vData( V, node )
-        v = [ self.extendAxes( _v, totalDim - 1, totalDim ) for _v in v ]
-        dprint( 'v:\n', v, use=debug )
+        vs = self.vData( V, node )
+        vs = [ self.extendAxes( _v, nParents, nParents + 1 ) for _v in vs ]
 
-        jointParentChild = self.multiplyTerms( terms=( *parentTerms, *siblingTerms, *v, nodeTransition, nodeEmission ) )
-        dprint( 'jointParentChild:\n', jointParentChild, use=debug )
-        dprint( 'jointParentChild.shape:\n', jointParentChild.shape, use=debug )
+        jointParentChild = self.multiplyTerms( terms=( *parentAs, *siblingBs, *vs, nodeTransition, nodeEmission ) )
 
-        return jointParentChild
+        returnVals = jointParentChild
+        printVals = {
+            'parents': parents,
+            'parentOrder': parentOrder,
+            'nodeTransition[0].shape': nodeTransition[ 0 ].shape,
+            'nodeTransition[ 1 ]': nodeTransition[ 1 ],
+            'nodeEmission[ 0 ].shape': nodeEmission[ 0 ].shape,
+            'nodeEmission[ 1 ]': nodeEmission[ 1 ],
+            'siblingBs[0].shape': [ b[ 0 ].shape for b in siblingBs ],
+            'siblingBs[1]': [ b[ 1 ] for b in siblingBs ],
+            'parentAs[0].shape': [ a[ 0 ].shape for a in parentAs ],
+            'parentAs[1]': [ a[ 1 ] for a in parentAs ],
+            'vs[0].shape': [ v[ 0 ].shape for v in vs ],
+            'vs[1]': [ v[ 1 ] for v in vs ],
+            'jointParentChild[0].shape': jointParentChild[ 0 ].shape,
+            'jointParentChild[1]': jointParentChild[ 1 ]
+        }
 
+        return returnVals, printVals
+
+    @debugWorkFlow
     def _jointParents( self, U, V, node, debug=True ):
         # P( x_p1..pN, Y )
-        dprint( '\n\nComputing joint parent for:\n', node, use=debug )
 
         parents, parentOrder = self.parents( node, getOrder=True )
         siblings = self.siblings( node )
         upEdge = self.upEdges( node )
 
         nParents = parents.shape[ 0 ]
-        totalDim = nParents + 1
 
         # Down each child
-        siblingTerms = [ self.b( U, V, s, purpose='V', debug=debug ) for s in siblings ]
-        dprint( 'siblingTerms:\n', siblingTerms, use=debug )
+        siblingBs = [ self.b( U, V, s, purpose='V', debug=debug ) for s in siblings ]
 
         # Down this node
         nodeTerm = self.b( U, V, node, purpose='V', debug=debug )
-        dprint( 'nodeTerm:\n', nodeTerm, use=debug )
-        dprint( 'nodeTerm.shape:\n', nodeTerm.shape, use=debug )
 
         # Out from each parent
-        parentTerms = [ self.a( U, V, p, upEdge, purpose='V', debug=debug ) for p in parents ]
-        parentTerms = [ self.extendAxes( p, i, totalDim - 1 ) for p, i in zip( parentTerms, parentOrder ) ]
-        dprint( 'parentTerms:\n', parentTerms, use=debug )
+        parentAs = [ self.a( U, V, p, upEdge, purpose='V', debug=debug ) for p in parents ]
+        parentAs = [ self.extendAxes( a, i, nParents ) for a, i in zip( parentAs, parentOrder ) ]
 
-        jointParents = self.multiplyTerms( terms=( nodeTerm, *parentTerms, *siblingTerms ) )
-        dprint( 'jointParents:\n', jointParents, use=debug )
-        dprint( 'jointParents.shape:\n', jointParents.shape, use=debug )
+        jointParents = self.multiplyTerms( terms=( nodeTerm, *parentAs, *siblingBs ) )
 
-        intAxes = list( range( 1, jointParents.ndim ) )
+        intAxes = list( range( 1, jointParents[ 0 ].ndim ) )
         intJoint = self.integrate( jointParents, axes=intAxes )
-        dprint( 'intJoint:\n', intJoint, use=debug )
-        dprint( 'intJoint.shape:\n', intJoint.shape, use=debug )
 
-        return intJoint
+        returnVals = intJoint
+        printVals = {
+            'parents': parents,
+            'parentOrder': parentOrder,
+            'nodeTerm[0].shape': nodeTerm[ 0 ].shape,
+            'nodeTerm[1]': nodeTerm[ 1 ],
+            'siblingBs[0].shape': [ b[ 0 ].shape for b in siblingBs ],
+            'siblingBs[1]': [ b[ 1 ] for b in siblingBs ],
+            'parentAs[0].shape': [ a[ 0 ].shape for a in parentAs ],
+            'parentAs[1]': [ a[ 1 ] for a in parentAs ],
+            'jointParents[0].shape': jointParents[ 0 ].shape,
+            'jointParents[1]': jointParents[ 1 ],
+            'intJoint[0].shape': intJoint[ 0 ].shape,
+            'intJoint[1]': intJoint[ 1 ]
+        }
+
+        return returnVals, printVals
 
     ######################################################################
 
@@ -832,13 +840,14 @@ class GraphFilter( GraphMessagePasser ):
                 parents, parentOrder = self.parents( node, getOrder=True )
 
                 jpc = self._jointParentChild( U, V, node )
-                jp = -self._jointParents( U, V, node )
+                _jp = self._jointParents( U, V, node )
+                jp = ( -_jp[ 0 ], _jp[ 1 ] )
 
-                _ans = self.multiplyTerms( terms=( jpc, jp ) )
+                _ans = self.multiplyTerms( terms=( jpc, jp ) )[ 0 ]
 
                 if( returnLog == True ):
-                    ans.append( _ans )
+                    ans.append( ( node, _ans ) )
                 else:
-                    ans.append( np.exp( _ans ) )
+                    ans.append( ( node, np.exp( _ans ) ) )
 
         return ans
