@@ -26,24 +26,6 @@ class GraphCategoricalForwardBackward( GraphFilter ):
         super( GraphCategoricalForwardBackward, self ).__init__()
         self.K = K
 
-    def fbsShape( self, node, totalDim ):
-        fbsOffset = self.fbs.tolist().index( node ) + 1
-        newShape = np.ones( totalDim + fbsOffset, dtype=int )
-        newShape[ 0 ] = self.K
-        newShape[ -1 ] = self.K
-        return newShape
-
-    def aFBS( self, U, V, node, downEdge, purpose, debug=True ):
-        totalDim = self.mates( node, edges=downEdge ).shape[ 0 ] + 1
-        if( purpose == 'U' ):
-            totalDim += 1
-        else:
-            assert purpose == 'V'
-
-        newShape = self.fbsShape( node, totalDim )
-
-        return np.eye( self.K ).reshape( newShape )
-
     def genFilterProbs( self ):
 
         # Initialize U and V
@@ -68,16 +50,10 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
             for node in fbs:
 
-                # # The shape for U depends on how many dimensions the transition
-                # # matrix for a child will have.  Want to start counting fbs nodes
-                # # on the next dim after that
-                totalDim = 1#self.mates( node ).shape[ 0 ] + 2
                 fbsOffset = self.fbs.tolist().index( node ) + 1
 
                 newShape = np.ones( fbsOffset, dtype=int )
-                # newShape[ 0 ] = self.K
                 newShape[ -1 ] = self.K
-                # U[ node ] = np.eye( self.K ).reshape( newShape )
                 U[ node ] = ( np.zeros( newShape ), 0 )
 
                 # Shape doesn't really matter for V
@@ -252,7 +228,7 @@ class GraphCategoricalForwardBackward( GraphFilter ):
 
         if( fbsAxisStart > -1 ):
             fbsAxisStart -= len( adjustedAxes )
-            assert fbsAxisStart > -1
+            # assert fbsAxisStart > -1, adjustedAxes
 
         return integrand, fbsAxisStart
 

@@ -18,9 +18,9 @@ from collections import Iterable
 def testGraphCategoricalForwardBackwardNoCycle():
 
     # graphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph7(), cycleGraph8() ]
-    # graphs = [ cycleGraph8(), cycleGraph8() ]
+    graphs = [ cycleGraph2() ]
     # graphs = [ cycleGraph2(), cycleGraph8() ]
-    graphs = [ graph2() ]
+    # graphs = [ graph3() ]
     # graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
     # graphs = [ cycleGraph2() ]
     # graphs = [ cycleGraph8() ]
@@ -94,21 +94,52 @@ def testGraphCategoricalForwardBackwardNoCycle():
 
     # Make sure that things sum to 1
     returnLog = True
+
+    def totalLogReduce( probs, notFirstAxis=False ):
+        reduced = probs
+        while( reduced.ndim >= 1 ):
+            if( notFirstAxis and reduced.ndim == 1 ):
+                break
+            reduced = np.logaddexp.reduce( reduced, axis=-1 )
+
+        return reduced
+
+    print( 'Joint' )
+    for probs in msg.nodeJoint( U, V, msg.nodes, returnLog=returnLog ):
+        reduced = totalLogReduce( probs ) if returnLog else np.sum( probs )
+        print( probs, '->', reduced )
+        finalProbs.append( ( probs, reduced ) )
+    finalProbs.append( ( None, '\n' ) )
+
+    print( 'Joint parents' )
+    for probs in msg.jointParents( U, V, msg.nodes, returnLog=returnLog ):
+        reduced = totalLogReduce( probs ) if returnLog else np.sum( probs )
+        print( probs, '->', reduced )
+        finalProbs.append( ( probs, reduced ) )
+    finalProbs.append( ( None, '\n' ) )
+
+    print( 'Joint parent child' )
+    for probs in msg.jointParentChild( U, V, msg.nodes, returnLog=returnLog ):
+        reduced = totalLogReduce( probs ) if returnLog else np.sum( probs )
+        finalProbs.append( ( probs, reduced ) )
+    finalProbs.append( ( None, '\n' ) )
+
+    print( 'Smoothed' )
     for n, probs in zip( msg.nodes, msg.nodeSmoothed( U, V, msg.nodes, returnLog=returnLog ) ):
-        reduced = np.logaddexp.reduce( probs ) if returnLog else np.sum( probs )
+        reduced = totalLogReduce( probs ) if returnLog else np.sum( probs )
         print( '\nP( x_%d | Y ) for'%( n ), ':', probs, '->', reduced )
         finalProbs.append( ( probs, reduced ) )
+    finalProbs.append( ( None, '\n' ) )
 
+    print( 'Child given parents' )
     for n, probs in msg.conditionalParentChild( U, V, msg.nodes, returnLog=returnLog ):
-        reduced = np.logaddexp.reduce( probs, axis=-1 ) if returnLog else probs.sum( axis=-1 )
-        # print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), ':', probs, '->', reduced )
-        print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), '->', reduced.sum() )
-        finalProbs.append( ( probs, reduced.sum() ) )
+        reduced = totalLogReduce( probs, notFirstAxis=True ) if returnLog else np.sum( probs )
+        print( '\nP( x_%d | x_p1..pN, Y ) for'%( n ), '->', reduced )
+        finalProbs.append( ( probs, reduced ) )
 
     print( '\n\n' )
-    print( 'Finally, all of these should be 1 (or the same number within graphs)' )
+    print( 'Finally, all of these should look similar' )
     for f in finalProbs:
         print( f[ 1 ] )
-
 
 testGraphCategoricalForwardBackwardNoCycle()

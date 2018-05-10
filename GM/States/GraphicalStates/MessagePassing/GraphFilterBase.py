@@ -56,9 +56,6 @@ def debugWorkFlow( function ):
 
         __INDENT -= 1
 
-        if( function.__name__ != 'filter' and function.__name__ != '_nodeJoint' and function.__name__ != '_nodeJointForFBS' ):
-            assert isinstance( returnVals[ 0 ], np.ndarray ) and np.any( np.isnan( returnVals[ 0 ] ) ) == False
-
         return returnVals
 
     return wrapper
@@ -129,34 +126,6 @@ class GraphFilter( GraphMessagePasser ):
 
     ######################################################################
 
-    def filterFeedbackSet( self, U, V, workspace ):
-
-        uList = self.fbs
-        self.fbs = np.array( [] )
-
-        vListNodes = []
-        vListEdges = []
-        for node in self.fbs:
-            downEdges = self.downEdges( node )
-            if( len( downEdges ) == 0 ):
-                vListNodes.append( node )
-                vListEdges.append( None )
-            else:
-                for edge in downEdges:
-                    vListNodes.append( node )
-                    vListEdges.append( edge )
-
-        # This might not be correct.  what if nodes in the fbs depend on each other???
-        # Probably best to pass something to the message passer instead.....
-        self.uFilter( False, uList, U, V, workspace )
-        self.vFilter( False, [ vListNodes, vListEdges ], U, V, workspace )
-
-        self.fbs = np.array( [] )
-
-        return U, V
-
-    ######################################################################
-
     def inFBS( self, node ):
         return np.any( np.in1d( self.fbs, node ) )
 
@@ -211,7 +180,6 @@ class GraphFilter( GraphMessagePasser ):
             # assert ndim is not None
             # If node is part of the skip array (if its in the fbs)
             ans = [ ( np.zeros( self.K ), 0 ) ]
-            # ans = np.zeros( ( self.K, self.K ) ).reshape( self.fbsShape( node, ndim ) )
         elif( ~np.any( np.in1d( V_row, node ) ) ):
             # If the node isn't in the V object (node is a leaf)
             ans = [ ( np.array( [] ), -1 ) ]
@@ -245,20 +213,6 @@ class GraphFilter( GraphMessagePasser ):
 
     ######################################################################
 
-    def fbsShape( self, node, totalDim ):
-        assert 0
-
-    def aFBS( self, U, V, node, downEdge, purpose, debug=True ):
-        # Compute a when node is in the feedback set.
-        # This case is different from the regular one because we are treating
-        # the node like it is cut from the graph.
-        # So we can ignore the edges from node and just return a matrix that
-        # is only 1 when node_x == fbs_node_x and 0 otherwise so be consistent
-        # with the conditioning
-        assert 0
-
-    ######################################################################
-
     @debugWorkFlow
     def a( self, U, V, node, downEdge, purpose, debug=True ):
         # Compute P( Y \ !( e, n )_y, n_x )
@@ -284,7 +238,6 @@ class GraphFilter( GraphMessagePasser ):
         #   - term     : shape should be ( K, ) * ( F + 1 ) where K is the latent state size and F is the size of the fbs
 
         if( node in self.fbs ):
-            # term = self.aFBS( U, V, node, downEdge, purpose=purpose, debug=debug )
             term = ( np.array( [] ), 0 )
             return term, { 'term[0].shape': term[ 0 ].shape, 'term[1]': term[ 1 ] }
 
@@ -614,10 +567,109 @@ class GraphFilter( GraphMessagePasser ):
     ######################################################################
 
     @debugWorkFlow
+    def _statHelperForFBS( self, U, V, node, fullFunction, saveParents, saveChild, debug=True ):
+
+        parents, parentOrder = self.parents( node, getOrder=True )
+        nParents = parents.shape[ 0 ]
+
+        if( np.all( np.in1d( parents, self.fbs ) ) and saveParents ):
+            assert 0, 'fuq'
+
+        if( node in self.fbs and saveChild ):
+            useNode = None
+            # Use a sibling
+            for _node in self.siblings( node ):
+                if( _node not in self.fbs ):
+                    useNode = _node
+                    break
+            if( useNode is None ):
+                if( saveChild == True and saveParents == False )
+                    # Can just choose from any node
+                    for _node in itertools.chain( self.parents( node ), self.mates( node ), self.siblings( node ), self.children( node ) ):
+                        if( _node not in self.fbs ):
+                            useNode = _node
+                            break
+                elif( saveChild == True and saveParents == True ):
+                    # Calculate jointParent instead of jointParentChild but just don't
+                    # integrate out this node
+                    pass
+
+            assert useNode is not None, 'fuq!'
+        else:
+            useNode = node
+
+        joint = fullFunction( U, V, useNode, debug=debug )
+
+        # Want to integrate out everything that isn't in the fbs
+        if( saveParents and saveChild ):
+            if( node in self.fbs ):
+                fbsIndices = joint[ 1 ] + np.hstack( ( self.fbs.tolist().index( node ), np.arange( nParents )[ np.in1d( parents, self.fbs ) ] ) )
+            else:
+                fbsIndices = joint[ 1 ] + np.arange( nParents )[ np.in1d( parents, self.fbs ) ]
+        elif( saveChild ):
+            if( node in self.fbs ):
+                fbsIndices = np.array( [ joint[ 1 ] + self.fbs.tolist().index( node ) ] )
+            else:
+                assert 0
+        else:
+            fbsIndices = joint[ 1 ] + np.arange( nParents )[ np.in1d( parents, self.fbs ) ]
+        intAxes = np.setdiff1d( np.arange( joint[ 0 ].ndim ), fbsIndices )
+
+        # Also save the parents that aren't in the fbs if needed
+        if( saveParents ):
+            intAxes = np.setdiff1d( intAxes, np.arange( nParents - np.in1d( parents, self.fbs ).sum() ) )
+
+        # Integrate out the irrelevant fbs axes
+        intJoint = self.integrate( joint, axes=intAxes, ignoreFBSAxis=True )
+
+        returnVals = intJoint
+        printVals = {
+            'useNode': useNode,
+            'joint[0].shape': joint[ 0 ].shape,
+            'joint[1]': joint[ 1 ],
+            'intAxes': intAxes,
+            'intJoint.shape': intJoint.shape
+        }
+
+        return returnVals, printVals
+
+    @debugWorkFlow
+    def _statHelper( self, U, V, node, fullFunction, saveParents, saveChild, debug=True ):
+
+        parents, parentOrder = self.parents( node, getOrder=True )
+
+        if( ( saveChild and node in self.fbs ) or
+            ( saveParents and np.any( np.in1d( parents, self.fbs ) ) ) ):
+            intJoint = self._statHelperForFBS( U, V, node, fullFunction, saveParents, saveChild, debug=debug )
+            printVals = {
+                'intJoint.shape': intJoint.shape
+            }
+        else:
+            joint = fullFunction( U, V, node, debug=debug )
+            start = 0
+            if( saveParents ):
+                start += self.parents( node ).shape[ 0 ]
+            if( saveChild ):
+                start += 1
+
+            intAxes = list( range( start, joint[ 0 ].ndim ) )
+            intJoint = self.integrate( joint, axes=intAxes, ignoreFBSAxis=True )
+            printVals = {
+                'joint[0].shape': joint[ 0 ].shape,
+                'intAxes': intAxes,
+                'intJoint.shape': intJoint.shape
+            }
+
+        returnVals = intJoint
+
+        return returnVals, printVals
+
+    ######################################################################
+
+    @debugWorkFlow
     def _fullJoint( self, U, V, node, debug=True ):
         # P( x, x_{feedback set}, Y )
 
-        parents, parentOrder = self.parents( node, getOrder=True )
 
         u = self.uData( U, node )
 
@@ -638,124 +690,22 @@ class GraphFilter( GraphMessagePasser ):
 
         return returnVals, printVals
 
-    ######################################################################
-
-    @debugWorkFlow
-    def _nodeJointForFBS( self, U, V, node, debug=True ):
-        # P( x, Y ) for a fbs node
-
-        # Get any node in this graph that isn't in the fbs
-        useNode = None
-        for _node in itertools.chain( self.parents( node ), self.mates( node ), self.children( node ), self.siblings( node ) ):
-            if( not( _node in self.fbs ) ):
-                useNode = _node
-                break
-
-        assert useNode is not None, 'fuq'
-
-        joint = self._fullJoint( U, V, useNode, debug=debug )
-
-        fbsIndex = joint[ 1 ]
-        intAxes = np.setdiff1d( np.arange( joint[ 0 ].ndim ), fbsIndex )
-
-        # Integration axes are all axes but node
-        intJoint = self.integrate( joint, axes=intAxes, ignoreFBSAxis=True )
-
-        returnVals = intJoint
-        printVals = {
-            'useNode': useNode,
-            'joint[0].shape': joint[ 0 ].shape,
-            'joint[1]': joint[ 1 ],
-            'intAxes': intAxes,
-            'intJoint.shape': intJoint.shape
-        }
-
-        return returnVals, printVals
-
     @debugWorkFlow
     def _nodeJoint( self, U, V, node, debug=True ):
         # P( x, Y )
-
-        if( node in self.fbs ):
-            intJoint = self._nodeJointForFBS( U, V, node, debug=debug )
-            printVals = {
-                'intJoint.shape': intJoint.shape
-            }
-        else:
-            joint = self._fullJoint( U, V, node, debug=debug )
-            intAxes = list( range( 1, joint[ 0 ].ndim ) )
-            intJoint = self.integrate( joint, axes=intAxes, ignoreFBSAxis=True )
-            printVals = {
-                'joint[0].shape': joint[ 0 ].shape,
-                'joint[1]': joint[ 1 ],
-                'intAxes': intAxes,
-                'intJoint.shape': intJoint.shape
-            }
-
-        returnVals = intJoint
-
-        return returnVals, printVals
-
-    ######################################################################
-
-    def nodeJoint( self, U, V, nodes ):
-        # P( x, Y )
-        return [ self._nodeJoint( U, V, node ) for node in nodes ]
-
-    ######################################################################
-
-    @debugWorkFlow
-    def _jointParentChild( self, U, V, node, debug=True ):
-        # P( x_c, x_p1..pN, Y )
-
-        siblings = self.siblings( node )
-        parents, parentOrder = self.parents( node, getOrder=True )
-        upEdge = self.upEdges( node )
-
-        nParents = parents.shape[ 0 ]
-
-        # Down to this node
-        nodeTransition = self.transitionProb( node, parents, parentOrder )
-
-        nodeEmission = self.emissionProb( node )
-        nodeEmission = self.extendAxes( nodeEmission, nParents, nParents + 1 )
-
-        # Out from each sibling
-        siblingBs = [ self.b( U, V, s, purpose='U', debug=debug ) for s in siblings ]
-
-        # Out from each parent
-        parentAs = [ self.a( U, V, p, upEdge, purpose='U', debug=debug ) for p in parents ]
-        parentAs = [ self.extendAxes( a, i, nParents ) for a, i in zip( parentAs, parentOrder ) ]
-
-        # Down this node
-        vs = self.vData( V, node )
-        vs = [ self.extendAxes( _v, nParents, nParents + 1 ) for _v in vs ]
-
-        jointParentChild = self.multiplyTerms( terms=( *parentAs, *siblingBs, *vs, nodeTransition, nodeEmission ) )
-
-        returnVals = jointParentChild
+        joint = self._statHelper( U, V, node, self._fullJoint, False, True, debug=debug )
+        returnVals = joint
         printVals = {
-            'parents': parents,
-            'parentOrder': parentOrder,
-            'nodeTransition[0].shape': nodeTransition[ 0 ].shape,
-            'nodeTransition[ 1 ]': nodeTransition[ 1 ],
-            'nodeEmission[ 0 ].shape': nodeEmission[ 0 ].shape,
-            'nodeEmission[ 1 ]': nodeEmission[ 1 ],
-            'siblingBs[0].shape': [ b[ 0 ].shape for b in siblingBs ],
-            'siblingBs[1]': [ b[ 1 ] for b in siblingBs ],
-            'parentAs[0].shape': [ a[ 0 ].shape for a in parentAs ],
-            'parentAs[1]': [ a[ 1 ] for a in parentAs ],
-            'vs[0].shape': [ v[ 0 ].shape for v in vs ],
-            'vs[1]': [ v[ 1 ] for v in vs ],
-            'jointParentChild[0].shape': jointParentChild[ 0 ].shape,
-            'jointParentChild[1]': jointParentChild[ 1 ]
-        }
+                'joint.shape': joint.shape
+            }
 
         return returnVals, printVals
 
+    ######################################################################
+
     @debugWorkFlow
-    def _jointParents( self, U, V, node, debug=True ):
-        # P( x_p1..pN, Y )
+    def _fullJointParents( self, U, V, node, debug=True ):
+        # P( x_p1..pN, x_{feedback set}, Y )
 
         parents, parentOrder = self.parents( node, getOrder=True )
         siblings = self.siblings( node )
@@ -796,11 +746,96 @@ class GraphFilter( GraphMessagePasser ):
 
         return returnVals, printVals
 
+    @debugWorkFlow
+    def _jointParents( self, U, V, node, debug=True ):
+        # P( x_p1..pN, Y )
+
+        joint = self._statHelper( U, V, node, self._fullJointParents, True, False, debug=debug )
+        returnVals = joint
+        printVals = {
+                'joint.shape': joint.shape
+            }
+
+        return returnVals, printVals
+
     ######################################################################
 
-    def jointParentChild( self, U, V, nodes ):
+    @debugWorkFlow
+    def _fullJointParentChild( self, U, V, node, debug=True ):
+        # P( x_c, x_p1..pN, x_{feedback set}, Y )
+
+        siblings = self.siblings( node )
+        parents, parentOrder = self.parents( node, getOrder=True )
+        upEdge = self.upEdges( node )
+
+        nParents = parents.shape[ 0 ]
+
+        # Down to this node
+        nodeTransition = self.transitionProb( node, parents, parentOrder )
+
+        nodeEmission = self.emissionProb( node )
+        nodeEmission = self.extendAxes( nodeEmission, nParents, nParents + 1 )
+
+        # Out from each sibling
+        siblingBs = [ self.b( U, V, s, purpose='U', debug=debug ) for s in siblings ]
+
+        # Out from each parent
+        parentAs = [ self.a( U, V, p, upEdge, purpose='U', debug=debug ) for p in parents ]
+        parentAs = [ self.extendAxes( a, i, nParents ) for a, i in zip( parentAs, parentOrder ) ]
+
+        # Down this node
+        vs = self.vData( V, node )
+        vs = [ self.extendAxes( _v, nParents, nParents + 1 ) for _v in vs ]
+
+        jointParentChild = self.multiplyTerms( terms=( *parentAs, *siblingBs, *vs, nodeTransition, nodeEmission ) )
+
+        returnVals = jointParentChild
+        printVals = {
+            'parents': parents,
+            'parentOrder': parentOrder,
+            'nodeTransition[0].shape': nodeTransition[ 0 ].shape,
+            'nodeEmission[ 0 ].shape': nodeEmission[ 0 ].shape,
+            'siblingBs[0].shape': [ b[ 0 ].shape for b in siblingBs ],
+            'parentAs[0].shape': [ a[ 0 ].shape for a in parentAs ],
+            'vs[0].shape': [ v[ 0 ].shape for v in vs ],
+            'jointParentChild[0].shape': jointParentChild[ 0 ].shape
+        }
+
+        return returnVals, printVals
+
+    @debugWorkFlow
+    def _jointParentChild( self, U, V, node, debug=True ):
         # P( x_c, x_p1..pN, Y )
-        return [ self._jointParentChild( U, V, node ) for node in nodes if self.nParents( node ) > 0 ]
+        joint = self._statHelper( U, V, node, self._fullJointParentChild, True, True, debug=debug )
+        returnVals = joint
+        printVals = {
+                'joint.shape': joint.shape
+            }
+
+        return returnVals, printVals
+
+    ######################################################################
+
+    def nodeJoint( self, U, V, nodes, returnLog=False ):
+        # P( x, Y )
+        ans = []
+        for node in nodes:
+            ans.append( self._nodeJoint( U, V, node ) )
+        return ans
+
+    def jointParentChild( self, U, V, nodes, returnLog ):
+        # P( x_c, x_p1..pN, Y )
+
+        ans = []
+        for node in nodes:
+            if( self.nParents( node ) > 0 ):
+                _ans = self._jointParentChild( U, V, node )
+
+                if( returnLog == True ):
+                    ans.append( _ans )
+                else:
+                    ans.append( np.exp( _ans ) )
+        return ans
 
     def jointParents( self, U, V, nodes, returnLog=False ):
         # P( x_p1..pN | Y )
@@ -839,9 +874,10 @@ class GraphFilter( GraphMessagePasser ):
             if( nParents > 0 ):
                 parents, parentOrder = self.parents( node, getOrder=True )
 
-                jpc = self._jointParentChild( U, V, node )
+                _jpc = self._jointParentChild( U, V, node )
                 _jp = self._jointParents( U, V, node )
-                jp = ( -_jp[ 0 ], _jp[ 1 ] )
+                jpc = ( _jpc, -1 )
+                jp = ( -_jp, -1 )
 
                 _ans = self.multiplyTerms( terms=( jpc, jp ) )[ 0 ]
 
