@@ -1,7 +1,7 @@
 import numpy as np
-from Base import Conjugate
-from TensorCategorical import TensorCategorical
-from Dirichlet import Dirichlet
+from GenModels.GM.Distributions.Base import Conjugate
+from GenModels.GM.Distributions.TensorCategorical import TensorCategorical
+from GenModels.GM.Distributions.Dirichlet import Dirichlet
 
 class Transition( TensorCategorical ):
     # This class is basically just a tensor categorial, except we

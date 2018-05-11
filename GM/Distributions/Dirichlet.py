@@ -1,8 +1,8 @@
 import numpy as np
-from Base import ExponentialFam
+from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import dirichlet
 from scipy.special import gammaln
-import Categorical
+from GenModels.GM.Distributions.Categorical import Categorical
 
 class Dirichlet( ExponentialFam ):
 
@@ -51,7 +51,7 @@ class Dirichlet( ExponentialFam ):
                 t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
             return t
         assert isinstance( x, np.ndarray ) and x.ndim == 1
-        ( t1, ) = Categorical.Categorical.standardToNat( x )
+        ( t1, ) = Categorical.standardToNat( x )
         return ( t1, )
 
     @classmethod

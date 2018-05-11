@@ -1,19 +1,8 @@
 import numpy as np
-import sys
-sys.path.append( '/Users/Eddie/GenModels' )
-
-from GM.Distributions import ExponentialFam, \
-                             Normal, \
-                             NormalInverseWishart, \
-                             InverseWishart, \
-                             Regression, \
-                             MatrixNormalInverseWishart, \
-                             Categorical, \
-                             Dirichlet, \
-                             TensorNormal, \
-                             TensorRegression, \
-                             TensorCategorical
+from GenModels.GM.Distributions import *
 from scipy.stats import invwishart
+
+__all__ = [ 'exponentialFamilyTest' ]
 
 def testsForDistWithoutPrior( dist ):
 
@@ -129,9 +118,7 @@ def tensorNormalMarginalizationTest():
     # sampled from the marginalized tensor regression distribution
 
 
-
-
-# standardTests()
-# tensorTests()
-
-tensorNormalMarginalizationTest()
+def exponentialFamilyTest():
+    standardTests()
+    tensorTests()
+    tensorNormalMarginalizationTest()

@@ -1,4 +1,4 @@
-from GraphicalMessagePassingBase import Graph, GraphMessagePasser, dprint
+from GenModels.GM.States.GraphicalStates.MessagePassing.GraphicalMessagePassingBase import Graph, GraphMessagePasser, dprint
 import numpy as np
 from scipy.sparse import coo_matrix
 from functools import reduce
@@ -583,7 +583,7 @@ class GraphFilter( GraphMessagePasser ):
                     useNode = _node
                     break
             if( useNode is None ):
-                if( saveChild == True and saveParents == False )
+                if( saveChild == True and saveParents == False ):
                     # Can just choose from any node
                     for _node in itertools.chain( self.parents( node ), self.mates( node ), self.siblings( node ), self.children( node ) ):
                         if( _node not in self.fbs ):

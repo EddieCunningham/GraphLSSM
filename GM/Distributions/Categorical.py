@@ -1,13 +1,19 @@
 import numpy as np
-from Base import ExponentialFam
-from Dirichlet import Dirichlet
+from GenModels.GM.Distributions.Base import ExponentialFam
 
+__all__ = [ 'Categorical' ]
+
+def definePrior():
+    # Because of circular dependency
+    from GenModels.GM.Distributions.Dirichlet import Dirichlet
+    Categorical.priorClass = Dirichlet
 
 class Categorical( ExponentialFam ):
 
-    priorClass = Dirichlet
+    priorClass = None
 
     def __init__( self, p=None, prior=None, hypers=None ):
+        definePrior()
         super( Categorical, self ).__init__( p, prior=prior, hypers=hypers )
         self.D = self.p.shape[ 0 ]
 

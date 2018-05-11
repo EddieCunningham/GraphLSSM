@@ -1,5 +1,5 @@
 import numpy as np
-from Base import ExponentialFam
+from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import invwishart
 from scipy.special import multigammaln
 

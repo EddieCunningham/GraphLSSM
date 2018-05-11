@@ -1,24 +1,15 @@
 import numpy as np
-# np.random.seed(2)
-import sys
-sys.path.append( '/Users/Eddie/GenModels' )
-
-from GM.States.GraphicalStates.MessagePassing import *
-
-from GM.Distributions import MatrixNormalInverseWishart, \
-                             NormalInverseWishart, \
-                             Dirichlet, \
-                             Categorical, \
-                             Regression, \
-                             Normal
-from scipy.stats import dirichlet
+from GenModels.GM.States.GraphicalStates.MessagePassing import *
+from GenModels.GM.Distributions import *
 import time
 from collections import Iterable
 
-def testGraphCategoricalForwardBackwardNoCycle():
+__all__ = [ 'graphMarginalizationTest' ]
+
+def testGraphCategoricalForwardBackward():
 
     # graphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph7(), cycleGraph8() ]
-    graphs = [ cycleGraph2() ]
+    graphs = [ cycleGraph8() ]
     # graphs = [ cycleGraph2(), cycleGraph8() ]
     # graphs = [ graph3() ]
     # graphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
@@ -142,4 +133,6 @@ def testGraphCategoricalForwardBackwardNoCycle():
     for f in finalProbs:
         print( f[ 1 ] )
 
-testGraphCategoricalForwardBackwardNoCycle()
+
+def graphMarginalizationTest():
+    testGraphCategoricalForwardBackward()

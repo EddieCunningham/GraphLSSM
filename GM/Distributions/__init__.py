@@ -1,5 +1,4 @@
 import sys
-sys.path.append( '/Users/Eddie/GenModels/GM/Distributions/' )
 
 from .Base import Distribution, Conjugate, ExponentialFam, TensorExponentialFam
 from .MatrixNormalInverseWishart import MatrixNormalInverseWishart

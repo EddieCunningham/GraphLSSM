@@ -1,8 +1,8 @@
 import numpy as np
-from Base import ExponentialFam
+from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.special import multigammaln
-from InverseWishart import InverseWishart
-import Normal
+from GenModels.GM.Distributions.InverseWishart import InverseWishart
+from GenModels.GM.Distributions.Normal import Normal
 
 class NormalInverseWishart( ExponentialFam ):
     # This class is written with the intention of making it a prior for
@@ -79,8 +79,8 @@ class NormalInverseWishart( ExponentialFam ):
                 t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
             return t
 
-        t1, t2 = Normal.Normal.standardToNat( *x )
-        t3, t4, t5 = Normal.Normal.log_partition( params=x, split=True )
+        t1, t2 = Normal.standardToNat( *x )
+        t3, t4, t5 = Normal.log_partition( params=x, split=True )
         return t1, t2, -t3, -t4, -t5
 
     @classmethod
@@ -112,7 +112,7 @@ class NormalInverseWishart( ExponentialFam ):
         if( size > 1 ):
             return [ cls.sample( params=params, natParams=natParams, size=1 ) for _ in range( size ) ]
         sigma = InverseWishart.sample( params=( psi, nu ) )
-        mu = Normal.Normal.sample( params=( mu_0, sigma / kappa ) )
+        mu = Normal.sample( params=( mu_0, sigma / kappa ) )
         return mu, sigma
 
     ##########################################################################
@@ -127,4 +127,4 @@ class NormalInverseWishart( ExponentialFam ):
             return sum( [ cls.log_likelihood( _x, params=params, natParams=natParams ) for _x in x ] )
         mu, sigma = x
         return InverseWishart.log_likelihood( sigma, params=( psi, nu ) ) + \
-               Normal.Normal.log_likelihood( mu, params=( mu_0, sigma / kappa ) )
+               Normal.log_likelihood( mu, params=( mu_0, sigma / kappa ) )

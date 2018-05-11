@@ -1,10 +1,9 @@
 import numpy as np
-from Base import ExponentialFam
+from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.special import multigammaln
-from TensorNormal import TensorNormal
-from InverseWishart import InverseWishart
-import Regression
-import Normal
+from GenModels.GM.Distributions.TensorNormal import TensorNormal
+from GenModels.GM.Distributions.InverseWishart import InverseWishart
+from GenModels.GM.Distributions.Regression import Regression
 
 class MatrixNormalInverseWishart( ExponentialFam ):
     # This class is written with the intention of making it a prior for
@@ -86,8 +85,8 @@ class MatrixNormalInverseWishart( ExponentialFam ):
                 t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
             return t
 
-        t1, t2, t3 = Regression.Regression.standardToNat( *x )
-        t4, t5 = Regression.Regression.log_partition( params=x, split=True )
+        t1, t2, t3 = Regression.standardToNat( *x )
+        t4, t5 = Regression.log_partition( params=x, split=True )
         return t1, t2, t3, -t4, -t5
 
     @classmethod

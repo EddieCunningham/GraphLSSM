@@ -1,22 +1,13 @@
 import numpy as np
 # np.random.seed(2)
 import sys
-sys.path.append( '/Users/Eddie/GenModels' )
 
-from GM.States.StandardStates.MessagePassing import MessagePassingBase, \
-                                                    CategoricalForwardBackward, \
-                                                    KalmanFilter, \
-                                                    SwitchingKalmanFilter, \
-                                                    GaussianForwardBackward, \
-                                                    SLDSForwardBackward
-from GM.Distributions import MatrixNormalInverseWishart, \
-                             NormalInverseWishart, \
-                             Dirichlet, \
-                             Categorical, \
-                             Regression, \
-                             Normal
+from GenModels.GM.States.StandardStates.MessagePassing import *
+from GenModels.GM.Distributions import *
 from scipy.stats import dirichlet
 import time
+
+__all__ = [ 'marginalizationTest' ]
 
 ######################################################################
 
@@ -250,9 +241,11 @@ def testSwitchingKalmanFilter():
 
 ######################################################################
 
-testCategoricalForwardBackward()
-# testGaussianForwardBackward()
-# testSLDSForwardBackward()
-# testKalmanFilter()
-# testSwitchingKalmanFilter()
+def marginalizationTest():
+
+    testCategoricalForwardBackward()
+    # testGaussianForwardBackward()
+    # testSLDSForwardBackward()
+    # testKalmanFilter()
+    # testSwitchingKalmanFilter()
 

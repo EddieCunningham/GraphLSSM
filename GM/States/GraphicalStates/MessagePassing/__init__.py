@@ -1,7 +1,6 @@
 import sys
-sys.path.append( '/Users/Eddie/GenModels/GM/States/GraphicalStates/MessagePassing/' )
 
-from .GraphicalMessagePassingBase import Graph, GraphMessagePasser
-from .GraphFilterBase import GraphFilter
-from .GraphForwardBackward import GraphCategoricalForwardBackward
-from .ExampleGraphs import *
+from GenModels.GM.States.GraphicalStates.MessagePassing.GraphicalMessagePassingBase import Graph, GraphMessagePasser
+from GenModels.GM.States.GraphicalStates.MessagePassing.GraphFilterBase import GraphFilter
+from GenModels.GM.States.GraphicalStates.MessagePassing.GraphForwardBackward import GraphCategoricalForwardBackward
+from GenModels.GM.States.GraphicalStates.MessagePassing.ExampleGraphs import *

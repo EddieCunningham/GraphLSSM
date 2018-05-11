@@ -1,10 +1,10 @@
 import numpy as np
-from Base import TensorExponentialFam
-from TensorNormal import TensorNormal
-from Normal import Normal
+from GenModels.GM.Distributions.Base import TensorExponentialFam
+from GenModels.GM.Distributions.TensorNormal import TensorNormal
+from GenModels.GM.Distributions.Normal import Normal
 import string
 from functools import reduce
-from Regression import Regression
+from GenModels.GM.Distributions.Regression import Regression
 
 _HALF_LOG_2_PI = 0.5 * np.log( 2 * np.pi )
 

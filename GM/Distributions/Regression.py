@@ -1,14 +1,20 @@
 import numpy as np
-from Base import ExponentialFam
-from Normal import Normal
-from MatrixNormalInverseWishart import MatrixNormalInverseWishart
+from GenModels.GM.Distributions.Base import ExponentialFam
+from GenModels.GM.Distributions.Normal import Normal
 
+__all__ = [ 'Regression' ]
+
+def definePrior():
+    # Doing this to get around circular dependency
+    from GenModels.GM.Distributions.MatrixNormalInverseWishart import MatrixNormalInverseWishart
+    Regression.priorClass =MatrixNormalInverseWishart
 
 class Regression( ExponentialFam ):
 
-    priorClass = MatrixNormalInverseWishart
+    priorClass = None
 
     def __init__( self, A=None, sigma=None, prior=None, hypers=None ):
+        definePrior()
         super( Regression, self ).__init__( A, sigma, prior=prior, hypers=hypers )
 
     ##########################################################################

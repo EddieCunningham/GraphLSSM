@@ -1,4 +1,4 @@
-from MessagePassingBase import MessagePasser
+from GenModels.GM.States.StandardStates.MessagePassing.MessagePassingBase import MessagePasser
 import numpy as np
 from functools import reduce
 

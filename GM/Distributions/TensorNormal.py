@@ -1,7 +1,7 @@
 import numpy as np
-from Base import TensorExponentialFam
-from Normal import Normal
-from InverseWishart import InverseWishart
+from GenModels.GM.Distributions.Base import TensorExponentialFam
+from GenModels.GM.Distributions.Normal import Normal
+from GenModels.GM.Distributions.InverseWishart import InverseWishart
 import string
 from functools import reduce
 
@@ -218,4 +218,5 @@ class TensorNormal( TensorExponentialFam ):
             assert len( stat ) == 2
             contract = t + ind1 + ',' + t + ind2 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->'
 
-        return np.einsum( contract, *stat, *nat, optimize=( N > 2 ) )
+        # THERE IS A BUG IN NP.EINSUM AT THE MOMENT!!! KEEP OPTIMIZE OFF
+        return np.einsum( contract, *stat, *nat, optimize=False )

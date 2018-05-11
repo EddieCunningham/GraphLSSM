@@ -1,6 +1,6 @@
 import numpy as np
-from Base import TensorExponentialFam
-from Dirichlet import Dirichlet
+from GenModels.GM.Distributions.Base import TensorExponentialFam
+from GenModels.GM.Distributions.Dirichlet import Dirichlet
 
 class TensorCategorical( TensorExponentialFam ):
 

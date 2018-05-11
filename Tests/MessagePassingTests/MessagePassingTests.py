@@ -1,9 +1,10 @@
 import numpy as np
 # np.random.seed(2)
 import sys
-sys.path.append( '/Users/Eddie/GenModels' )
 
-from GM.States.GraphicalStates.MessagePassing import *
+from GenModels.GM.States.GraphicalStates.MessagePassing import *
+
+__all__ = [ 'messagePassingTest' ]
 
 def loadGraphs( graphs, feedbackSets=None, run=True ):
     # Simulate message passing but do nothing at the filter step
@@ -38,7 +39,6 @@ def allTest():
 
     print( 'Done with the tests!' )
 
-def tests():
+def messagePassingTest():
     allTest()
 
-tests()

@@ -1,16 +1,22 @@
 import numpy as np
-from Base import ExponentialFam
+from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import multivariate_normal
-from NormalInverseWishart import NormalInverseWishart
 from scipy.linalg import lapack, cho_factor, cho_solve
 
 _HALF_LOG_2_PI = 0.5 * np.log( 2 * np.pi )
 
+__all__ = [ 'Normal' ]
+
+def definePrior():
+    from GenModels.GM.Distributions.NormalInverseWishart import NormalInverseWishart
+    Normal.priorClass = NormalInverseWishart
+
 class Normal( ExponentialFam ):
 
-    priorClass = NormalInverseWishart
+    priorClass = None
 
     def __init__( self, mu=None, sigma=None, prior=None, hypers=None ):
+        definePrior()
         super( Normal, self ).__init__( mu, sigma, prior=prior, hypers=hypers )
 
     ##########################################################################
