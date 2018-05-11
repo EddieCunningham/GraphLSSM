@@ -1,4 +1,5 @@
 from GenModels.Tests import *
 
-exponentialFamilyTest()
+# exponentialFamilyTest()
+marginalizationTest()
 # graphMarginalizationTest()

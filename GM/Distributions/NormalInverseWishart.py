@@ -105,7 +105,7 @@ class NormalInverseWishart( ExponentialFam ):
         # Sample from P( x | Ѳ; α )
         if( params is None and natParams is None ):
             assert D is not None
-            params = ( np.eye( D ), D, np.zeros( D ), 1 )
+            params = ( np.zeros( D ), D, np.eye( D ), D, 0 )
         assert ( params is None ) ^ ( natParams is None )
         mu_0, kappa, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
 

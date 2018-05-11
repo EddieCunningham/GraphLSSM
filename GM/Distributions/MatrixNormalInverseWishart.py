@@ -113,7 +113,7 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         # Sample from P( x | Ѳ; α )
         if( params is None and natParams is None ):
             assert D_in is not None and D_out is not None
-            params = ( np.zeros( D_out, D_in ), np.eye( D_in ), np.eye( D_out ), D_out )
+            params = ( np.zeros( ( D_out, D_in ) ), np.eye( D_in ), np.eye( D_out ), D_out, 0 )
 
         assert ( params is None ) ^ ( natParams is None )
         M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
