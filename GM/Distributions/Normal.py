@@ -1,7 +1,8 @@
 import numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import multivariate_normal
-from scipy.linalg import lapack, cho_factor, cho_solve
+from scipy.linalg import cho_factor, cho_solve
+from GenModels.GM.Utility import *
 
 _HALF_LOG_2_PI = 0.5 * np.log( 2 * np.pi )
 
@@ -31,6 +32,10 @@ class Normal( ExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def constParams( self ):
+        return None
+
     @classmethod
     def dataN( cls, x ):
         if( x.ndim == 2 ):
@@ -40,10 +45,11 @@ class Normal( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def standardToNat( cls, mu, sigma ):
-        n1 = np.linalg.inv( sigma )
+    def standardToNat( cls, mu, sigma, returnPrecision=False ):
+        n1 = invPsd( sigma )
         n2 = n1.dot( mu )
-        n1 *= -0.5
+        if( returnPrecision == False ):
+            n1 *= -0.5
         return n1, n2
 
     @classmethod
@@ -51,12 +57,6 @@ class Normal( ExponentialFam ):
         sigma = -0.5 * np.linalg.inv( n1 )
         mu = sigma.dot( n2 )
         return mu, sigma
-
-    ##########################################################################
-
-    @property
-    def constParams( self ):
-        return None
 
     ##########################################################################
 

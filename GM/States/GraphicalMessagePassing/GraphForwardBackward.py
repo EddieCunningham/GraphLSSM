@@ -1,5 +1,5 @@
-from GenModels.GM.States.GraphicalStates.MessagePassing.GraphicalMessagePassingBase import Graph, GraphMessagePasser, dprint
-from GenModels.GM.States.GraphicalStates.MessagePassing.GraphFilterBase import GraphFilter
+from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import Graph, GraphMessagePasser, dprint
+from GenModels.GM.States.GraphicalMessagePassing.GraphFilterBase import GraphFilter
 import numpy as np
 from functools import reduce
 from scipy.sparse import coo_matrix

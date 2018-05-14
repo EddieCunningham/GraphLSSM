@@ -44,7 +44,9 @@ class Dirichlet( ExponentialFam ):
     @classmethod
     def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
-        # if( cls.dataN( x ) > 1 ):
+        if( isinstance( x, tuple ) ):
+            assert len( x ) == 1
+            x, = x
         if( x.ndim == 2 ):
             t = ( 0, )
             for _x in x:
@@ -78,7 +80,8 @@ class Dirichlet( ExponentialFam ):
                 params = ( params, )
 
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
-        return dirichlet.rvs( alpha=alpha, size=size )
+        ans = dirichlet.rvs( alpha=alpha, size=size )
+        return ans
 
     ##########################################################################
 

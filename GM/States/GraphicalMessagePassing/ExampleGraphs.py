@@ -1,4 +1,4 @@
-from GenModels.GM.States.GraphicalStates.MessagePassing.GraphicalMessagePassingBase import Graph, GraphMessagePasser
+from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import Graph, GraphMessagePasser
 import numpy as np
 from scipy.sparse import coo_matrix
 

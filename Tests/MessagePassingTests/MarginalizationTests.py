@@ -1,10 +1,6 @@
 import numpy as np
-# np.random.seed(2)
-import sys
-
-from GenModels.GM.States.StandardStates.MessagePassing import *
+from GenModels.GM.States.MessagePassing import *
 from GenModels.GM.Distributions import *
-from scipy.stats import dirichlet
 import time
 
 __all__ = [ 'marginalizationTest' ]
@@ -18,7 +14,7 @@ def testCategoricalForwardBackward():
     obsDim = 40
     D = 4
 
-    mp = CategoricalForwardBackward( T, K )
+    mp = CategoricalForwardBackward()
 
     onesK = np.ones( K )
     onesObs = np.ones( obsDim )
@@ -30,10 +26,9 @@ def testCategoricalForwardBackward():
     emissionDist = Dirichlet.sample( params=onesObs, size=K )
 
     start = time.time()
-    mp.updateParams( ys, initialDist, transDist, emissionDist )
+    mp.updateParams( initialDist, transDist, emissionDist, ys )
     end = time.time()
     print( 'Preprocess: ', end - start )
-
 
     start = time.time()
     alphas = mp.forwardFilter()
@@ -58,7 +53,7 @@ def testGaussianForwardBackward():
     obsDim = 40
     D = 4
 
-    mp = GaussianForwardBackward( T, K )
+    mp = GaussianForwardBackward()
 
     onesK = np.ones( K )
 
@@ -72,7 +67,7 @@ def testGaussianForwardBackward():
     sigmas = [ sigma for mu, sigma in muSigmas ]
 
     start = time.time()
-    mp.updateParams( ys, initialDist, transDist, mus, sigmas )
+    mp.updateParams( initialDist, transDist, mus, sigmas, ys )
     end = time.time()
     print( 'Preprocess: ', end - start )
 
@@ -100,7 +95,7 @@ def testSLDSForwardBackward():
     D_obs = 8
     D = 4
 
-    mp = SLDSForwardBackward( T, D_latent )
+    mp = SLDSForwardBackward()
 
     onesK = np.ones( D_latent )
 
@@ -117,7 +112,7 @@ def testSLDSForwardBackward():
     sigmas = [ sigma for A, sigma in ASigmas ]
 
     start = time.time()
-    mp.updateParams( ys, initialDist, transDist, mu0, sigma0, u, As, sigmas )
+    mp.updateParams( initialDist, transDist, mu0, sigma0, u, As, sigmas, ys )
     end = time.time()
     print( 'Preprocess: ', end - start )
 
@@ -145,7 +140,7 @@ def testKalmanFilter():
     D_obs = 3
     D = 4
 
-    mp = KalmanFilter( T, D_latent, D_obs )
+    mp = KalmanFilter()
 
     u = np.random.random( ( T, D_latent ) )
     A, sigma = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_latent )
@@ -156,7 +151,7 @@ def testKalmanFilter():
     mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
 
     start = time.time()
-    mp.updateParams( ys, u, A, sigma, C, R, mu0, sigma0 )
+    mp.updateParams( A, sigma, C, R, mu0, sigma0, u, ys )
     end = time.time()
     print( 'Preprocess: ', end - start )
 
@@ -195,7 +190,7 @@ def testSwitchingKalmanFilter():
     D = 4
     K = 5
 
-    mp = SwitchingKalmanFilter( T, D_latent, D_obs )
+    mp = SwitchingKalmanFilter()
 
     u = np.random.random( ( T, D_latent ) )
     ASigmas = [ MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_latent ) for _ in range( K ) ]
@@ -211,7 +206,7 @@ def testSwitchingKalmanFilter():
     mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
 
     start = time.time()
-    mp.updateParams( ys, u, z, As, sigmas, C, R, mu0, sigma0 )
+    mp.updateParams( z, As, sigmas, C, R, mu0, sigma0, u, ys )
     end = time.time()
     print( 'Preprocess: ', end - start )
 

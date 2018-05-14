@@ -1,22 +1,26 @@
-from GenModels.GM.States.StandardStates.MessagePassing.MessagePassingBase import MessagePasser
+from GenModels.GM.States.MessagePassing.FilterBase import MessagePasser
 import numpy as np
 from functools import reduce
+from GenModels.GM.Distributions import Normal
+from GenModels.GM.Utility import *
 
-import os
-path = os.getcwd()
-
-import sys
-sys.path.append( '/Users/Eddie/GenModels' )
-from GM.Distributions import Normal
-sys.path.append( path )
+__all__ = [ 'KalmanFilter',
+            'SwitchingKalmanFilter' ]
 
 class KalmanFilter( MessagePasser ):
     # Kalman filter with only 1 set of parameters
 
-    def __init__( self, T, D_latent, D_obs ):
-        self.D_latent = D_latent
-        self.D_obs = D_obs
-        super( KalmanFilter, self ).__init__( T )
+    @property
+    def T( self ):
+        return self._T
+
+    @property
+    def D_latent( self ):
+        return self._D_latent
+
+    @property
+    def D_obs( self ):
+        return self._D_obs
 
     def genFilterProbs( self ):
         return np.array( [ [ np.empty( ( self.D_latent, self.D_latent ) ), \
@@ -33,41 +37,94 @@ class KalmanFilter( MessagePasser ):
 
     ######################################################################
 
-    def updateParams( self, ys, u, A, sigma, C, R, mu0, sigma0 ):
+    def parameterCheck( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None ):
+
+        if( ys is not None ):
+            ys = np.array( ys )
+            if( ys.ndim == 2 ):
+                ys = ys[ None ]
+            else:
+                assert ys.ndim == 3
+            if( u is not None ):
+                assert ys.shape[ 1 ] == u.shape[ 0 ]
+            assert C.shape[ 0 ] == ys.shape[ 2 ]
+
+        assert A.shape[ 0 ] == A.shape[ 1 ] and mu0.shape[ 0 ] == sigma0.shape[ 0 ] and sigma0.shape == A.shape
+        if( u is not None ):
+            assert A.shape[ 0 ] == u.shape[ 1 ]
+        assert A.shape == sigma.shape
+
+        assert C.shape[ 0 ] == R.shape[ 0 ] and R.shape[ 0 ] == R.shape[ 1 ]
+        assert C.shape[ 1 ] == A.shape[ 0 ]
+
+    def preprocessData( self, u, ys ):
         self.u = u
 
-        sigInv = np.linalg.inv( sigma )
+        ys = np.array( ys )
+        if( ys.ndim == 2 ):
+            ys = ys[ None ]
+        else:
+            assert ys.ndim == 3
+        assert self.C.shape[ 0 ] == ys.shape[ 2 ]
+        if( u is not None ):
+            assert ys.shape[ 1 ] == u.shape[ 0 ]
+            assert u.shape[ 1 ] == self.D_latent
+
+
+        self._T = ys.shape[ 1 ]
+
+        RInv = invPsd( self.R )
+
+        self.hy = ys.dot( RInv @ self.C ).sum( 0 )
+        self.Jy = self.C.T @ RInv @ self.C
+        partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
+        self.log_Zy = partition( self.Jy, self.hy )
+
+    def updateParams( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None ):
+
+        self.parameterCheck( A, sigma, C, R, mu0, sigma0, u=u, ys=ys )
+
+        self._D_latent = A.shape[ 0 ]
+        self._D_obs = C.shape[ 0 ]
+
+        self.A = A
+        self.sigma = sigma
+
+        sigInv = invPsd( sigma )
         self.J11 = sigInv
         self.J12 = -sigInv @ A
         self.J22 = A.T @ sigInv @ A
         self.log_Z = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
 
-        RInv = np.linalg.inv( R )
-
-        if( not isinstance( ys, np.ndarray ) ):
-            ys = np.array( ys )
-
-        self.hy = ys.dot( RInv @ C ).sum( 0 )
-        self.Jy = C.T @ RInv @ C
-        partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
-        self.log_Zy = partition( self.Jy, self.hy )
+        self.C = C
+        self.R = R
 
         self.mu0 = mu0
         self.sigma0 = sigma0
 
+        if( ys is not None ):
+            self.preprocessData( u, ys )
+        else:
+            self._T = None
+            self.u = None
+
     ######################################################################
 
     def transitionProb( self, t, t1, forward=False ):
-        u = self.u[ t ]
 
         J11 = self.J11
         J12 = self.J12
         J22 = self.J22
 
-        h1 = J11.dot( u )
-        h2 = J12.T.dot( u )
-
-        log_Z = 0.5 * u.dot( h1 ) + self.log_Z
+        if( self.u is not None ):
+            u = self.u[ t ]
+            h1 = J11.dot( u )
+            h2 = J12.T.dot( u )
+            log_Z = 0.5 * u.dot( h1 ) + self.log_Z
+        else:
+            h1 = np.zeros( J11.shape[ 0 ] )
+            h2 = np.zeros_like( h1 )
+            log_Z = self.log_Z
 
         return J11, J12, J22, h1, h2, log_Z
 
@@ -154,29 +211,59 @@ class KalmanFilter( MessagePasser ):
 class SwitchingKalmanFilter( KalmanFilter ):
     # Kalman filter with multiple dynamics parameters and modes
 
-    def updateParams( self, ys, u, z, As, sigmas, C, R, mu0, sigma0 ):
-        self.u = u
+    def parameterCheck( self, z, As, sigmas, C, R, mu0, sigma0, u=None, ys=None ):
+
+        if( ys is not None ):
+            ys = np.array( ys )
+            if( ys.ndim == 2 ):
+                ys = ys[ None ]
+            else:
+                assert ys.ndim == 3
+            if( u is not None ):
+                assert ys.shape[ 1 ] == u.shape[ 0 ]
+            assert ys.shape[ 1 ] == z.shape[ 0 ]
+            assert C.shape[ 0 ] == ys.shape[ 2 ]
+
+        if( u is not None ):
+            u.shape[ 1 ] == mu0.shape[ 0 ]
+        assert mu0.shape[ 0 ] == sigma0.shape[ 0 ]
+
+        assert len( As ) == len( sigmas )
+        for A, sigma in zip( As, sigmas ):
+            assert A.shape[ 0 ] == A.shape[ 1 ] and sigma0.shape == A.shape
+            if( u is not None ):
+                assert A.shape[ 0 ] == u.shape[ 1 ]
+            assert A.shape == sigma.shape
+
+        assert C.shape[ 0 ] == R.shape[ 0 ] and R.shape[ 0 ] == R.shape[ 1 ]
+        assert C.shape[ 1 ] == A.shape[ 1 ]
+
+    def updateParams( self, z, As, sigmas, C, R, mu0, sigma0, u=None, ys=None ):
+
+        self.parameterCheck( z, As, sigmas, C, R, mu0, sigma0, u=u, ys=ys )
+        self._D_latent = mu0.shape[ 0 ]
+        self._D_obs = C.shape[ 0 ]
+
         self.z = z
 
         # Save everything because memory probably isn't a big issue
         self.As = As
-        self.J11s = [ np.linalg.inv( sigma ) for sigma in sigmas ]
+        self.J11s = [ invPsd( sigma ) for sigma in sigmas ]
         self.J12s = [ -sigInv @ A for A, sigInv in zip( self.As, self.J11s ) ]
         self.J22s = [ A.T @ sigInv @ A for A, sigInv in zip( self.As, self.J11s ) ]
         self.log_Zs = np.array( [ 0.5 * np.linalg.slogdet( sigma )[ 1 ] for sigma in sigmas ] )
 
-        RInv = np.linalg.inv( R )
-
-        if( not isinstance( ys, np.ndarray ) ):
-            ys = np.array( ys )
-
-        self.hy = ys.dot( RInv @ C ).sum( axis=0 )
-        self.Jy = C.T @ RInv @ C
-        partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
-        self.log_Zy = partition( self.Jy, self.hy )
+        self.C = C
+        self.R = R
 
         self.mu0 = mu0
         self.sigma0 = sigma0
+
+        if( ys is not None ):
+            self.preprocessData( u, ys )
+        else:
+            self._T = None
+            self.u = None
 
     ######################################################################
 

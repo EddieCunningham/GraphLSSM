@@ -1,8 +1,6 @@
 import numpy as np
-# np.random.seed(2)
-import sys
 
-from GenModels.GM.States.GraphicalStates.MessagePassing import *
+from GenModels.GM.States.GraphicalMessagePassing import *
 
 __all__ = [ 'messagePassingTest' ]
 

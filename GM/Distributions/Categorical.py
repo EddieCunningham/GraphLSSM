@@ -53,9 +53,9 @@ class Categorical( ExponentialFam ):
     def sufficientStats( cls, x, constParams=None, forPost=False ):
     # def sufficientStats( cls, x, D=None, constParams=None, forPost=False ):
         # Compute T( x )
-        assert isinstance( x, np.ndarray ) and x.ndim == 1
-        # assert D is not None
+        assert isinstance( x, np.ndarray ) and x.ndim == 1, x
         D = constParams
+        assert D is not None
         t1 = np.bincount( x, minlength=D )
         return ( t1, )
 
@@ -77,7 +77,13 @@ class Categorical( ExponentialFam ):
                 params = ( params, )
         assert ( params is None ) ^ ( natParams is None )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
-        return np.random.choice( p.shape[ 0 ], size, p=p )
+        if( p.ndim > 1 ):
+            assert p.size == p.squeeze().size
+            p = p.squeeze()
+        # assert p.ndim == 1, p
+        ans = np.random.choice( p.shape[ 0 ], size, p=p )
+        return ans
+        return ans if size > 1 else ans[ 0 ]
 
     ##########################################################################
 

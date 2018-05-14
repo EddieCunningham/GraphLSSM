@@ -1,38 +1,57 @@
+from abc import ABC, abstractmethod
 import numpy as np
 
-class MessagePasser():
+class MessagePasser( ABC ):
     # Base message passing class for forward backward
     # and kalman filter type algorithms
 
-    def __init__( self, T ):
-        self.T = T
+    def __init__( self ):
+        pass
 
+    @property
+    @abstractmethod
+    def T( self ):
+        pass
+
+    @abstractmethod
+    def preprocessData( self, ys ):
+        pass
+
+    @abstractmethod
+    def parameterCheck( self, *args ):
+        pass
+
+    @abstractmethod
     def genFilterProbs( self ):
-        assert 0
+        pass
 
+    @abstractmethod
     def genWorkspace( self ):
-        assert 0
+        pass
 
+    @abstractmethod
     def updateParams( self, ys ):
-        self.ys = ys
+        pass
 
+    @abstractmethod
     def transitionProb( self, t, t1 ):
-        assert 0
+        pass
 
+    @abstractmethod
     def emissionProb( self, t ):
-        assert 0
+        pass
 
-    def combineTerms( self, *terms ):
-        assert 0
-
+    @abstractmethod
     def integrate( self, integrand, outMem ):
-        assert 0
+        pass
 
+    @abstractmethod
     def forwardBaseCase( self ):
-        assert 0
+        pass
 
+    @abstractmethod
     def backwardBaseCase( self ):
-        assert 0
+        pass
 
     ######################################################################
 

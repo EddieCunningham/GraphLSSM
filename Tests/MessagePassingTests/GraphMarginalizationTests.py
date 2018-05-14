@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.States.GraphicalStates.MessagePassing import *
+from GenModels.GM.States.GraphicalMessagePassing import *
 from GenModels.GM.Distributions import *
 import time
 from collections import Iterable
