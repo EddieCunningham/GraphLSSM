@@ -13,7 +13,7 @@ class Transition( TensorCategorical ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, x=None, params=None, natParams=None, size=1 ):
+    def sample( cls, x=None, params=None, natParams=None, size=1, ravel=False ):
         # Sample from P( x | Ѳ; α )
 
         if( x is None ):

@@ -1,9 +1,10 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam
+from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
 from scipy.special import multigammaln
 from GenModels.GM.Distributions.TensorNormal import TensorNormal
 from GenModels.GM.Distributions.InverseWishart import InverseWishart
 from GenModels.GM.Distributions.Regression import Regression
+from GenModels.GM.Utility import *
 
 class MatrixNormalInverseWishart( ExponentialFam ):
     # This class is written with the intention of making it a prior for
@@ -33,12 +34,18 @@ class MatrixNormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
-        if( not isinstance( x[ 0 ], np.ndarray ) ):
-            return len( x )
-        assert len( x ) == 2
-        assert isinstance( x[ 0 ], np.ndarray ) and isinstance( x[ 1 ], np.ndarray )
-        return 1
+    def dataN( cls, x, ravel=False ):
+        if( ravel == False ):
+            if( not isinstance( x[ 0 ], np.ndarray ) ):
+                return len( x )
+            assert len( x ) == 2
+            assert isinstance( x[ 0 ], np.ndarray ) and isinstance( x[ 1 ], np.ndarray )
+            return 1
+        else:
+            if( x.ndim == 2 ):
+                return x.shape[ 0 ]
+            assert x.ndim == 1
+            return 1
 
     ##########################################################################
 
@@ -90,10 +97,9 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         return t1, t2, t3, -t4, -t5
 
     @classmethod
+    @checkExpFamArgs
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
-
         M, V, psi, nu, Q = params if params is not None else cls.natToStandard( *natParams )
 
         p = psi.shape[ 0 ]
@@ -109,17 +115,15 @@ class MatrixNormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None, D_in=None, D_out=None, size=1 ):
+    @checkExpFamArgs( allowNone=True )
+    @multiParamSample
+    def sample( cls, params=None, natParams=None, D_in=None, D_out=None, size=1, ravel=False ):
         # Sample from P( x | Ѳ; α )
         if( params is None and natParams is None ):
             assert D_in is not None and D_out is not None
             params = ( np.zeros( ( D_out, D_in ) ), np.eye( D_in ), np.eye( D_out ), D_out, 0 )
 
-        assert ( params is None ) ^ ( natParams is None )
         M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
-
-        if( size > 1 ):
-            return [ cls.sample( params=params, natParams=natParams, size=1 ) for _ in range( size ) ]
 
         sigma = InverseWishart.sample( params=( psi, nu ) )
         A = TensorNormal.sample( params=( M, ( sigma, V ) ), size=1 )[ 0 ]
@@ -128,12 +132,19 @@ class MatrixNormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    @checkExpFamArgs
+    @multiSampleLikelihood
+    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
         M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
-        if( cls.dataN( x ) > 1 ):
-            return sum( [ cls.log_likelihood( _x, params=params, natParams=natParams ) for _x in x ] )
-        A, sigma = x
+
+        if( ravel == False ):
+            A, sigma = x
+        else:
+            D = prod( M.shape )
+            A, sigma = np.split( x, [ D ] )
+            A = A.reshape( M.shape )
+            sigma = sigma.reshape( psi.shape )
+
         return InverseWishart.log_likelihood( sigma, params=( psi, nu ) ) + \
                TensorNormal.log_likelihood( A[ None ], params=( M, ( sigma, V ) ) )

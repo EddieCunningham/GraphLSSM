@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam
+from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
 from scipy.stats import dirichlet
 from scipy.special import gammaln
 from GenModels.GM.Distributions.Categorical import Categorical
@@ -18,7 +18,7 @@ class Dirichlet( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, ravel=False ):
         if( x.ndim == 2 ):
             return x.shape[ 0 ]
         return 1
@@ -57,9 +57,9 @@ class Dirichlet( ExponentialFam ):
         return ( t1, )
 
     @classmethod
+    @checkExpFamArgs
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
         A1 = gammaln( alpha ).sum()
         A2 = -gammaln( alpha.sum() )
@@ -70,14 +70,16 @@ class Dirichlet( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    @checkExpFamArgs
+    def sample( cls, params=None, natParams=None, D=None, size=1, ravel=False ):
         # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-
         if( params is not None ):
             if( not isinstance( params, tuple ) or \
                 not isinstance( params, list ) ):
                 params = ( params, )
+        elif( natParams is None ):
+            assert D is not None
+            params = ( np.ones( D ), )
 
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
         ans = dirichlet.rvs( alpha=alpha, size=size )
@@ -86,15 +88,13 @@ class Dirichlet( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    @checkExpFamArgs
+    @multiSampleLikelihood
+    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
         if( isinstance( x, tuple ) ):
             assert len( x ) == 1
             x, = x
-        assert isinstance( x, np.ndarray )
-        if( x.ndim == 2 ):
-            return sum( [ dirichlet.logpdf( _x, alpha=alpha ) for _x in x ] )
         assert isinstance( x, np.ndarray ) and x.ndim == 1
         return dirichlet.logpdf( x, alpha=alpha )

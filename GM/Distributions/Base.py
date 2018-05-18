@@ -3,10 +3,13 @@ import numpy as np
 from GenModels.GM.Utility import *
 import string
 import tqdm
+from functools import wraps
+from collections import Iterable
 
 __all__ = [ 'Distribution', \
             'Conjugate', \
-            'ExponentialFam' ]
+            'ExponentialFam', \
+            'checkExpFamArgs' ]
 
 class Distribution( ABC ):
 
@@ -27,6 +30,21 @@ class Distribution( ABC ):
 
     ##########################################################################
 
+    def paramChoices( self, includeSelf=True, includePrior=False, **kwargs ):
+
+        params = {}
+        if( includeSelf ):
+            params.update( { 'params': self.params } )
+
+        if( includePrior ):
+            params.update( { 'priorParams': self.prior.params } )
+
+        params.update( kwargs )
+
+        return params
+
+    ##########################################################################
+
     @property
     def params( self ):
         return self._params
@@ -44,135 +62,119 @@ class Distribution( ABC ):
 
     @classmethod
     @abstractmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, ravel=False ):
         # This is necessary to know how to tell the size of an output
         pass
 
+    @classmethod
+    def outputShapes( cls, params ):
+        # Return the shapes of the outputs based on params
+        x = cls.sample( params, size=1, ravel=False )
+        if( isinstance( x, tuple ) or isinstance( x, list ) ):
+            return [ _x.shape for _x in x ]
+        return [ x.shape ]
+
+    @classmethod
+    def unravelSample( cls, x, params ):
+        shapes = cls.outputShapes( params )
+
+        split = np.split( x, [ prod( s ) for s in shapes[ :-1 ] ] )
+        ans = []
+        for item, s in zip( split, shapes ):
+            assert item.shape == s
+            ans.append( item )
+        return ans
+
     ##########################################################################
 
     @classmethod
     @abstractmethod
-    def sample( cls, params, size=1 ):
+    def sample( cls, params, size=1, ravel=False ):
         # Sample from P( x | Ѳ; α )
         pass
 
-    def isample( self, size=1 ):
-        return self.sample( self.params, size=size )
+    def isample( self, size=1, ravel=False ):
+        return self.sample( **self.paramChoices( includeSelf=True, includePrior=False, size=size, ravel=ravel ) )
 
     @classmethod
     @abstractmethod
-    def log_likelihood( cls, x, params ):
+    def log_likelihood( cls, x, params, ravel=False ):
         # Compute P( x | Ѳ; α )
         pass
 
-    def ilog_likelihood( self, x ):
-        return self.log_likelihood( x, self.params )
+    def ilog_likelihood( self, x, ravel=False ):
+        return self.log_likelihood( x, **self.paramChoices( includeSelf=True, includePrior=False, ravel=ravel ) )
 
     ##########################################################################
 
     @classmethod
-    def jointSample( cls, priorParams, size=1 ):
+    @multiParamSample
+    def jointSample( cls, priorParams, size=1, ravel=False ):
         # Sample from P( x, Ѳ; α )
-        xs = [ None for _ in range( size ) ]
-        thetas = [ None for _ in range( size ) ]
-        for i in range( size ):
-            theta = cls.paramSample( priorParams=priorParams )
-            x = cls.sample( params=theta )
-            xs[ i ] = x
-            thetas[ i ] = theta
-        return xs, thetas
+        theta = cls.paramSample( priorParams=priorParams, ravel=ravel )
+        x = cls.sample( params=theta, ravel=ravel )
+        return x, theta
 
-    def ijointSample( self, size=1 ):
-        return self.jointSample( self.prior.params, size=size )
+    def ijointSample( self, size=1, ravel=False ):
+        return self.jointSample( **self.paramChoices( includeSelf=False, includePrior=True, size=size, ravel=ravel ) )
 
     @classmethod
-    def gibbsJointSample( cls, priorParams, burnIn=5000, skip=100, size=1, verbose=True ):
-        params = cls.paramSample( priorParams )
-        it = range( burnIn )
-        if( verbose == True ):
-            it = tqdm.tqdm( it, desc='Burn in' )
-        for _ in it:
-            x = cls.sample( params )
-            params = cls.posteriorSample( x, priorParams )
-
-        xResult = [ None for _ in range( size ) ]
-        pResult = [ None for _ in range( size ) ]
-
-        it = range( size )
-        if( verbose == True ):
-            it = tqdm.tqdm( it, desc='Gibbs (once every %d)'%( skip ) )
-
-        for i in it:
-            x = cls.sample( params )
-            params = cls.posteriorSample( x, priorParams )
-            xResult[ i ] = x
-            pResult[ i ] = params
-            for _ in range( skip ):
-                x = cls.sample( params )
-                params = cls.posteriorSample( x, priorParams )
-
-        return np.array( xResult ), np.array( pResult )
-
-    def igibbsJointSample( self, burnIn=100, skip=10, size=1 ):
-        return self.gibbsJointSample( self.prior.params, burnIn=burnIn, skip=skip, size=size )
-
-    @classmethod
-    def log_joint( cls, x, params, priorParams ):
+    def log_joint( cls, x, params, priorParams, ravel=False ):
         # Compute P( x, Ѳ; α )
-        return cls.log_likelihood( x, params ) + cls.log_params( params, priorParams )
+        return cls.log_likelihood( x, params, ravel=ravel ) + cls.log_params( params, priorParams, ravel=ravel )
 
-    def ilog_joint( self, x ):
-        return self.log_joint( x, self.params )
+    def ilog_joint( self, x, ravel=False ):
+        return self.log_joint( x, **self.paramChoices( includeSelf=True, includePrior=True, ravel=ravel ) )
 
     ##########################################################################
 
     @classmethod
     @abstractmethod
-    def posteriorSample( cls, x, priorParams, size=1 ):
+    def posteriorSample( cls, x, priorParams, size=1, ravel=False ):
         # Sample from P( Ѳ | x; α )
         pass
 
-    def iposteriorSample( self, x, size=1 ):
-        return self.posteriorSample( x, self.prior.params, size=size )
+    def iposteriorSample( self, x, size=1, ravel=False ):
+        return self.posteriorSample( x, **self.paramChoices( includeSelf=False, includePrior=True, size=size ) )
 
     @classmethod
     @abstractmethod
-    def log_posterior( cls, x, params, priorParams ):
+    def log_posterior( cls, x, params, priorParams, ravel=False ):
         # Compute P( Ѳ | x; α )
         pass
 
-    def ilog_posterior( self, x ):
-        return self.log_posterior( x, self.params, self.prior.params )
+    def ilog_posterior( self, x, ravel=False ):
+        return self.log_posterior( x, self.params, self.prior.params, ravel=ravel )
 
     ##########################################################################
 
     @classmethod
-    def paramSample( cls, priorParams, size=1 ):
+    def paramSample( cls, priorParams, size=1, ravel=False ):
         # Sample from P( Ѳ; α )
-        return cls.priorClass.sample( priorParams, size=size )
+        return cls.priorClass.sample( priorParams, size=size, ravel=ravel )
 
-    def iparamSample( self, size=1 ):
-        return self.prior.isample( size=size )
+    def iparamSample( self, size=1, ravel=False ):
+        return self.prior.isample( size=size, ravel=ravel )
 
     @classmethod
-    def log_params( cls, params, priorParams ):
+    def log_params( cls, params, priorParams, ravel=False ):
         # Compute P( Ѳ; α )
-        return cls.priorClass.log_likelihood( params, priorParams )
+        return cls.priorClass.log_likelihood( params, priorParams, ravel=ravel )
 
-    def ilog_params( self ):
-        return self.log_params( self.params, self.prior.params )
+    def ilog_params( self, ravel=False ):
+        return self.log_params( self.params, self.prior.params, ravel=ravel )
 
     ##########################################################################
 
     @classmethod
-    def log_marginal( cls, x, params, priorParams ):
-        likelihood = cls.log_likelihood( x, params )
-        posterior = cls.log_posterior( x, params, priorParams )
-        params = cls.log_params( params, priorParams )
+    def log_marginal( cls, x, params, priorParams, ravel=False ):
+        likelihood = cls.log_likelihood( x, params, ravel=ravel )
+        posterior = cls.log_posterior( x, params, priorParams, ravel=ravel )
+        params = cls.log_params( params, priorParams, ravel=ravel )
         return likelihood + params - posterior
 
-    def ilog_marginal( self, x ):
-        return self.log_marginal( x, self.params, self.prior.params )
+    def ilog_marginal( self, x, ravel=False ):
+        return self.log_marginal( x, **self.paramChoices( includeSelf=True, includePrior=True, constParams=self.constParams ) )
 
     ##########################################################################
 
@@ -186,7 +188,7 @@ class Distribution( ABC ):
 
     def metropolisHastings( self, maxN=10000, burnIn=3000, size=1000, skip=50, verbose=True, concatX=True ):
 
-        x = self.isample()
+        x = self.isample( ravel=True )
         p = self.ilog_likelihood( x )
 
         maxN = max( maxN, burnIn + size * skip )
@@ -219,6 +221,17 @@ class Distribution( ABC ):
         return samples
 
     ##########################################################################
+
+    def functionalityTest( self, N=7, **D ):
+
+        x = self.sample( **D, size=N, ravel=False )
+        y = self.sample( **D, size=N, ravel=True )
+
+        assert self.dataN( x, ravel=False ) == N
+        assert self.dataN( y, ravel=True ) == N
+
+        self.log_likelihood( x, params=self.paramSample(), ravel=False )
+        self.log_likelihood( y, params=self.paramSample(), ravel=True )
 
     def marginalTest( self, N=1 ):
         # P( x ) should stay the same for different settings of params
@@ -278,6 +291,32 @@ class Conjugate( Distribution ):
 
 ####################################################################################################################################
 
+@doublewrap
+def checkExpFamArgs( func, allowNone=False ):
+
+    @wraps( func )
+    def wrapper( *args, **kwargs ):
+
+        if( 'params' in kwargs and 'natParams' in kwargs ):
+            params = kwargs[ 'params' ]
+            natParams = kwargs[ 'natParams' ]
+            if( allowNone ):
+                if( not( params is None and natParams is None ) ):
+                    assert ( params is None ) ^ ( natParams is None ), kwargs
+            else:
+                assert ( params is None ) ^ ( natParams is None ), kwargs
+
+        if( 'priorParams' in kwargs and 'priorNatParams' in kwargs ):
+            priorParams = kwargs[ 'priorParams' ]
+            priorNatParams = kwargs[ 'priorNatParams' ]
+            assert ( priorParams is None ) ^ ( priorNatParams is None ), kwargs
+
+        return func( *args, **kwargs )
+
+    return wrapper
+
+####################################################################################################################################
+
 class ExponentialFam( Conjugate ):
 
     def __init__( self, *params, prior=None, hypers=None ):
@@ -295,6 +334,24 @@ class ExponentialFam( Conjugate ):
 
         # Set the natural parameters
         self.natParams
+
+    ##########################################################################
+
+    def paramChoices( self, includeSelf=True, includePrior=False, **kwargs ):
+
+        if( includeSelf ):
+            if( self.standardChanged ):
+                kwargs.update( { 'params': self.params } )
+            else:
+                kwargs.update( { 'natParams': self.natParams } )
+
+        if( includePrior ):
+            if( self.prior.standardChanged ):
+                kwargs.update( { 'priorParams': self.prior.params } )
+            else:
+                kwargs.update( { 'priorNatParams': self.prior.natParams } )
+
+        return kwargs
 
     ##########################################################################
 
@@ -337,72 +394,49 @@ class ExponentialFam( Conjugate ):
     ##########################################################################
 
     @classmethod
+    @checkExpFamArgs
+    @abstractmethod
     def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x ).  forPost is True if this is being
         # used for something related to the posterior.
-        assert ( params is None ) ^ ( natParams is None )
+        pass
 
     ##########################################################################
 
     @classmethod
+    @checkExpFamArgs
+    @abstractmethod
     def log_partition( cls, x, params=None, natParams=None, split=False ):
         # The terms that make up the log partition
-        assert ( params is None ) ^ ( natParams is None )
+        pass
 
     def ilog_partition( self, x, split=False ):
-        if( self.standardChanged ):
-            return self.log_partition( x, params=self.params, split=split )
-        return self.log_partition( x, natParams=self.natParams, split=split )
-
-    ####################################################################################################################################################
-
-    @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
-        # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-
-    def isample( self, size=1 ):
-        if( self.standardChanged ):
-            return self.sample( params=self.params, size=size )
-        return self.sample( natParams=self.natParams, size=size )
+        return self.log_partition( x, **self.paramChoices( includeSelf=True, includePrior=False, split=split ) )
 
     ##########################################################################
 
     @classmethod
+    @checkExpFamArgs
     def paramSample( cls, priorParams=None, priorNatParams=None, size=1 ):
         # Sample from P( Ѳ; α )
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
         return cls.priorClass.sample( params=priorParams, natParams=priorNatParams, size=size )
 
-    def iparamSample( self, size=1 ):
-        return self.prior.isample( size=size )
-
     ##########################################################################
 
     @classmethod
+    @checkExpFamArgs
+    @multiParamSample
     def jointSample( cls, priorParams=None, priorNatParams=None, size=1 ):
         # Sample from P( x, Ѳ; α )
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
-        xs = [ None for _ in range( size ) ]
-        thetas = [ None for _ in range( size ) ]
-        for i in range( size ):
-            theta = cls.paramSample( priorParams=priorParams, priorNatParams=priorNatParams )
-            x = cls.sample( params=theta )
-            xs[ i ] = x
-            thetas[ i ] = theta
-        return xs, thetas
-
-    def ijointSample( self, size=1 ):
-        if( self.prior.standardChanged ):
-            return self.jointSample( priorParams=self.prior.params, size=size )
-        return self.jointSample( priorNatParams=self.prior.natParams, size=size )
+        theta = cls.paramSample( priorParams=priorParams, priorNatParams=priorNatParams )
+        x = cls.sample( params=theta )
+        return x, theta
 
     ##########################################################################
 
     @classmethod
+    @checkExpFamArgs
     def posteriorPriorNatParams( cls, x, constParams=None, priorParams=None, priorNatParams=None ):
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
-
         stats = cls.sufficientStats( x, constParams=constParams, forPost=True )
         priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
         return np.add( stats, priorNatParams )
@@ -410,47 +444,37 @@ class ExponentialFam( Conjugate ):
     ##########################################################################
 
     @classmethod
+    @checkExpFamArgs
     def posteriorSample( cls, x, constParams=None, priorParams=None, priorNatParams=None, size=1 ):
         # Sample from P( Ѳ | x; α )
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
-
         postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
         return cls.priorClass.sample( natParams=postNatParams, size=size )
 
     def iposteriorSample( self, x, size=1 ):
-        if( self.prior.standardChanged ):
-            return self.posteriorSample( x, constParams=self.constParams, priorParams=self.prior.params, size=size )
-        return self.posteriorSample( x, constParams=self.constParams, priorNatParams=self.prior.natParams, size=size )
+        return self.posteriorSample( x, **self.paramChoices( includeSelf=False, includePrior=True, constParams=self.constParams, size=size ) )
 
     ####################################################################################################################################################
 
     @classmethod
+    @checkExpFamArgs
     def log_likelihoodExpFam( cls, x, constParams=None, params=None, natParams=None ):
-        assert ( params is None ) ^ ( natParams is None )
         natParams = natParams if natParams is not None else cls.standardToNat( *params )
         stats = cls.sufficientStats( x, constParams=constParams )
         dataN = cls.dataN( x )
         part = cls.log_partition( x, natParams=natParams ) * dataN
         return cls.log_pdf( natParams, stats, part )
 
-    @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
-        # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-
     def ilog_likelihood( self, x, expFam=False ):
         if( expFam ):
             return self.log_likelihoodExpFam( x, constParams=self.constParams, natParams=self.natParams )
-        if( self.standardChanged ):
-            return self.log_likelihood( x, params=self.params )
-        return self.log_likelihood( x, natParams=self.natParams )
+        return super( ExponentialFam, self ).ilog_likelihood( x )
 
     ##########################################################################
 
     @classmethod
+    @checkExpFamArgs
     def log_params( cls, params=None, natParams=None, priorParams=None, priorNatParams=None ):
         # Compute P( Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
         params = params if params is not None else cls.natToStandard( *natParams )
         return cls.priorClass.log_likelihood( params, params=priorParams, natParams=priorNatParams )
 
@@ -460,9 +484,8 @@ class ExponentialFam( Conjugate ):
     ##########################################################################
 
     @classmethod
+    @checkExpFamArgs
     def log_jointExpFam( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None ):
-        assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
-
         postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
 
         params = params if params is not None else cls.natToStandard( *natParams )
@@ -472,60 +495,16 @@ class ExponentialFam( Conjugate ):
         return cls.log_pdf( postNatParams, stat, part )
 
     @classmethod
+    @checkExpFamArgs
     def log_joint( cls, x, params=None, natParams=None, priorParams=None, priorNatParams=None ):
         # Compute P( x, Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
-
         return cls.log_params( params=params, natParams=natParams, priorParams=priorParams, priorNatParams=priorNatParams ) + \
                cls.log_likelihood( x, params=params, natParams=natParams )
 
     def ilog_joint( self, x, expFam=False ):
         if( expFam ):
             return self.log_jointExpFam( x, params=self.params, constParams=self.constParams, priorNatParams=self.prior.natParams )
-        if( self.standardChanged ):
-            if( self.prior.standardChanged ):
-                return self.log_joint( x, params=self.params, priorParams=self.prior.params )
-            return self.log_joint( x, params=self.params, priorNatParams=self.prior.natParams )
-        if( self.prior.standardChanged ):
-            return self.log_joint( x, natParams=self.natParams, priorParams=self.prior.params )
-        return self.log_joint( x, natParams=self.natParams, priorNatParams=self.prior.natParams )
-
-    ##########################################################################
-
-    @classmethod
-    def gibbsJointSample( cls, constParams=None, priorParams=None, priorNatParams=None, burnIn=5000, skip=100, size=1, verbose=True ):
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
-
-        params = cls.paramSample( priorParams=priorParams, priorNatParams=priorNatParams )
-        it = range( burnIn )
-        if( verbose == True ):
-            it = tqdm.tqdm( it, desc='Burn in' )
-        for _ in it:
-            x = cls.sample( params=params )
-            params = cls.posteriorSample( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
-
-        xResult = [ None for _ in range( size ) ]
-        pResult = [ None for _ in range( size ) ]
-
-        it = range( size )
-        if( verbose == True ):
-            it = tqdm.tqdm( it, desc='Gibbs (once every %d)'%( skip ) )
-
-        for i in it:
-            x = cls.sample( params=params )
-            params = cls.posteriorSample( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
-            xResult[ i ] = x
-            pResult[ i ] = params
-            for _ in range( skip ):
-                x = cls.sample( params=params )
-                params = cls.posteriorSample( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
-
-        return xResult, pResult
-
-    def igibbsJointSample( self, burnIn=100, skip=10, size=1 ):
-        if( self.prior.standardChanged ):
-            return self.gibbsJointSample( constParams=self.constParams, priorParams=self.prior.params, burnIn=burnIn, skip=skip, size=size )
-        return self.gibbsJointSample( constParams=self.constParams, priorNatParams=self.prior.natParams, burnIn=burnIn, skip=skip, size=size )
+        return super( ExponentialFam, self ).ilog_joint( x )
 
     ##########################################################################
 
@@ -542,46 +521,30 @@ class ExponentialFam( Conjugate ):
         return cls.log_pdf( postNatParams, stat, part )
 
     @classmethod
-    def log_posterior( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None ):
+    @checkExpFamArgs
+    def log_posterior( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None, ravel=False ):
         # Compute P( Ѳ | x; α )
-        assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
-
         params = params if params is not None else cls.natToStandard( *natParams )
         postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
-        return cls.priorClass.log_likelihood( params, natParams=postNatParams )
+        return cls.priorClass.log_likelihood( params, natParams=postNatParams, ravel=ravel )
 
     def ilog_posterior( self, x, expFam=False ):
         if( expFam ):
             return self.log_posteriorExpFam( x, params=self.params, constParams=self.constParams, priorNatParams=self.prior.natParams )
-        if( self.standardChanged ):
-            if( self.prior.standardChanged ):
-                return self.log_posterior( x, params=self.params, constParams=self.constParams, priorParams=self.prior.params )
-            return self.log_posterior( x, params=self.params, constParams=self.constParams, priorNatParams=self.prior.natParams )
-        if( self.prior.standardChanged ):
-            return self.log_posterior( x, natParams=self.natParams, constParams=self.constParams, priorParams=self.prior.params )
-        return self.log_posterior( x, natParams=self.natParams, constParams=self.constParams, priorNatParams=self.prior.natParams )
+        return self.log_posterior( x, **self.paramChoices( includeSelf=True, includePrior=True, constParams=self.constParams ) )
 
     ##########################################################################
 
     @classmethod
-    def log_marginal( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None ):
+    @checkExpFamArgs
+    def log_marginal( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None, ravel=False ):
         # Compute P( x; α )
-        assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
         params = params if params is not None else cls.natToStandard( *natParams )
 
-        likelihood = cls.log_likelihood( x, params=params, natParams=natParams )
-        posterior = cls.log_posterior( x, params=params, natParams=natParams, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
-        params = cls.log_params( params=params, natParams=natParams, priorParams=priorParams, priorNatParams=priorNatParams )
+        likelihood = cls.log_likelihood( x, params=params, natParams=natParams, ravel=ravel )
+        posterior = cls.log_posterior( x, params=params, natParams=natParams, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams, ravel=ravel )
+        params = cls.log_params( params=params, natParams=natParams, priorParams=priorParams, priorNatParams=priorNatParams, ravel=ravel )
         return likelihood + params - posterior
-
-    def ilog_marginal( self, x ):
-        if( self.standardChanged ):
-            if( self.prior.standardChanged ):
-                return self.log_marginal( x, params=self.params, constParams=self.constParams, priorParams=self.prior.params )
-            return self.log_marginal( x, params=self.params, constParams=self.constParams, priorNatParams=self.prior.natParams )
-        if( self.prior.standardChanged ):
-            return self.log_marginal( x, natParams=self.natParams, constParams=self.constParams, priorParams=self.prior.params )
-        return self.log_marginal( x, natParams=self.natParams, constParams=self.constParams, priorNatParams=self.prior.natParams )
 
     ##########################################################################
 

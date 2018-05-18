@@ -78,7 +78,6 @@ def gewekeTest( dists, nPlots=3 ):
     plottingTest( plotFn, nPlots=nPlots )
 
 def testsForDistWithoutPrior( dist ):
-
     dist.paramNaturalTest()
     dist.likelihoodNoPartitionTestExpFam()
     dist.likelihoodTestExpFam()
@@ -95,7 +94,7 @@ def testForDistWithPrior( dist ):
 
 def standardTests():
 
-    D = 2
+    D = 7
 
     iwParams = {
         'psi': InverseWishart.sample( D=D ),
@@ -114,6 +113,12 @@ def standardTests():
     }
     mniwParams.update( iwParams )
 
+    dirParams = {
+        'alpha': np.random.random( D ) + 1
+    }
+
+    ######################################
+
     niw = NormalInverseWishart( **niwParams )
     norm = Normal( prior=niw )
     iw = InverseWishart( **iwParams )
@@ -121,33 +126,35 @@ def standardTests():
     mniw = MatrixNormalInverseWishart( **mniwParams )
     reg = Regression( prior=mniw )
 
-    testsForDistWithoutPrior( iw )
-
-    testsForDistWithoutPrior( niw )
-    testForDistWithPrior( norm )
-
-    testForDistWithPrior( reg )
-    testsForDistWithoutPrior( mniw )
-
-    dirParams = {
-        'alpha': np.random.random( D ) + 1
-    }
-
     dirichlet = Dirichlet( **dirParams )
     cat = Categorical( prior=dirichlet )
 
+    ######################################
+
+    niw.functionalityTest( { 'D': 3 } )
+    mniw.functionalityTest( { 'D_in': 3, 'D_out':4 } )
+    norm.functionalityTest( { 'D': 3 } )
+    iw.functionalityTest( { 'D': 3 } )
+    reg.functionalityTest( { 'D_in': 3, 'D_out':4 } )
+    dirichlet.functionalityTest( { 'D': 3 } )
+    cat.functionalityTest( { 'D': 3 } )
+
+    ######################################
+
+    testForDistWithPrior( norm )
+    testsForDistWithoutPrior( iw )
+    testForDistWithPrior( reg )
+    testsForDistWithoutPrior( niw )
+    testsForDistWithoutPrior( mniw )
     testsForDistWithoutPrior( dirichlet )
     testForDistWithPrior( cat )
 
-    # samples = np.vstack( norm.metropolisHastings( size=1000, skip=10 ) )
-    # otherSamples = norm.isample( size=1000 )
-    # plt.scatter( samples[ :, 0 ], samples[ :, 1 ], alpha=0.5, s=1, color='blue' )
-    # plt.scatter( otherSamples[ :, 0 ], otherSamples[ :, 1 ], alpha=0.5, s=1, color='red' )
-    # plt.show()
+    ######################################
 
     # metropolistHastingsTest( [ reg ] )
 
-    gewekeTest( [ norm, cat ] )
+    assert 0
+    # gewekeTest( [ norm, cat ] )
     # gewekeTest( [ norm, reg, cat ] )
 
 def tensorTests():

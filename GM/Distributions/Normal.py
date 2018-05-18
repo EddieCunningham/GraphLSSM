@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam
+from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
 from scipy.stats import multivariate_normal
 from scipy.linalg import cho_factor, cho_solve
 from GenModels.GM.Utility import *
@@ -76,9 +76,9 @@ class Normal( ExponentialFam ):
         return t1, t2
 
     @classmethod
+    @checkExpFamArgs
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
 
         if( natParams is not None ):
             n1, n2 = natParams
@@ -100,25 +100,23 @@ class Normal( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None, D=None, size=1 ):
+    @checkExpFamArgs( allowNone=True )
+    def sample( cls, params=None, natParams=None, D=None, size=1, ravel=False ):
         # Sample from P( x | Ѳ; α )
         if( params is None and natParams is None ):
             assert D is not None
             params = ( np.zeros( D ), np.eye( D ) )
-        assert ( params is None ) ^ ( natParams is None )
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
         return multivariate_normal.rvs( mean=mu, cov=sigma, size=size )
 
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    @checkExpFamArgs
+    @multiSampleLikelihood
+    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
-
-        if( x.ndim == 2 ):
-            return multivariate_normal.logpdf( x, mean=mu, cov=sigma ).sum()
         return multivariate_normal.logpdf( x, mean=mu, cov=sigma )
 
     ##########################################################################

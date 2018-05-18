@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam
+from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
 
 __all__ = [ 'Categorical' ]
 
@@ -26,7 +26,7 @@ class Categorical( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, ravel=False ):
         return x.shape[ 0 ]
 
     ##########################################################################
@@ -60,9 +60,9 @@ class Categorical( ExponentialFam ):
         return ( t1, )
 
     @classmethod
+    @checkExpFamArgs
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
         if( split ):
             return ( 0, )
         return 0
@@ -70,27 +70,29 @@ class Categorical( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    @checkExpFamArgs
+    def sample( cls, params=None, natParams=None, D=None, size=1, ravel=False ):
         # Sample from P( x | Ѳ; α )
         if( params is not None ):
             if( not isinstance( params, tuple ) ):
                 params = ( params, )
-        assert ( params is None ) ^ ( natParams is None )
+        elif( natParams is None ):
+            assert D is not None
+            params = ( np.ones( D ) / D, )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
         if( p.ndim > 1 ):
             assert p.size == p.squeeze().size
             p = p.squeeze()
-        # assert p.ndim == 1, p
+        assert p.ndim == 1, p
         ans = np.random.choice( p.shape[ 0 ], size, p=p )
         return ans
-        return ans if size > 1 else ans[ 0 ]
 
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    @checkExpFamArgs
+    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
         assert isinstance( x, np.ndarray )
         assert x.ndim == 1

@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import TensorExponentialFam
+from GenModels.GM.Distributions.Base import TensorExponentialFam, checkExpFamArgs
 from GenModels.GM.Distributions.Dirichlet import Dirichlet
 
 class TensorCategorical( TensorExponentialFam ):
@@ -60,7 +60,8 @@ class TensorCategorical( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, Ds=None, params=None, natParams=None, size=1 ):
+    @checkExpFamArgs( allowNone=True )
+    def sample( cls, Ds=None, params=None, natParams=None, size=1, ravel=False ):
         # Sample from P( x | Ѳ; α )
         if( params is None and natParams is None ):
             assert Ds is not None
@@ -69,7 +70,6 @@ class TensorCategorical( TensorExponentialFam ):
             p /= p.sum()
             ( p, ) = params
 
-        assert ( params is None ) ^ ( natParams is None )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
 
         Ds = p.shape
@@ -90,9 +90,9 @@ class TensorCategorical( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
+    @checkExpFamArgs
     def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
         assert isinstance( x, np.ndarray ) and x.ndim == 2
         return np.log( p[ [ x[ :, i ] for i in range( len( p.shape ) ) ] ] ).sum()
