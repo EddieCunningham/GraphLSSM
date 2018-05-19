@@ -1,8 +1,9 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
+from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import dirichlet
 from scipy.special import gammaln
 from GenModels.GM.Distributions.Categorical import Categorical
+from GenModels.GM.Utility import *
 
 class Dirichlet( ExponentialFam ):
 
@@ -18,10 +19,27 @@ class Dirichlet( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x, ravel=False ):
-        if( x.ndim == 2 ):
-            return x.shape[ 0 ]
-        return 1
+    def paramShapes( cls, D=None ):
+        assert D is not None
+        return [ ( D, ) ]
+
+    @classmethod
+    def inferDims( cls, params=None ):
+        assert params is not None
+        alpha, = params
+        return { 'D': alpha.shape[ 0 ] }
+
+    @classmethod
+    def outputShapes( cls, D=None ):
+        assert D is not None
+        return [ ( D, ) ]
+
+    ##########################################################################
+
+    @classmethod
+    def easyParamSample( cls, D=None ):
+        assert D is not None
+        return ( np.ones( D ), )
 
     ##########################################################################
 
@@ -70,27 +88,20 @@ class Dirichlet( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @checkExpFamArgs
-    def sample( cls, params=None, natParams=None, D=None, size=1, ravel=False ):
+    @fullSampleSupport
+    @checkExpFamArgs( allowNone=True )
+    def sample( cls, params=None, natParams=None ):
         # Sample from P( x | Ѳ; α )
-        if( params is not None ):
-            if( not isinstance( params, tuple ) or \
-                not isinstance( params, list ) ):
-                params = ( params, )
-        elif( natParams is None ):
-            assert D is not None
-            params = ( np.ones( D ), )
-
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
-        ans = dirichlet.rvs( alpha=alpha, size=size )
+        ans = dirichlet.rvs( alpha=alpha )[ 0 ]
         return ans
 
     ##########################################################################
 
     @classmethod
+    @fullLikelihoodSupport
     @checkExpFamArgs
-    @multiSampleLikelihood
-    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
+    def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
         if( isinstance( x, tuple ) ):

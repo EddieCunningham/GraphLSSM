@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
+from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.special import multigammaln
 from GenModels.GM.Distributions.TensorNormal import TensorNormal
 from GenModels.GM.Distributions.InverseWishart import InverseWishart
@@ -34,18 +34,20 @@ class MatrixNormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x, ravel=False ):
-        if( ravel == False ):
-            if( not isinstance( x[ 0 ], np.ndarray ) ):
-                return len( x )
-            assert len( x ) == 2
-            assert isinstance( x[ 0 ], np.ndarray ) and isinstance( x[ 1 ], np.ndarray )
-            return 1
-        else:
-            if( x.ndim == 2 ):
-                return x.shape[ 0 ]
-            assert x.ndim == 1
-            return 1
+    def paramShapes( cls, D_in=None, D_out=None ):
+        assert D_in is not None and D_out is not None
+        return [ ( D_out, D_in ), ( D_in, D_in ), ( D_out, D_out ), D_out, 0 ]
+
+    @classmethod
+    def inferDims( cls, params=None ):
+        assert params is not None
+        M, V, psi, nu, Q = params
+        return { 'D_in': M.shape[ 1 ], 'D_out': M.shape[ 0 ] }
+
+    @classmethod
+    def outputShapes( cls, D_in=None, D_out=None ):
+        assert D_in is not None and D_out is not None
+        return [ ( D_out, D_in ), ( D_out, D_out ) ]
 
     ##########################################################################
 
@@ -115,36 +117,26 @@ class MatrixNormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
+    @fullSampleSupport
     @checkExpFamArgs( allowNone=True )
-    @multiParamSample
-    def sample( cls, params=None, natParams=None, D_in=None, D_out=None, size=1, ravel=False ):
+    def sample( cls, params=None, natParams=None ):
         # Sample from P( x | Ѳ; α )
-        if( params is None and natParams is None ):
-            assert D_in is not None and D_out is not None
-            params = ( np.zeros( ( D_out, D_in ) ), np.eye( D_in ), np.eye( D_out ), D_out, 0 )
-
         M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
 
         sigma = InverseWishart.sample( params=( psi, nu ) )
-        A = TensorNormal.sample( params=( M, ( sigma, V ) ), size=1 )[ 0 ]
+        A = TensorNormal.sample( params=( M, ( sigma, V ) ) )[ 0 ]
         return A, sigma
 
     ##########################################################################
 
     @classmethod
+    @fullLikelihoodSupport
     @checkExpFamArgs
-    @multiSampleLikelihood
-    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
+    def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
         M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
 
-        if( ravel == False ):
-            A, sigma = x
-        else:
-            D = prod( M.shape )
-            A, sigma = np.split( x, [ D ] )
-            A = A.reshape( M.shape )
-            sigma = sigma.reshape( psi.shape )
+        A, sigma = x
 
         return InverseWishart.log_likelihood( sigma, params=( psi, nu ) ) + \
                TensorNormal.log_likelihood( A[ None ], params=( M, ( sigma, V ) ) )

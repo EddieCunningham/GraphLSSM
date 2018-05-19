@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
+from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.special import multigammaln
 from GenModels.GM.Distributions.InverseWishart import InverseWishart
 from GenModels.GM.Distributions.Normal import Normal
@@ -33,19 +33,20 @@ class NormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x, ravel=False ):
+    def paramShapes( cls, D=None ):
+        assert D is not None
+        return [ ( D, ), D, ( D, D ), D, 0 ]
 
-        if( ravel == False ):
-            if( not isinstance( x[ 0 ], np.ndarray ) ):
-                return len( x )
-            assert len( x ) == 2
-            assert isinstance( x[ 0 ], np.ndarray ) and isinstance( x[ 1 ], np.ndarray )
-            return 1
-        else:
-            if( x.ndim == 2 ):
-                return x.shape[ 0 ]
-            assert x.ndim == 1
-            return 1
+    @classmethod
+    def inferDims( cls, params=None ):
+        assert params is not None
+        mu_0, kappa, psi, nu, Q = params
+        return { 'D': mu_0.shape[ 0 ] }
+
+    @classmethod
+    def outputShapes( cls, D=None ):
+        assert D is not None
+        return [ ( D, ), ( D, D ) ]
 
     ##########################################################################
 
@@ -108,13 +109,11 @@ class NormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
+    @fullSampleSupport
     @checkExpFamArgs( allowNone=True )
-    @multiParamSample
-    def sample( cls, params=None, natParams=None, D=None, size=1, ravel=False ):
+    def sample( cls, params=None, natParams=None ):
         # Sample from P( x | Ѳ; α )
-        if( params is None and natParams is None ):
-            assert D is not None
-            params = ( np.zeros( D ), D, np.eye( D ), D, 0 )
+
         mu_0, kappa, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
 
         sigma = InverseWishart.sample( params=( psi, nu ) )
@@ -124,18 +123,11 @@ class NormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
+    @fullLikelihoodSupport
     @checkExpFamArgs
-    @multiSampleLikelihood
-    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
+    def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
         mu_0, kappa, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
-
-        if( ravel == False ):
-            mu, sigma = x
-        else:
-            D = mu_0.shape[ 0 ]
-            mu, sigma = np.split( x, [ D ] )
-            sigma = sigma.reshape( psi.shape )
 
         mu, sigma = x
         return InverseWishart.log_likelihood( sigma, params=( psi, nu ) ) + \

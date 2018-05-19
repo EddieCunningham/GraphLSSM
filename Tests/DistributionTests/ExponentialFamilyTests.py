@@ -96,6 +96,8 @@ def standardTests():
 
     D = 7
 
+    ######################################
+
     iwParams = {
         'psi': InverseWishart.sample( D=D ),
         'nu': D
@@ -131,13 +133,14 @@ def standardTests():
 
     ######################################
 
-    niw.functionalityTest( { 'D': 3 } )
-    mniw.functionalityTest( { 'D_in': 3, 'D_out':4 } )
-    norm.functionalityTest( { 'D': 3 } )
-    iw.functionalityTest( { 'D': 3 } )
-    reg.functionalityTest( { 'D_in': 3, 'D_out':4 } )
-    dirichlet.functionalityTest( { 'D': 3 } )
-    cat.functionalityTest( { 'D': 3 } )
+    niw.functionalityTest( D=3 )
+    mniw.functionalityTest( D_in=3, D_out=4 )
+    norm.functionalityTest( D=3 )
+    iw.functionalityTest( D=3 )
+    reg.functionalityTest( D_in=3, D_out=4 )
+    dirichlet.functionalityTest( D=3 )
+    cat.functionalityTest( D=3 )
+    assert 0
 
     ######################################
 

@@ -5,34 +5,21 @@ import umap
 
 __all__ = [ 'distributionTest' ]
 
-def marginalTests( dist ):
-    assert dist.prior is not None
-    dist.marginalTest()
-    dist.marginalTestMC()
+def distributionClassIterator( D=3, D_in=3, D_out=4 ):
 
-def gewekeTest( dists ):
+    niw       = (  NormalInverseWishart,       { 'D': D } )
+    norm      = (  Normal,                     { 'D': D } )
+    iw        = (  InverseWishart,             { 'D': D } )
+    mniw      = (  MatrixNormalInverseWishart, { 'D_in': D_in, 'D_out': D_out } )
+    reg       = (  Regression,                 { 'D_in': D_in, 'D_out': D_out } )
+    dirichlet = (  Dirichlet,                  { 'D': D } )
+    cat       = (  Categorical,                { 'D': D } )
 
-    def plotFn( xs, thetas ):
-        X = []
-        for x, theta in zip( xs, thetas ):
-            X.append( np.hstack( ( x.ravel(), theta.ravel() ) ) )
-        X = np.array( X )
-        u = umap.UMAP().fit_transform( X )
-        return u[ :, 0 ], u[ :, 1 ]
+    dists = [ niw, norm, iw, mniw, reg, dirichlet, cat ]
+    for _class in dists:
+        yield _class
 
-    N = len( dists )
-
-    fig = plt.figure()
-    axes = [ plt.subplot2grid( ( N, 2 ), ( i, j ) ) for i, j in itertools.product( range( N ), range( 2 ) ) ]
-    it = iter( axes )
-    for dist, jointAx, gibbsAx in zip( dists, it, it ):
-        dist.gewekeTest( jointAx, gibbsAx, plotFn )
-
-    plt.show()
-
-def expFamTests():
-
-    D = 4
+def distributionInstanceIterator( D=7 ):
 
     iwParams = {
         'psi': InverseWishart.sample( D=D ),
@@ -51,27 +38,74 @@ def expFamTests():
     }
     mniwParams.update( iwParams )
 
-    niw = NormalInverseWishart( **niwParams )
-    norm = Normal( prior=niw )
-    iw = InverseWishart( **iwParams )
-
-    mniw = MatrixNormalInverseWishart( **mniwParams )
-    reg = Regression( prior=mniw )
-
-    testsForDistWithoutPrior( iw )
-
-    testsForDistWithoutPrior( niw )
-    testForDistWithPrior( norm )
-
-    testForDistWithPrior( reg )
-    testsForDistWithoutPrior( mniw )
-
     dirParams = {
         'alpha': np.random.random( D ) + 1
     }
 
+    ######################################
+
+    niw = NormalInverseWishart( **niwParams )
+    norm = Normal( prior=niw )
+    iw = InverseWishart( **iwParams )
+    mniw = MatrixNormalInverseWishart( **mniwParams )
+    reg = Regression( prior=mniw )
     dirichlet = Dirichlet( **dirParams )
     cat = Categorical( prior=dirichlet )
 
-    testsForDistWithoutPrior( dirichlet )
-    testForDistWithPrior( cat )
+    dists = [ norm ]
+    dists = [ niw, norm, iw, mniw, reg, dirichlet, cat ]
+    for inst in dists:
+        yield inst
+
+############################################################################
+
+def generativeFunctionality( distClass, N=7, **D ):
+
+    # Test with 1 sample
+    x = distClass.sample( **D, size=1 )
+    y = distClass.sample( **D, size=1, ravel=True )
+
+    assert distClass.dataN( x ) == 1
+    assert distClass.dataN( y, ravel=True ) == 1
+
+    distClass.log_likelihood( x, params=distClass.paramSample( **D ) )
+    distClass.log_likelihood( y, params=distClass.paramSample( **D ), ravel=True )
+
+    # Test with N samples
+    x = distClass.sample( **D, size=N )
+    y = distClass.sample( **D, size=N, ravel=True )
+
+    assert distClass.dataN( x ) == N
+    assert distClass.dataN( y, ravel=True ) == N
+
+    distClass.log_likelihood( x, params=distClass.paramSample( **D ) )
+    distClass.log_likelihood( y, params=distClass.paramSample( **D ), ravel=True )
+
+def jointFunctionality( distClass, N=7, **D ):
+
+    # Test with 1 sample
+    x = distClass.jointSample( **D, size=1 )
+    y = distClass.jointSample( **D, size=1, ravel=True )
+
+    distClass.log_joint( x, params=distClass.paramSample( **D ) )
+    distClass.log_joint( y, params=distClass.paramSample( **D ), ravel=True )
+
+    # Test with N samples
+    x = distClass.jointSample( **D, size=N )
+    y = distClass.jointSample( **D, size=N, ravel=True )
+
+    distClass.log_joint( x, params=distClass.paramSample( **D ) )
+    distClass.log_joint( y, params=distClass.paramSample( **D ), ravel=True )
+
+def functionalityTest( distClass, N=7, **D ):
+
+    generativeFunctionality( distClass, N=N, **D )
+    jointFunctionality( distClass, N=N, **D )
+
+############################################################################
+
+def distributionTest():
+
+    D = 7
+    for _class, Ds in distributionClassIterator( D=D ):
+        functionalityTest( _class, **Ds )

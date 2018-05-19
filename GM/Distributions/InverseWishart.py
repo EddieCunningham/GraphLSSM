@@ -1,7 +1,8 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
+from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import invwishart
 from scipy.special import multigammaln
+from GenModels.GM.Utility import *
 
 class InverseWishart( ExponentialFam ):
 
@@ -21,16 +22,20 @@ class InverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x, ravel=False ):
-        if( ravel == False ):
-            if( x.ndim == 3 ):
-                return x.shape[ 0 ]
-            return 1
-        else:
-            if( x.ndim == 2 ):
-                return x.shape[ 0 ]
-            assert x.ndim == 1
-            return 1
+    def paramShapes( cls, D=None ):
+        assert D is not None
+        return [ ( D, D ), D ]
+
+    @classmethod
+    def inferDims( cls, params=None ):
+        assert params is not None
+        psi, nu = params
+        return { 'D': psi.shape[ 0 ] }
+
+    @classmethod
+    def outputShapes( cls, D=None ):
+        assert D is not None
+        return [ ( D, D ) ]
 
     ##########################################################################
 
@@ -88,31 +93,20 @@ class InverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
+    @fullSampleSupport
     @checkExpFamArgs( allowNone=True )
-    def sample( cls, params=None, natParams=None, D=None, size=1, ravel=False ):
+    def sample( cls, params=None, natParams=None ):
         # Sample from P( x | Ѳ; α )
-
-        if( params is None and natParams is None ):
-            assert D is not None
-            params = ( np.eye( D ), D )
-
         psi, nu = params if params is not None else cls.natToStandard( *natParams )
-        samples = invwishart.rvs( df=nu, scale=psi, size=size )
-        if( ravel ):
-            return samples.reshape( ( size, -1 ) )
+        samples = invwishart.rvs( df=nu, scale=psi )
         return samples
 
     ##########################################################################
 
     @classmethod
+    @fullLikelihoodSupport
     @checkExpFamArgs
-    @multiSampleLikelihood
-    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
+    def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
         # There is a bug in scipy's invwishart.logpdf! Don't use it!
-        if( ravel == True ):
-            D = x.shape[ 0 ] / 2
-            assert D == x.shape[ 0 ] // 2
-            x = x.reshape( ( D, D ) )
-
         return cls.log_likelihoodExpFam( x, params=params, natParams=natParams )

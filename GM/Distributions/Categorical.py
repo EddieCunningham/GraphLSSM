@@ -1,5 +1,6 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
+from GenModels.GM.Distributions.Base import ExponentialFam
+from GenModels.GM.Utility import *
 
 __all__ = [ 'Categorical' ]
 
@@ -26,8 +27,39 @@ class Categorical( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x, ravel=False ):
-        return x.shape[ 0 ]
+    def paramShapes( cls, D=None ):
+        assert D is not None
+        return [ ( D, ) ]
+
+    @classmethod
+    def inferDims( cls, params=None ):
+        assert params is not None
+        p, = params
+        return { 'D': p.shape[ 0 ] }
+
+    @classmethod
+    def outputShapes( cls, D=None ):
+        assert D is not None
+        return [ ( 1, ) ]
+
+    ##########################################################################
+
+    @classmethod
+    def easyParamSample( cls, D=None ):
+        assert D is not None
+        return ( np.ones( D ) / D, )
+
+    @classmethod
+    @fullSampleSupport
+    def paramSample( cls, priorParams=None, **D ):
+        # Sample from P( Ѳ; α )
+        if( cls.priorClass == None ):
+            return cls.easyParamSample( **D )
+        return ( cls.priorClass.sample( priorParams, **D ), )
+
+    @fullSampleSupport
+    def iparamSample( self ):
+        return ( self.prior.isample(), )
 
     ##########################################################################
 
@@ -70,30 +102,20 @@ class Categorical( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @checkExpFamArgs
-    def sample( cls, params=None, natParams=None, D=None, size=1, ravel=False ):
+    @fullSampleSupport
+    @checkExpFamArgs( allowNone=True )
+    def sample( cls, params=None, natParams=None ):
         # Sample from P( x | Ѳ; α )
-        if( params is not None ):
-            if( not isinstance( params, tuple ) ):
-                params = ( params, )
-        elif( natParams is None ):
-            assert D is not None
-            params = ( np.ones( D ) / D, )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
-        if( p.ndim > 1 ):
-            assert p.size == p.squeeze().size
-            p = p.squeeze()
         assert p.ndim == 1, p
-        ans = np.random.choice( p.shape[ 0 ], size, p=p )
-        return ans
+        return np.array( np.random.choice( p.shape[ 0 ], p=p ) )
 
     ##########################################################################
 
     @classmethod
+    @fullLikelihoodSupport
     @checkExpFamArgs
-    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
+    def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
-        assert isinstance( x, np.ndarray )
-        assert x.ndim == 1
-        return np.log( p[ x ] ).sum()
+        return np.log( p[ x ] )

@@ -2,8 +2,17 @@ import numpy as np
 from scipy.linalg import lapack
 import copy
 from functools import wraps
+import inspect
 
-__all__ = [ 'invPsd', 'is_outlier', 'fullyRavel', 'randomStep', 'deepCopy', 'doublewrap', 'multiParamSample', 'multiSampleLikelihood' ]
+__all__ = [ 'invPsd',
+            'is_outlier',
+            'fullyRavel',
+            'randomStep',
+            'deepCopy',
+            'doublewrap',
+            'fullSampleSupport',
+            'fullLikelihoodSupport',
+            'checkExpFamArgs' ]
 
 def invPsd( A, AChol=None, returnChol=False ):
     # https://github.com/mattjj/pybasicbayes/blob/9c00244b2d6fd767549de6ab5d0436cec4e06818/pybasicbayes/util/general.py
@@ -110,103 +119,93 @@ def doublewrap(function):
 
 ##########################################################################
 
-@doublewrap
-def autoRavel( func ):
-    @wraps( func )
-    def wrapper( self, *args, ravel=False, **kwargs ):
+def bArgs( func, *args, **kwargs ):
+    boundArgs = inspect.signature( func ).bind( *args )
+    boundArgs.apply_defaults()
+    d = boundArgs.arguments
+    d.update( kwargs )
+    return d
 
-        ans = func( self, *args, **kwargs )
+def extractArg( func, name, default, *args, **kwargs ):
+    inputArgs = bArgs( func, *args, **kwargs )
+    if( name in inputArgs ):
+        ans = inputArgs[ name ]
+    else:
+        ans = default
+    return ans
+
+@doublewrap
+def autoRavel( func, calledFunc=None ):
+
+    @wraps( func )
+    def autoRavelWrapper( *args, **kwargs ):
+
+        ravel = extractArg( calledFunc, 'ravel', False, *args, **kwargs )
+        if( 'ravel' in kwargs ):
+            del kwargs[ 'ravel' ]
+
+        ans = func( *args, **kwargs )
         if( ravel ):
-            if( isinstance( ans, list ) or isinstance( and, tuple ) ):
+            if( isinstance( ans, list ) or isinstance( ans, tuple ) ):
                 ans = np.hstack( [ x.ravel() for x in ans ] )
             else:
                 ans = ans.ravel()
         return ans
-    return wrapper
+    return autoRavelWrapper
 
 @doublewrap
-def multiCall( func ):
+def multiCall( func, calledFunc=None ):
+
     @wraps( func )
-    def wrapper( self, *args, size=1, **kwargs ):
+    def multiCallWrapper( *args, **kwargs ):
+
+        size = extractArg( calledFunc, 'size', 1, *args, **kwargs )
+        if( 'size' in kwargs ):
+            del kwargs[ 'size' ]
+
         if( size > 1 ):
-            ans = [ func( self, *args, **kwargs ) for _ in range( size ) ]
+            ans = [ func( *args, **kwargs ) for _ in range( size ) ]
         else:
-            ans = func( self, *args, **kwargs )
+            ans = func( *args, **kwargs )
+            assert isinstance( ans, list ) == False
         return ans
-    return wrapper
+    return multiCallWrapper
 
 @doublewrap
 def autoUnRavel( func ):
     @wraps( func )
-    def wrapper( self, x, *args, params=None, ravel=False, **kwargs ):
+    def autoUnRavelWrapper( self, x, *args, params=None, ravel=False, **kwargs ):
         x = self.unravelSample( x, params ) if ravel else x
         return func( self, x, *args, params=params, **kwargs )
-    return wrapper
+    return autoUnRavelWrapper
 
 @doublewrap
 def multiCallOnInput( func ):
     @wraps( func )
-    def wrapper( self, x, *args, **kwargs ):
+    def multiCallOnInputWrapper( self, x, *args, **kwargs ):
         size = self.dataN( x )
         if( size > 1 ):
             return sum( ( func( self, _x, *args, **kwargs ) for _x in x ) )
         return func( self, x, *args, **kwargs )
-    return wrapper
+    return multiCallOnInputWrapper
 
+##########################################################################
 
-# @doublewrap
-# def multiParamSample( func ):
-#     # This is a wrapper for classes whose sample function returns a tuple.
-#     # Will give capability of flattening the output into one vector.
-#     # Assumes that the sample function returns a single sample
+@doublewrap
+def fullSampleSupport( func ):
+    @multiCall( calledFunc=func )
+    @autoRavel( calledFunc=func )
+    def fullSampleSupportWrapper( *args, **kwargs ):
+        return func( *args, **kwargs )
+    return fullSampleSupportWrapper
 
-#     @wraps( func )
-#     def wrapper( self, *args, **kwargs ):
-#         assert 'ravel' in kwargs and 'size' in kwargs, kwargs
-#         size = kwargs[ 'size' ]
-#         ravel = kwargs[ 'ravel' ]
-#         kwargs[ 'size' ] = 1
-
-#         ans = [ None for _ in range( size ) ]
-#         for i in range( size ):
-#             sample = func( self, *args, **kwargs )
-#             assert isinstance( sample, tuple )
-#             if( ravel ):
-#                 raveled = []
-#                 for s in sample:
-#                     raveled.append( s.ravel() )
-#                 ans[ i ] = np.hstack( raveled )
-#             else:
-#                 ans[ i ] = sample
-
-#         if( ravel ):
-#             return np.array( ans ) if size > 1 else np.array( ans[ 0 ] )
-#         return ans if size > 1 else ans[ 0 ]
-
-#     return wrapper
-
-# ##########################################################################
-
-# @doublewrap
-# def multiSampleLikelihood( func ):
-#     # Like above except for likelihood
-
-#     @wraps( func )
-#     def wrapper( self, x, params, **kwargs ):
-#         assert 'ravel' in kwargs, args
-#         ravel = kwargs[ 'ravel' ]
-
-#         size = self.dataN( x, ravel=ravel )
-#         if( size > 0 ):
-#             return sum( [ func( self, _x, **kwargs ) for _x in x ] )
-
-#         if( ravel == True ):
-#             x = self.unravelSample( x, params )
-
-#         kwargs[ 'ravel' ] = False
-#         return func( self, x, **kwargs )
-
-#     return wrapper
+@doublewrap
+def fullLikelihoodSupport( func ):
+    @multiCallOnInput
+    @autoUnRavel
+    def fullLikelihoodSupportWrapper( *args, **kwargs ):
+        return func( *args, **kwargs )
+    return fullLikelihoodSupportWrapper
 
 ##########################################################################
 
@@ -214,20 +213,34 @@ def multiCallOnInput( func ):
 def checkExpFamArgs( func, allowNone=False ):
 
     @wraps( func )
-    def wrapper( *args, **kwargs ):
+    def wrapper( clsOrSelf, *args, **kwargs ):
 
-        if( 'params' in kwargs and 'natParams' in kwargs ):
-            params = kwargs[ 'params' ]
-            natParams = kwargs[ 'natParams' ]
-            if( allowNone ):
-                if( not( params is None and natParams is None ) ):
-                    assert ( params is None ) ^ ( natParams is None ), kwargs
+        args = ( clsOrSelf, ) + args
+
+        params = extractArg( func, 'params', None, *args, **kwargs )
+        natParams = extractArg( func, 'natParams', None, *args, **kwargs )
+        priorParams = extractArg( func, 'priorParams', None, *args, **kwargs )
+        priorNatParams = extractArg( func, 'priorNatParams', None, *args, **kwargs )
+
+        if( params is not None or natParams is not None ):
+            assert ( params is None ) ^ ( natParams is None ), kwargs
+        elif( allowNone ):
+            D = extractArg( func, 'D', None, *args, **kwargs )
+            if( D is None ):
+               D_in = extractArg( func, 'D_in', None, *args, **kwargs )
+               D_out = extractArg( func, 'D_out', None, *args, **kwargs )
+               assert D_in is not None and D_out is not None
+               params = clsOrSelf.easyParamSample( **{ 'D_in': D_in, 'D_out': D_out } )
+
+               del kwargs[ 'D_in' ]
+               del kwargs[ 'D_out' ]
             else:
-                assert ( params is None ) ^ ( natParams is None ), kwargs
+               params = clsOrSelf.easyParamSample( **{ 'D': D } )
+               del kwargs[ 'D' ]
 
-        if( 'priorParams' in kwargs and 'priorNatParams' in kwargs ):
-            priorParams = kwargs[ 'priorParams' ]
-            priorNatParams = kwargs[ 'priorNatParams' ]
+            kwargs[ 'params' ] = params
+
+        if( priorParams is not None and priorNatParams is not None ):
             assert ( priorParams is None ) ^ ( priorNatParams is None ), kwargs
 
         return func( *args, **kwargs )

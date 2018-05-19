@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
+from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import multivariate_normal
 from scipy.linalg import cho_factor, cho_solve
 from GenModels.GM.Utility import *
@@ -32,15 +32,21 @@ class Normal( ExponentialFam ):
 
     ##########################################################################
 
-    @property
-    def constParams( self ):
-        return None
+    @classmethod
+    def paramShapes( cls, D=None ):
+        assert D is not None
+        return [ ( D, ), ( D, D ) ]
 
     @classmethod
-    def dataN( cls, x ):
-        if( x.ndim == 2 ):
-            return x.shape[ 0 ]
-        return 1
+    def inferDims( cls, params=None ):
+        assert params is not None
+        mu, sigma = params
+        return { 'D': mu.shape[ 0 ] }
+
+    @classmethod
+    def outputShapes( cls, D=None ):
+        assert D is not None
+        return [ ( D, ) ]
 
     ##########################################################################
 
@@ -57,6 +63,12 @@ class Normal( ExponentialFam ):
         sigma = -0.5 * np.linalg.inv( n1 )
         mu = sigma.dot( n2 )
         return mu, sigma
+
+    ##########################################################################
+
+    @property
+    def constParams( self ):
+        return None
 
     ##########################################################################
 
@@ -100,23 +112,22 @@ class Normal( ExponentialFam ):
     ##########################################################################
 
     @classmethod
+    @fullSampleSupport
     @checkExpFamArgs( allowNone=True )
-    def sample( cls, params=None, natParams=None, D=None, size=1, ravel=False ):
+    def sample( cls, params=None, natParams=None ):
         # Sample from P( x | Ѳ; α )
-        if( params is None and natParams is None ):
-            assert D is not None
-            params = ( np.zeros( D ), np.eye( D ) )
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
-        return multivariate_normal.rvs( mean=mu, cov=sigma, size=size )
+        return multivariate_normal.rvs( mean=mu, cov=sigma )
 
     ##########################################################################
 
     @classmethod
+    @fullLikelihoodSupport
     @checkExpFamArgs
-    @multiSampleLikelihood
-    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
+    def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
+        assert isinstance( x, np.ndarray ) and x.ndim == 1
         return multivariate_normal.logpdf( x, mean=mu, cov=sigma )
 
     ##########################################################################

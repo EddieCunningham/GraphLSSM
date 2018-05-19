@@ -1,13 +1,14 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import ExponentialFam, checkExpFamArgs, multiSampleLikelihood
+from GenModels.GM.Distributions.Base import ExponentialFam
 from GenModels.GM.Distributions.Normal import Normal
+from GenModels.GM.Utility import *
 
 __all__ = [ 'Regression' ]
 
 def definePrior():
     # Doing this to get around circular dependency
     from GenModels.GM.Distributions.MatrixNormalInverseWishart import MatrixNormalInverseWishart
-    Regression.priorClass =MatrixNormalInverseWishart
+    Regression.priorClass = MatrixNormalInverseWishart
 
 class Regression( ExponentialFam ):
 
@@ -30,13 +31,20 @@ class Regression( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x, ravel=False ):
+    def paramShapes( cls, D_out=None, D_in=None ):
+        assert D_out is not None and D_in is not None
+        return [ ( D_out, D_in ), ( D_out, D_out ) ]
 
-        if( ravel == False ):
-            xs, ys = x
-            return ys.shape[ 0 ]
-        else:
-            return x.shape[ 0 ]
+    @classmethod
+    def inferDims( cls, params=None ):
+        assert params is not None
+        A, sigma = params
+        return { 'D_in': A.shape[ 1 ], 'D_out': A.shape[ 0 ] }
+
+    @classmethod
+    def outputShapes( cls, D_in=None, D_out=None ):
+        assert D_in is not None and D_out is not None
+        return [ ( D_in, ), ( D_out, ) ]
 
     ##########################################################################
 
@@ -104,37 +112,32 @@ class Regression( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @checkExpFamArgs
-    def sample( cls, x=None, params=None, natParams=None, D_in=None, D_out=None, size=1, ravel=False ):
+    @fullSampleSupport
+    @checkExpFamArgs( allowNone=True )
+    def sample( cls, x=None, params=None, natParams=None ):
         # Sample from P( x | Ѳ; α )
-        if( params is None and natParams is None ):
-            assert D_in is not None and D_out is not None
-            params = ( np.zeros( ( D_out, D_in ) ), np.eye( D_in ) )
 
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
-        D = A.shape[ 1 ]
+        D_out, D_in = A.shape
         if( x is None ):
-            x = np.array( [ Normal.sample( params=( np.zeros( D ), np.eye( D ) ), size=1 ) for _ in range( size ) ] )
-            y = np.array( [ Normal.sample( params=( A.dot( _x ), sigma ), size=1 ) for _x in x ] )
-            return ( x, y ) if ravel == False else np.hstack( ( x, y ) )
-        return Normal.sample( params=( A.dot( x ), sigma ), size=size )
+            x = Normal.sample( params=( np.zeros( D_in ), np.eye( D_in ) ) )
+        return x, Normal.sample( params=( A.dot( x ), sigma ) )
 
     ##########################################################################
 
     @classmethod
+    @fullLikelihoodSupport
     @checkExpFamArgs
-    @multiSampleLikelihood
-    def log_likelihood( cls, x, params=None, natParams=None, ravel=False ):
+    def log_likelihood( cls, x, conditionOnX=False, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
+        D_out, D_in = A.shape
 
-        if( ravel == False ):
-            x, y = x
-        else:
-            D_in, D_out = A.shape
-            x, y = np.split( x, [ D_in ] )
-            assert x.shape[ 1 ] == D_in and y.shape[ 1 ] == D_out
+        x, y = x
+        log_y = Normal.log_likelihood( y, params=( A.dot( x ), sigma ) )
 
-        assert x.shape == y.shape
+        if( conditionOnX == True ):
+            return log_y
 
-        return Normal.log_likelihood( y, ( A.dot( x ), sigma ) )
+        log_x = Normal.log_likelihood( x, params=( np.zeros( D_in ), np.eye( D_in ) ) )
+        return log_x + log_y
