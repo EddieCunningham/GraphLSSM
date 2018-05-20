@@ -77,7 +77,12 @@ class Regression( ExponentialFam ):
     def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
 
-        x, y = x
+        if( isinstance( x, list ) ):
+            x, y = zip( *x )
+            x = np.vstack( x )
+            y = np.vstack( y )
+        else:
+            x, y = x
 
         if( x.ndim == 1 ):
             x = x.reshape( ( 1, -1 ) )
@@ -128,7 +133,7 @@ class Regression( ExponentialFam ):
     @classmethod
     @fullLikelihoodSupport
     @checkExpFamArgs
-    def log_likelihood( cls, x, conditionOnX=False, params=None, natParams=None ):
+    def log_likelihood( cls, x, conditionOnX=True, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
         D_out, D_in = A.shape

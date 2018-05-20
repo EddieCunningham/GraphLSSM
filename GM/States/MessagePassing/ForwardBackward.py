@@ -123,7 +123,10 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
             mu = self.mus[ k ]
             sigma = self.sigmas[ k ]
 
-            self.L[ :, k ] = Normal.log_likelihood( ys, params=( mu, sigma ) ).sum( axis=0 )
+            # Holy shit this got slow
+            for _ys in ys:
+                for __ys in _ys:
+                    self.L[ :, k ] += Normal.log_likelihood( __ys, params=( mu, sigma ) )
 
     def updateParams( self, initialDist, transDist, mus, sigmas, ys=None ):
 

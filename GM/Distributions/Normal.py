@@ -75,6 +75,8 @@ class Normal( ExponentialFam ):
     @classmethod
     def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
+        if( isinstance( x, list ) ):
+            x = np.vstack( x )
         if( x.ndim == 1 ):
             x = x.reshape( ( 1, -1 ) )
         t1 = x.T.dot( x )

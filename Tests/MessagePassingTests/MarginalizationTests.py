@@ -19,11 +19,11 @@ def testCategoricalForwardBackward():
     onesK = np.ones( K )
     onesObs = np.ones( obsDim )
 
-    ( p, ) = Dirichlet.sample( params=onesObs )
-    ys = [ Categorical.sample( params=p, size=T ) for _ in range( D ) ]
-    ( initialDist, ) = Dirichlet.sample( params=onesK )
-    transDist = Dirichlet.sample( params=onesK, size=K )
-    emissionDist = Dirichlet.sample( params=onesObs, size=K )
+    p = Dirichlet.sample( params=( onesObs, ) )
+    ys = [ np.hstack( Categorical.sample( params=( p, ), size=T ) ) for _ in range( D ) ]
+    initialDist = Dirichlet.sample( params=( onesK, ) )
+    transDist = np.vstack( Dirichlet.sample( params=( onesK, ), size=K ) )
+    emissionDist = np.vstack( Dirichlet.sample( params=( onesObs, ), size=K ) )
 
     start = time.time()
     mp.updateParams( initialDist, transDist, emissionDist, ys )
@@ -57,10 +57,9 @@ def testGaussianForwardBackward():
 
     onesK = np.ones( K )
 
-    ( p, ) = Dirichlet.sample( params=onesK )
     ys = np.random.random( ( D, T, obsDim ) )
-    ( initialDist, ) = Dirichlet.sample( params=onesK )
-    transDist = Dirichlet.sample( params=onesK, size=K )
+    initialDist = Dirichlet.sample( params=( onesK, ) )
+    transDist = np.vstack( Dirichlet.sample( params=( onesK, ), size=K ) )
 
     muSigmas = [ NormalInverseWishart.sample( D=obsDim ) for _ in range( K ) ]
     mus = [ mu for mu, sigma in muSigmas ]
@@ -99,10 +98,9 @@ def testSLDSForwardBackward():
 
     onesK = np.ones( D_latent )
 
-    ( p, ) = Dirichlet.sample( params=onesK )
     ys = np.random.random( ( D, T, D_latent ) )
-    ( initialDist, ) = Dirichlet.sample( params=onesK )
-    transDist = Dirichlet.sample( params=onesK, size=D_latent )
+    initialDist = Dirichlet.sample( params=( onesK, ) )
+    transDist = np.vstack( Dirichlet.sample( params=( onesK, ), size=D_latent ) )
 
     u = np.random.random( ( T, D_latent ) )
     mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
@@ -146,7 +144,7 @@ def testKalmanFilter():
     A, sigma = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_latent )
 
     C, R = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_obs )
-    ys = [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ]
+    ys = [ np.vstack( Regression.sample( params=( C, R ), size=T )[ 1 ] ) for _ in range( D ) ]
 
     mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
 

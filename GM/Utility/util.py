@@ -12,7 +12,10 @@ __all__ = [ 'invPsd',
             'doublewrap',
             'fullSampleSupport',
             'fullLikelihoodSupport',
-            'checkExpFamArgs' ]
+            'checkExpFamArgs',
+            'checkArgs',
+            'multiCall',
+            'multiCallOnInput' ]
 
 def invPsd( A, AChol=None, returnChol=False ):
     # https://github.com/mattjj/pybasicbayes/blob/9c00244b2d6fd767549de6ab5d0436cec4e06818/pybasicbayes/util/general.py
@@ -59,41 +62,21 @@ def is_outlier(points, thresh=3.5):
     return modified_z_score > thresh
 
 def fullyRavel( x ):
-
-
     y = copy.deepcopy( x )
     def recurse( y ):
         if( isinstance( y, tuple ) or isinstance( y, list ) ):
-            for _y in y:
-                y = np.hstack( [ recurse( _y ) for _y in y ] )
+            y = np.hstack( [ recurse( _y ) for _y in y ] )
         else:
-            y = y.ravel()
+            y = y.ravel() if isinstance( y, np.ndarray ) else y
         return y
     return recurse( y )
 
-    # return y
-
-
-    # if( isinstance( x, tuple ) or isinstance( x, list ) ):
-    #     x = np.hstack( [ _x.ravel() for _x in x ] )
-    # return x.ravel()
-
 def randomStep( x ):
-
-    y = copy.deepcopy( x )
-    def recurse( y ):
-        if( isinstance( y, tuple ) or isinstance( y, list ) ):
-            for _y in y:
-                recurse( _y )
-        else:
-            y += np.random.standard_normal( size=y.shape )
-    recurse( y )
-
-    return y
+    x += np.random.standard_normal( size=x.shape )
+    return x
 
 def deepCopy( x ):
     return copy.deepcopy( x )
-
 
 def random_combination(iterable, r):
     "Random selection from itertools.combinations(iterable, r)"
@@ -101,7 +84,6 @@ def random_combination(iterable, r):
     n = len(pool)
     indices = sorted(random.sample(xrange(n), r))
     return tuple(pool[i] for i in indices)
-
 
 def doublewrap(function):
     """
@@ -134,12 +116,13 @@ def extractArg( func, name, default, *args, **kwargs ):
         ans = default
     return ans
 
+##########################################################################
+
 @doublewrap
 def autoRavel( func, calledFunc=None ):
 
     @wraps( func )
     def autoRavelWrapper( *args, **kwargs ):
-
         ravel = extractArg( calledFunc, 'ravel', False, *args, **kwargs )
         if( 'ravel' in kwargs ):
             del kwargs[ 'ravel' ]
@@ -158,7 +141,6 @@ def multiCall( func, calledFunc=None ):
 
     @wraps( func )
     def multiCallWrapper( *args, **kwargs ):
-
         size = extractArg( calledFunc, 'size', 1, *args, **kwargs )
         if( 'size' in kwargs ):
             del kwargs[ 'size' ]
@@ -171,10 +153,15 @@ def multiCall( func, calledFunc=None ):
         return ans
     return multiCallWrapper
 
+##########################################################################
+
 @doublewrap
 def autoUnRavel( func ):
     @wraps( func )
-    def autoUnRavelWrapper( self, x, *args, params=None, ravel=False, **kwargs ):
+    def autoUnRavelWrapper( self, x, *args, params=None, natParams=None, ravel=False, **kwargs ):
+        if( params is None ):
+            assert natParams is not None
+            params = self.natToStandard( *natParams )
         x = self.unravelSample( x, params ) if ravel else x
         return func( self, x, *args, params=params, **kwargs )
     return autoUnRavelWrapper
@@ -206,6 +193,41 @@ def fullLikelihoodSupport( func ):
     def fullLikelihoodSupportWrapper( *args, **kwargs ):
         return func( *args, **kwargs )
     return fullLikelihoodSupportWrapper
+
+##########################################################################
+
+@doublewrap
+def checkArgs( func, allowNone=False ):
+
+    @wraps( func )
+    def wrapper( clsOrSelf, *args, **kwargs ):
+
+        args = ( clsOrSelf, ) + args
+
+        params = extractArg( func, 'params', None, *args, **kwargs )
+        priorParams = extractArg( func, 'priorParams', None, *args, **kwargs )
+
+        if( params is None ):
+            assert allowNone
+            D = extractArg( func, 'D', None, *args, **kwargs )
+            if( D is None ):
+               D_in = extractArg( func, 'D_in', None, *args, **kwargs )
+               D_out = extractArg( func, 'D_out', None, *args, **kwargs )
+               assert D_in is not None and D_out is not None
+               params = clsOrSelf.easyParamSample( **{ 'D_in': D_in, 'D_out': D_out } )
+
+               del kwargs[ 'D_in' ]
+               del kwargs[ 'D_out' ]
+            else:
+               params = clsOrSelf.easyParamSample( **{ 'D': D } )
+               del kwargs[ 'D' ]
+
+            kwargs[ 'params' ] = params
+
+        return func( *args, **kwargs )
+
+    return wrapper
+
 
 ##########################################################################
 

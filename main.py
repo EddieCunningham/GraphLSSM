@@ -1,6 +1,6 @@
 from GenModels.Tests import *
 
-distributionTest()
+# distributionTest()
 # exponentialFamilyTest()
-# marginalizationTest()
-# graphMarginalizationTest()
+marginalizationTest()
+graphMarginalizationTest()

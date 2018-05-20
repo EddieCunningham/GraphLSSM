@@ -5,77 +5,7 @@ from GenModels.GM.Utility import fullyRavel
 import itertools
 from functools import partial
 
-# Just a note, was trying to use umap projection for geweke test, but
-# it fails all the time, even with very large burn in periods
-# and steps in between gibbs samples.  Would be interesting to see
-# why umap is so good at separating forward sampling from gibbs sampling
-# (And its not failing because the code is wrong! 100% sure of this)
-# import umap
-
 __all__ = [ 'exponentialFamilyTest' ]
-
-def plottingTest( plotFuncs, nPlots=3 ):
-
-    def plotFn( xs, thetas, axisChoices=None ):
-        X = []
-        if( thetas is not None ):
-            assert len( xs ) == len( thetas )
-            for x, theta in zip( xs, thetas ):
-                X.append( np.hstack( ( fullyRavel( x ), fullyRavel( theta ) ) ) )
-        else:
-            for x in xs:
-                X.append( fullyRavel( x ) )
-        X = np.vstack( X )
-
-        if( axisChoices is None ):
-            axisChoices = []
-            for _ in range( nPlots ):
-                a = np.random.choice( X.shape[ 1 ] )
-                b = a
-                while( b == a ):
-                    b = np.random.choice( X.shape[ 1 ] )
-                axisChoices.append( ( a, b ) )
-        else:
-            assert len( axisChoices ) == nPlots, axisChoices
-
-        ans = []
-        for i, ( a, b ) in enumerate( axisChoices ):
-            ans.append( ( X[ :, a ], X[ :, b ] ) )
-
-        return ans, axisChoices
-
-    N = len( plotFuncs )
-
-    fig = plt.figure()
-    axes = [ plt.subplot2grid( ( N, nPlots ), ( i, j ) ) for i, j in itertools.product( range( N ), range( nPlots ) ) ]
-    it = iter( axes )
-    for distAndAx in zip( plotFuncs, *[ it for _ in range( nPlots ) ] ):
-        func = distAndAx[ 0 ]
-        ax = distAndAx[ 1: ]
-
-        func( ax, ax, plotFn )
-
-    plt.show()
-
-def metropolistHastingsTest( dists, nPlots=3 ):
-    plotFn = []
-    for dist in dists:
-        def f( regAxes, mhAxes, plotFn ):
-            return dist.sampleTest( regAxes, mhAxes, plotFn, nRegPoints=2000, nMHPoints=2000, burnIn=4000, nMHForget=10 )
-        plotFn.append( f )
-
-    plottingTest( plotFn, nPlots=nPlots )
-
-def gewekeTest( dists, nPlots=3 ):
-    plotFn = []
-    for dist in dists:
-        # def f( jointAxes, gibbsAxes, plotFn ):
-        #     return dist.gewekeTest( jointAxes, gibbsAxes, plotFn, nJointPoints=1000, nGibbsPoints=1000, burnIn=2000, nGibbsForget=10 )
-
-        f = partial( dist.gewekeTest, nJointPoints=1000, nGibbsPoints=1000, burnIn=2000, nGibbsForget=10 )
-        plotFn.append( f )
-
-    plottingTest( plotFn, nPlots=nPlots )
 
 def testsForDistWithoutPrior( dist ):
     dist.paramNaturalTest()
@@ -83,8 +13,6 @@ def testsForDistWithoutPrior( dist ):
     dist.likelihoodTestExpFam()
 
 def testForDistWithPrior( dist ):
-
-    dist.marginalTest()
     dist.paramNaturalTest()
     dist.likelihoodNoPartitionTestExpFam()
     dist.likelihoodTestExpFam()
@@ -133,17 +61,6 @@ def standardTests():
 
     ######################################
 
-    niw.functionalityTest( D=3 )
-    mniw.functionalityTest( D_in=3, D_out=4 )
-    norm.functionalityTest( D=3 )
-    iw.functionalityTest( D=3 )
-    reg.functionalityTest( D_in=3, D_out=4 )
-    dirichlet.functionalityTest( D=3 )
-    cat.functionalityTest( D=3 )
-    assert 0
-
-    ######################################
-
     testForDistWithPrior( norm )
     testsForDistWithoutPrior( iw )
     testForDistWithPrior( reg )
@@ -153,12 +70,6 @@ def standardTests():
     testForDistWithPrior( cat )
 
     ######################################
-
-    # metropolistHastingsTest( [ reg ] )
-
-    assert 0
-    # gewekeTest( [ norm, cat ] )
-    # gewekeTest( [ norm, reg, cat ] )
 
 def tensorTests():
 
@@ -214,6 +125,6 @@ def tensorNormalMarginalizationTest():
 
 def exponentialFamilyTest():
     standardTests()
-    tensorTests()
-    tensorNormalMarginalizationTest()
+    # tensorTests()
+    # tensorNormalMarginalizationTest()
     print( 'Passed all of the exp fam tests!' )

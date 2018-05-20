@@ -65,6 +65,8 @@ class Dirichlet( ExponentialFam ):
         if( isinstance( x, tuple ) ):
             assert len( x ) == 1
             x, = x
+        elif( isinstance( x, list ) ):
+            x = np.vstack( x )
         if( x.ndim == 2 ):
             t = ( 0, )
             for _x in x:

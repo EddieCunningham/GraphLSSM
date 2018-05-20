@@ -50,12 +50,12 @@ class Categorical( ExponentialFam ):
         return ( np.ones( D ) / D, )
 
     @classmethod
-    @fullSampleSupport
-    def paramSample( cls, priorParams=None, **D ):
+    @checkExpFamArgs
+    def paramSample( cls, priorParams=None, priorNatParams=None, **D ):
         # Sample from P( Ѳ; α )
         if( cls.priorClass == None ):
             return cls.easyParamSample( **D )
-        return ( cls.priorClass.sample( priorParams, **D ), )
+        return ( cls.priorClass.sample( params=priorParams, natParams=priorNatParams, **D ), )
 
     @fullSampleSupport
     def iparamSample( self ):
@@ -85,6 +85,14 @@ class Categorical( ExponentialFam ):
     def sufficientStats( cls, x, constParams=None, forPost=False ):
     # def sufficientStats( cls, x, D=None, constParams=None, forPost=False ):
         # Compute T( x )
+
+        if( isinstance( x, int ) ):
+            x = np.array( [ x ] )
+        elif( isinstance( x, list ) ):
+            x = np.array( x )
+        elif( isinstance( x, np.ndarray ) and x.ndim == 0 ):
+            x = np.array( [ x ] )
+
         assert isinstance( x, np.ndarray ) and x.ndim == 1, x
         D = constParams
         assert D is not None
