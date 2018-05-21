@@ -9,8 +9,16 @@ class MessagePasser( ABC ):
         pass
 
     @property
-    @abstractmethod
     def T( self ):
+        return self._T
+
+    @T.setter
+    def T( self, val ):
+        self._T = val
+
+    @property
+    @abstractmethod
+    def stateSize( self ):
         pass
 
     @abstractmethod

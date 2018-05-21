@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import TensorExponentialFam, checkExpFamArgs
+from GenModels.GM.Distributions.Base import TensorExponentialFam
 from GenModels.GM.Distributions.Normal import Normal
 from GenModels.GM.Distributions.InverseWishart import InverseWishart
 import string
@@ -76,9 +76,9 @@ class TensorNormal( TensorExponentialFam ):
         return t1, t2
 
     @classmethod
-    @checkExpFamArgs
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
+        assert ( params is None ) ^ ( natParams is None )
 
         M, covs = params if params is not None else cls.natToStandard( *natParams )
 
@@ -95,14 +95,14 @@ class TensorNormal( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @checkExpFamArgs( allowNone=True )
-    def sample( cls, params=None, natParams=None, Ds=None, size=1, ravel=False ):
+    def sample( cls, params=None, natParams=None, Ds=None, size=1 ):
         if( params is None and natParams is None ):
             assert Ds is not None
             assert isinstance( Ds, tuple )
             params = ( np.zeros( Ds ), [ InverseWishart.sample( D=D ) for D in Ds ] )
 
         # Sample from P( x | Ѳ; α )
+        assert ( params is None ) ^ ( natParams is None )
         M, covs = params if params is not None else cls.natToStandard( *natParams )
 
         covChols = [ np.linalg.cholesky( cov ) for cov in covs ]
@@ -110,7 +110,7 @@ class TensorNormal( TensorExponentialFam ):
         N = len( shapes )
         totalDim = np.prod( [ size ] + shapes )
 
-        X = np.vstack( Normal.sample( D=1, size=totalDim ) ).reshape( [ size ] + shapes )
+        X = Normal.sample( D=1, size=totalDim ).reshape( [ size ] + shapes )
 
         ind1 = string.ascii_letters[ : N ]
         ind2 = string.ascii_letters[ N : N * 2 ]
@@ -122,8 +122,8 @@ class TensorNormal( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @checkExpFamArgs
     def log_likelihoodRavel( cls, x, params=None, natParams=None ):
+        assert ( params is None ) ^ ( natParams is None )
         M, covs = params if params is not None else cls.natToStandard( *natParams )
 
         assert x.shape[ 1: ] == M.shape
@@ -136,9 +136,9 @@ class TensorNormal( TensorExponentialFam ):
         return ans
 
     @classmethod
-    @checkExpFamArgs
     def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
+        assert ( params is None ) ^ ( natParams is None )
         M, covs = params if params is not None else cls.natToStandard( *natParams )
 
         totalDim = np.prod( [ cov.shape[ 0 ] for cov in covs ] )

@@ -3,6 +3,7 @@ import numpy as np
 from functools import reduce
 from GenModels.GM.Distributions import Normal
 from GenModels.GM.Utility import *
+from toolz import curry
 
 __all__ = [ 'KalmanFilter',
             'SwitchingKalmanFilter' ]
@@ -13,6 +14,14 @@ class KalmanFilter( MessagePasser ):
     @property
     def T( self ):
         return self._T
+
+    @T.setter
+    def T( self, val ):
+        self._T = val
+
+    @property
+    def stateSize( self ):
+        return self.D_latent
 
     @property
     def D_latent( self ):
@@ -58,6 +67,7 @@ class KalmanFilter( MessagePasser ):
         assert C.shape[ 1 ] == A.shape[ 0 ]
 
     def preprocessData( self, u, ys ):
+        assert u is not None and ys is not None
         self.u = u
 
         ys = np.array( ys )
@@ -65,16 +75,17 @@ class KalmanFilter( MessagePasser ):
             ys = ys[ None ]
         else:
             assert ys.ndim == 3
+
         assert self.C.shape[ 0 ] == ys.shape[ 2 ]
         if( u is not None ):
             assert ys.shape[ 1 ] == u.shape[ 0 ]
             assert u.shape[ 1 ] == self.D_latent
 
-
         self._T = ys.shape[ 1 ]
 
         RInv = invPsd( self.R )
 
+        # P( y | x ) ~ N( -0.5 * Jy, hy )
         self.hy = ys.dot( RInv @ self.C ).sum( 0 )
         self.Jy = self.C.T @ RInv @ self.C
         partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )

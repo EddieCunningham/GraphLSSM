@@ -2,5 +2,7 @@ from GenModels.Tests import *
 
 # distributionTest()
 # exponentialFamilyTest()
-marginalizationTest()
-graphMarginalizationTest()
+# marginalizationTest()
+# graphMarginalizationTest()
+
+stateTests()

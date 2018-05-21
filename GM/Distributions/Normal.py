@@ -32,21 +32,15 @@ class Normal( ExponentialFam ):
 
     ##########################################################################
 
-    @classmethod
-    def paramShapes( cls, D=None ):
-        assert D is not None
-        return [ ( D, ), ( D, D ) ]
+    @property
+    def constParams( self ):
+        return None
 
     @classmethod
-    def inferDims( cls, params=None ):
-        assert params is not None
-        mu, sigma = params
-        return { 'D': mu.shape[ 0 ] }
-
-    @classmethod
-    def outputShapes( cls, D=None ):
-        assert D is not None
-        return [ ( D, ) ]
+    def dataN( cls, x ):
+        if( x.ndim == 2 ):
+            return x.shape[ 0 ]
+        return 1
 
     ##########################################################################
 
@@ -66,17 +60,9 @@ class Normal( ExponentialFam ):
 
     ##########################################################################
 
-    @property
-    def constParams( self ):
-        return None
-
-    ##########################################################################
-
     @classmethod
     def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
-        if( isinstance( x, list ) ):
-            x = np.vstack( x )
         if( x.ndim == 1 ):
             x = x.reshape( ( 1, -1 ) )
         t1 = x.T.dot( x )
@@ -90,9 +76,9 @@ class Normal( ExponentialFam ):
         return t1, t2
 
     @classmethod
-    @checkExpFamArgs
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
+        assert ( params is None ) ^ ( natParams is None )
 
         if( natParams is not None ):
             n1, n2 = natParams
@@ -114,22 +100,25 @@ class Normal( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @fullSampleSupport
-    @checkExpFamArgs( allowNone=True )
-    def sample( cls, params=None, natParams=None ):
+    def sample( cls, params=None, natParams=None, D=None, size=1 ):
         # Sample from P( x | Ѳ; α )
+        if( params is None and natParams is None ):
+            assert D is not None
+            params = ( np.zeros( D ), np.eye( D ) )
+        assert ( params is None ) ^ ( natParams is None )
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
-        return multivariate_normal.rvs( mean=mu, cov=sigma )
+        return multivariate_normal.rvs( mean=mu, cov=sigma, size=size )
 
     ##########################################################################
 
     @classmethod
-    @fullLikelihoodSupport
-    @checkExpFamArgs
     def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
+        assert ( params is None ) ^ ( natParams is None )
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
-        assert isinstance( x, np.ndarray ) and x.ndim == 1
+
+        if( x.ndim == 2 ):
+            return multivariate_normal.logpdf( x, mean=mu, cov=sigma ).sum()
         return multivariate_normal.logpdf( x, mean=mu, cov=sigma )
 
     ##########################################################################

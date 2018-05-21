@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.Distributions.Base import TensorExponentialFam, checkExpFamArgs
+from GenModels.GM.Distributions.Base import TensorExponentialFam
 from GenModels.GM.Distributions.TensorNormal import TensorNormal
 from GenModels.GM.Distributions.Normal import Normal
 import string
@@ -86,9 +86,9 @@ class TensorRegression( TensorExponentialFam ):
 
 
     @classmethod
-    @checkExpFamArgs
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
+        assert ( params is None ) ^ ( natParams is None )
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
 
         p = sigma.shape[ 0 ]
@@ -103,9 +103,9 @@ class TensorRegression( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @checkExpFamArgs
-    def sample( cls, xs=None, params=None, natParams=None, size=1, ravel=False ):
+    def sample( cls, xs=None, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
+        assert ( params is None ) ^ ( natParams is None )
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
 
         D = sigma.shape[ 0 ]
@@ -129,9 +129,10 @@ class TensorRegression( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @checkExpFamArgs
     def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
+        assert ( params is None ) ^ ( natParams is None )
+
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
 
         xs, ys = x

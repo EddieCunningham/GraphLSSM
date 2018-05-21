@@ -16,12 +16,12 @@ class CategoricalForwardBackward( MessagePasser ):
         pass
 
     @property
-    def T(self):
-        return self._T
+    def K( self ):
+        return self._K
 
     @property
-    def K(self):
-        return self._K
+    def stateSize( self ):
+        return 1
 
     def genFilterProbs( self ):
         return np.empty( ( self.T, self.K ) )
@@ -123,10 +123,7 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
             mu = self.mus[ k ]
             sigma = self.sigmas[ k ]
 
-            # Holy shit this got slow
-            for _ys in ys:
-                for __ys in _ys:
-                    self.L[ :, k ] += Normal.log_likelihood( __ys, params=( mu, sigma ) )
+            self.L[ :, k ] = Normal.log_likelihood( ys, params=( mu, sigma ) ).sum( axis=0 )
 
     def updateParams( self, initialDist, transDist, mus, sigmas, ys=None ):
 
@@ -209,3 +206,10 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
 
     def marginalBackward( self, firstBeta ):
         return np.logaddexp.reduce( firstBeta + self.forwardBaseCase() )
+
+#########################################################################################
+
+class FactorialForwardBackward( CategoricalForwardBackward ):
+    # This is literally just a normal HMM except with multiple state sequences.
+    # The emission probability is different tho
+    pass

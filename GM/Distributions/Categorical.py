@@ -1,6 +1,5 @@
 import numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
-from GenModels.GM.Utility import *
 
 __all__ = [ 'Categorical' ]
 
@@ -27,39 +26,8 @@ class Categorical( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def paramShapes( cls, D=None ):
-        assert D is not None
-        return [ ( D, ) ]
-
-    @classmethod
-    def inferDims( cls, params=None ):
-        assert params is not None
-        p, = params
-        return { 'D': p.shape[ 0 ] }
-
-    @classmethod
-    def outputShapes( cls, D=None ):
-        assert D is not None
-        return [ ( 1, ) ]
-
-    ##########################################################################
-
-    @classmethod
-    def easyParamSample( cls, D=None ):
-        assert D is not None
-        return ( np.ones( D ) / D, )
-
-    @classmethod
-    @checkExpFamArgs
-    def paramSample( cls, priorParams=None, priorNatParams=None, **D ):
-        # Sample from P( Ѳ; α )
-        if( cls.priorClass == None ):
-            return cls.easyParamSample( **D )
-        return ( cls.priorClass.sample( params=priorParams, natParams=priorNatParams, **D ), )
-
-    @fullSampleSupport
-    def iparamSample( self ):
-        return ( self.prior.isample(), )
+    def dataN( cls, x ):
+        return x.shape[ 0 ]
 
     ##########################################################################
 
@@ -85,14 +53,6 @@ class Categorical( ExponentialFam ):
     def sufficientStats( cls, x, constParams=None, forPost=False ):
     # def sufficientStats( cls, x, D=None, constParams=None, forPost=False ):
         # Compute T( x )
-
-        if( isinstance( x, int ) ):
-            x = np.array( [ x ] )
-        elif( isinstance( x, list ) ):
-            x = np.array( x )
-        elif( isinstance( x, np.ndarray ) and x.ndim == 0 ):
-            x = np.array( [ x ] )
-
         assert isinstance( x, np.ndarray ) and x.ndim == 1, x
         D = constParams
         assert D is not None
@@ -100,9 +60,9 @@ class Categorical( ExponentialFam ):
         return ( t1, )
 
     @classmethod
-    @checkExpFamArgs
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
+        assert ( params is None ) ^ ( natParams is None )
         if( split ):
             return ( 0, )
         return 0
@@ -110,20 +70,33 @@ class Categorical( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @fullSampleSupport
-    @checkExpFamArgs( allowNone=True )
-    def sample( cls, params=None, natParams=None ):
+    def sample( cls, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
+        if( params is not None ):
+            if( not isinstance( params, tuple ) ):
+                params = ( params, )
+        assert ( params is None ) ^ ( natParams is None )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
-        assert p.ndim == 1, p
-        return np.array( np.random.choice( p.shape[ 0 ], p=p ) )
+        if( p.ndim > 1 ):
+            assert p.size == p.squeeze().size
+            p = p.squeeze()
+        # assert p.ndim == 1, p
+        ans = np.random.choice( p.shape[ 0 ], size, p=p )
+        return ans
+        return ans if size > 1 else ans[ 0 ]
 
     ##########################################################################
 
     @classmethod
-    @fullLikelihoodSupport
-    @checkExpFamArgs
     def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
-        ( p, ) = params if params is not None else cls.natToStandard( *natParams )
-        return np.log( p[ x ] )
+        assert ( params is None ) ^ ( natParams is None )
+        assert isinstance( x, np.ndarray )
+        assert x.ndim == 1
+
+        if( params is not None ):
+            ( p, ) = params
+            return np.log( p[ x ] ).sum()
+        else:
+            ( n, ) = natParams
+            return n[ x ].sum()

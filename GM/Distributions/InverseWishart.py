@@ -2,7 +2,6 @@ import numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import invwishart
 from scipy.special import multigammaln
-from GenModels.GM.Utility import *
 
 class InverseWishart( ExponentialFam ):
 
@@ -22,20 +21,10 @@ class InverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def paramShapes( cls, D=None ):
-        assert D is not None
-        return [ ( D, D ), D ]
-
-    @classmethod
-    def inferDims( cls, params=None ):
-        assert params is not None
-        psi, nu = params
-        return { 'D': psi.shape[ 0 ] }
-
-    @classmethod
-    def outputShapes( cls, D=None ):
-        assert D is not None
-        return [ ( D, D ) ]
+    def dataN( cls, x ):
+        if( x.ndim == 3 ):
+            return x.shape[ 0 ]
+        return 1
 
     ##########################################################################
 
@@ -74,9 +63,9 @@ class InverseWishart( ExponentialFam ):
         return t1, t2
 
     @classmethod
-    @checkExpFamArgs
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
+        assert ( params is None ) ^ ( natParams is None )
 
         # its just easier to use the standard params
         psi, nu = params if params is not None else cls.natToStandard( *natParams )
@@ -93,20 +82,22 @@ class InverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @fullSampleSupport
-    @checkExpFamArgs( allowNone=True )
-    def sample( cls, params=None, natParams=None ):
+    def sample( cls, params=None, natParams=None, D=None, size=1 ):
         # Sample from P( x | Ѳ; α )
+
+        if( params is None and natParams is None ):
+            assert D is not None
+            params = ( np.eye( D ), D )
+
+        assert ( params is None ) ^ ( natParams is None )
         psi, nu = params if params is not None else cls.natToStandard( *natParams )
-        samples = invwishart.rvs( df=nu, scale=psi )
-        return samples
+        return invwishart.rvs( df=nu, scale=psi, size=size )
 
     ##########################################################################
 
     @classmethod
-    @fullLikelihoodSupport
-    @checkExpFamArgs
     def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
+        assert ( params is None ) ^ ( natParams is None )
         # There is a bug in scipy's invwishart.logpdf! Don't use it!
         return cls.log_likelihoodExpFam( x, params=params, natParams=natParams )

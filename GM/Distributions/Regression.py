@@ -1,7 +1,6 @@
 import numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from GenModels.GM.Distributions.Normal import Normal
-from GenModels.GM.Utility import *
 
 __all__ = [ 'Regression' ]
 
@@ -31,20 +30,9 @@ class Regression( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def paramShapes( cls, D_out=None, D_in=None ):
-        assert D_out is not None and D_in is not None
-        return [ ( D_out, D_in ), ( D_out, D_out ) ]
-
-    @classmethod
-    def inferDims( cls, params=None ):
-        assert params is not None
-        A, sigma = params
-        return { 'D_in': A.shape[ 1 ], 'D_out': A.shape[ 0 ] }
-
-    @classmethod
-    def outputShapes( cls, D_in=None, D_out=None ):
-        assert D_in is not None and D_out is not None
-        return [ ( D_in, ), ( D_out, ) ]
+    def dataN( cls, x ):
+        xs, ys = x
+        return ys.shape[ 0 ]
 
     ##########################################################################
 
@@ -77,12 +65,9 @@ class Regression( ExponentialFam ):
     def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
 
-        if( isinstance( x, list ) ):
-            x, y = zip( *x )
-            x = np.vstack( x )
-            y = np.vstack( y )
-        else:
-            x, y = x
+        cls.dataN( x )
+
+        x, y = x
 
         if( x.ndim == 1 ):
             x = x.reshape( ( 1, -1 ) )
@@ -100,9 +85,9 @@ class Regression( ExponentialFam ):
         return t1, t2, t3
 
     @classmethod
-    @checkExpFamArgs
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
+        assert ( params is None ) ^ ( natParams is None )
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
 
         p = sigma.shape[ 0 ]
@@ -117,32 +102,27 @@ class Regression( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    @fullSampleSupport
-    @checkExpFamArgs( allowNone=True )
-    def sample( cls, x=None, params=None, natParams=None ):
+    def sample( cls, x=None, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-
+        assert ( params is None ) ^ ( natParams is None )
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
-        D_out, D_in = A.shape
+        D = A.shape[ 1 ]
         if( x is None ):
-            x = Normal.sample( params=( np.zeros( D_in ), np.eye( D_in ) ) )
-        return x, Normal.sample( params=( A.dot( x ), sigma ) )
+            x = np.array( [ Normal.sample( params=( np.zeros( D ), np.eye( D ) ), size=1 ) for _ in range( size ) ] )
+            y = np.array( [ Normal.sample( params=( A.dot( _x ), sigma ), size=1 ) for _x in x ] )
+            return ( x, y )
+        return Normal.sample( params=( A.dot( x ), sigma ), size=size )
 
     ##########################################################################
 
     @classmethod
-    @fullLikelihoodSupport
-    @checkExpFamArgs
-    def log_likelihood( cls, x, conditionOnX=True, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, natParams=None ):
         # Compute P( x | Ѳ; α )
+        assert ( params is None ) ^ ( natParams is None )
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
-        D_out, D_in = A.shape
 
         x, y = x
-        log_y = Normal.log_likelihood( y, params=( A.dot( x ), sigma ) )
-
-        if( conditionOnX == True ):
-            return log_y
-
-        log_x = Normal.log_likelihood( x, params=( np.zeros( D_in ), np.eye( D_in ) ) )
-        return log_x + log_y
+        assert x.shape == y.shape
+        if( x.ndim != 1 ):
+            return sum( [ Normal.log_likelihood( _y, ( A.dot( _x ), sigma ) ) for _x, _y in zip( x, y ) ] )
+        return Normal.log_likelihood( y, ( A.dot( x ), sigma ) )

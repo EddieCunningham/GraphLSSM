@@ -2,12 +2,17 @@ from GenModels.GM.States.StandardStates.StateBase import StateBase
 from GenModels.GM.States.MessagePassing.KalmanFilter import *
 from GenModels.GM.Distributions import Normal
 from GenModels.GM.Utility import *
+import numpy as np
 
 __all__ = [ 'LDSState' ]
 
-class LDSState( StateBase, KalmanFilter ):
+class LDSState( KalmanFilter, StateBase ):
 
     # priorClass = LDSModel
+
+    @property
+    def params( self ):
+        return self._params
 
     @params.setter
     def params( self, val ):
@@ -15,18 +20,61 @@ class LDSState( StateBase, KalmanFilter ):
         self.updateParams( A, sigma, C, R, mu0, sigma0 )
         self._params = val
 
-    @property
-    def constParams( self ):
-        return None
+    ######################################################################
 
     @property
-    def dataN( self, x ):
-        return x.shape[ -2 ]
+    def constParams( self ):
+        return self.u
+
+    @classmethod
+    def dataN( cls, x ):
+        if( x.ndim == 2 ):
+            return 1
+        return x.shape[ 0 ]
 
     ######################################################################
 
+    @classmethod
+    def standardToNat( self, A, sigma, C, R, mu0, sigma0 ):
+        n1, n2, n3 = Regression.standardToNat( A, sigma )
+        n4, n5, n6 = Regression.standardToNat( C, R )
+        n7, n8 = Normal.standardToNat( mu0, sigma0 )
+        return n1, n2, n3, n4, n5, n6, n7, n8
+
+    @classmethod
+    def natToStandard( n1, n2, n3, n4, n5, n6, n7, n8 ):
+        A, sigma = Regression.natToStandard( n1, n2, n3 )
+        C, R = Regression.natToStandard( n4, n5, n6 )
+        mu0, sigma0 = Normal.natToStandard( n7, n8 )
+        return A, sigma, C, R, mu0, sigma0
+
+    ##########################################################################
+
+    @classmethod
+    def sufficientStats( cls, x, constParams=None, forPost=False ):
+        # Compute T( x )
+        ( x, ys ) = x
+        u = constParams
+        t1 = Regression.sufficientStats( np.hstack( x[ :-1 ], x[ 1: ] - u ), constParams=constParams )
+        t2 = Regression.sufficientStats( np.hstack( x, ys ), constParams=constParams )
+        t3 = Normal.sufficientStats( x[ 0 ], constParams=constParams )
+        return t1, t2, t3
+
+    @classmethod
+    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+        # Compute A( Ѳ ) - log( h( x ) )
+        assert ( params is None ) ^ ( natParams is None )
+        A, sigma, C, R, mu0, sigma0 = params if params is not None else cls.natToStandard( *natParams )
+
+        A1 = Regression.log_partition( params=( A, sigma ) )
+        A2 = Regression.log_partition( params=( C, R ) )
+        A3 = Normal.log_partition( params=( mu0, sigma0 ) )
+        return A1 + A2 + A3
+
+    ##########################################################################
+
     def preprocessData( self, u=None, ys=None ):
-        assert not ( u is None and ys is None )
+        assert u is not None and ys is not None
 
         if( ys is not None ):
             super( LDSState, self ).preprocessData( u, ys )
@@ -35,8 +83,27 @@ class LDSState( StateBase, KalmanFilter ):
 
     ######################################################################
 
-    def genState( self ):
+    def genStates( self ):
         return np.empty( ( self.T, self.D_latent ) )
+
+    ######################################################################
+
+    def sampleEmissions( self, x ):
+        # Sample from P( y | x, ϴ )
+        assert self.dataN( x=x ) == 1
+
+        def sampleStep( _x ):
+            return Normal.sample( params=( self.C.dot( _x ), self.R ) )
+
+        y = np.apply_along_axis( sampleStep, -1, x )[ None ]
+        return y
+
+    def emissionLikelihood( self, x, ys ):
+        # Compute P( y | x, ϴ )
+        def likelihoodStep( _x, _y ):
+            return Normal.log_likelihood( _y, params=( self.C.dot( _x ), self.R ) )
+        log_likelihood = np.vectorize( likelihoodStep, signature='(n),(m)->()' )
+        return log_likelihood( x, ys[ 0 ] ).sum()
 
     ######################################################################
 
@@ -44,7 +111,7 @@ class LDSState( StateBase, KalmanFilter ):
         return Normal.sample( natParams=( -0.5 * J, h ) )
 
     def likelihoodStep( self, x, J, h ):
-        return Normal.logLikelihood( x, natParams=( -0.5 * J, h ) )
+        return Normal.log_likelihood( x, natParams=( -0.5 * J, h ) )
 
     ######################################################################
 
@@ -53,7 +120,7 @@ class LDSState( StateBase, KalmanFilter ):
         #                           ∝ P( y_t+1 | x_t+1 ) * P( x_t+1 | x_t ) * P( y_t+2:T | x_t+1 )
 
         if( beta is None ):
-            _J = -0.5 * self.J11        if t > 0 else invPsd( self.sigma0 )
+            _J =  self.J11              if t > 0 else invPsd( self.sigma0 )
             _h = -self.J12.dot( prevX ) if t > 0 else invPsd( self.sigma0 ).dot( self.mu0 )
             return _J, _h
 
@@ -94,22 +161,68 @@ class LDSState( StateBase, KalmanFilter ):
         dummy.params = params
         return dummy.isample( u=u, ys=ys, T=T, forwardFilter=forwardFilter )
 
-    def isample( self, u=None, ys=None, T=None, forwardFilter=True )
-        if( u is not None or ys is not None ):
+    def isample( self, u=None, ys=None, T=None, forwardFilter=True ):
+
+        if( ys is not None ):
+            # This is the only difference, so probably find a better way to code this change
             self.preprocessData( u, ys )
-            T = self.T
-        super( LDSState, self ).isample( ys=None, T=T, forwardFilter=forwardFilter )
+        else:
+            assert T is not None
+            self.T = T
+
+        x = self.genStates()
+
+        def workFunc( t, *args ):
+            nonlocal x
+            x[ t ] = self.sampleStep( *args )
+            return x[ t ]
+
+        if( ys is None ):
+            # This is if we want to sample from P( x, y | ϴ )
+            self.noFilterForwardRecurse( workFunc )
+            ys = self.sampleEmissions( x )
+        elif( forwardFilter ):
+            # Otherwise sample from P( x | y, ϴ )
+            self.forwardFilterBackwardRecurse( workFunc )
+        else:
+            self.backwardFilterForwardRecurse( workFunc )
+
+        return x, ys
 
     ######################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params, u=None, ys=None, T=None, forwardFilter=True ):
+    def log_likelihood( cls, x, params=None, u=None, forwardFilter=True, conditionOnY=False ):
+        assert params is not None
         dummy = StateBase()
         dummy.params = params
-        return dummy.ilog_likelihood( x, u=u, ys=ys, T=T, forwardFilter=forwardFilter )
+        return dummy.ilog_likelihood( x, u=u, forwardFilter=forwardFilter, conditionOnY=conditionOnY )
 
-    def ilog_likelihood( self, x, u=None, ys=None, T=None, forwardFilter=True )
-        if( u is not None or ys is not None ):
-            self.preprocessData( u, ys )
-            T = self.T
-        super( LDSState, self ).ilog_likelihood( x, ys=None, T=T, forwardFilter=forwardFilter )
+    def ilog_likelihood( self, x, u=None, forwardFilter=True, conditionOnY=False ):
+
+        ( x, ys ) = x
+        assert ys is not None
+
+        self.preprocessData( u, ys )
+
+        ans = 0.0
+
+        def workFunc( t, *args ):
+            nonlocal ans, x
+            ans += self.likelihoodStep( x[ t ], *args )
+            return x[ t ]
+
+        if( conditionOnY == False ):
+            # This is if we want to compute P( x, y | ϴ )
+            self.noFilterForwardRecurse( workFunc )
+            ans += self.emissionLikelihood( x, ys )
+        else:
+            if( forwardFilter ):
+                # Otherwise compute P( x | y, ϴ )
+                assert conditionOnY == True
+                self.forwardFilterBackwardRecurse( workFunc )
+            else:
+                assert conditionOnY == True
+                self.backwardFilterForwardRecurse( workFunc )
+
+        return ans
