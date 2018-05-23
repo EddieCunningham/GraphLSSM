@@ -496,7 +496,6 @@ class ExponentialFam( Conjugate ):
     def log_posterior( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None ):
         # Compute P( Ѳ | x; α )
         assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
-
         params = params if params is not None else cls.natToStandard( *natParams )
         postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
         return cls.priorClass.log_likelihood( params, natParams=postNatParams )

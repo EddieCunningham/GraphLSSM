@@ -103,10 +103,10 @@ class StateBase( ExponentialFam ):
         dummy.updateParams( params )
         return dummy.isample( ys=ys, T=T, forwardFilter=forwardFilter )
 
-    def isample( self, ys=None, T=None, forwardFilter=True ):
+    def isample( self, ys=None, T=None, forwardFilter=True, **kwargs ):
 
         if( ys is not None ):
-            self.preprocessData( ys )
+            self.preprocessData( ys=ys, **kwargs )
         else:
             assert T is not None
             self.T = T
@@ -139,12 +139,12 @@ class StateBase( ExponentialFam ):
         dummy.updateParams( params )
         return dummy.ilog_likelihood( x, forwardFilter=forwardFilter, conditionOnY=conditionOnY )
 
-    def ilog_likelihood( self, x, forwardFilter=True, conditionOnY=False ):
+    def ilog_likelihood( self, x, forwardFilter=True, conditionOnY=False, **kwargs ):
 
         ( x, ys ) = x
         assert ys is not None
 
-        self.preprocessData( ys )
+        self.preprocessData( ys=ys, **kwargs )
 
         ans = 0.0
 

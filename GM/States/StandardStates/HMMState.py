@@ -9,15 +9,19 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
     # priorClass = HMMModel
 
-    @property
-    def params( self ):
-        return self._params
+    def __init__( self, initialDist=None, transDist=None, emissionDist=None, prior=None, hypers=None ):
+        # definePrior()
+        super( HMMState, self ).__init__( initialDist, transDist, emissionDist, prior=prior, hypers=hypers )
 
-    @params.setter
-    def params( self, val ):
-        initialDist, transDist, emissionDist = val
-        self.updateParams( initialDist, transDist, emissionDist )
-        self._params = val
+    # @property
+    # def params( self ):
+    #     return self._params
+
+    # @params.setter
+    # def params( self, val ):
+    #     initialDist, transDist, emissionDist = val
+    #     self.updateParams( initialDist, transDist, emissionDist )
+    #     self._params = val
 
     ######################################################################
 
@@ -68,8 +72,8 @@ class HMMState( CategoricalForwardBackward, StateBase ):
         # Compute T( x )
         ( x, ys ) = x
         t1 = Categorical.sufficientStats( x[ 0 ], constParams=constParams )
-        t2 = Transition.sufficientStats( np.hstack( x[ :-1 ], x[ 1: ] ), constParams=constParams )
-        t3 = Transition.sufficientStats( np.hstack( x, ys ), constParams=constParams )
+        t2 = Transition.sufficientStats( ( x[ :-1 ], x[ 1: ] ), constParams=constParams )
+        t3 = Transition.sufficientStats( ( x, ys ), constParams=constParams )
         return t1, t2, t3
 
     @classmethod

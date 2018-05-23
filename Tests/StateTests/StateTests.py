@@ -15,8 +15,6 @@ def testHMMBasic():
         obsDim = 40
         D = 4
 
-        state = HMMState()
-
         onesK = np.ones( K )
         onesObs = np.ones( obsDim )
 
@@ -26,7 +24,8 @@ def testHMMBasic():
         transDist = Dirichlet.sample( params=onesK, size=K )
         emissionDist = Dirichlet.sample( params=onesObs, size=K )
 
-        state.params = ( initialDist, transDist, emissionDist )
+        state = HMMState( initialDist, transDist, emissionDist )
+        # state.params = ( initialDist, transDist, emissionDist )
 
         xNoCond  , ysNoCond  = state.isample( T=10 )
         xForward , yForward  = state.isample( ys=ys )

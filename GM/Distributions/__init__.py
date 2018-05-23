@@ -11,3 +11,5 @@ from .Categorical import Categorical
 from .TensorNormal import TensorNormal
 from .TensorRegression import TensorRegression
 from .TensorCategorical import TensorCategorical
+from .Transition import Transition
+from .TransitionDirichletPrior import TransitionDirichletPrior

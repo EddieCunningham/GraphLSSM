@@ -51,7 +51,6 @@ class Categorical( ExponentialFam ):
 
     @classmethod
     def sufficientStats( cls, x, constParams=None, forPost=False ):
-    # def sufficientStats( cls, x, D=None, constParams=None, forPost=False ):
         # Compute T( x )
         assert isinstance( x, np.ndarray ) and x.ndim == 1, x
         D = constParams

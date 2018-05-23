@@ -155,6 +155,10 @@ def distributionTest():
         'alpha': np.random.random( D ) + 1
     }
 
+    transDirParams = {
+        'alpha': np.random.random( ( D, D ) ) + 1
+    }
+
     niw = NormalInverseWishart( **niwParams )
     norm = Normal( prior=niw )
     iw = InverseWishart( **iwParams )
@@ -162,8 +166,10 @@ def distributionTest():
     reg = Regression( prior=mniw )
     dirichlet = Dirichlet( **dirParams )
     cat = Categorical( prior=dirichlet )
+    transDir = TransitionDirichletPrior( **transDirParams )
+    trans = Transition( prior=transDir )
 
-    dists = [ niw, norm, iw, mniw, reg, dirichlet, cat ]
+    dists = [ niw, norm, iw, mniw, reg, dirichlet, cat, transDir, trans ]
     for dist in dists:
         marginalTest( dist )
 

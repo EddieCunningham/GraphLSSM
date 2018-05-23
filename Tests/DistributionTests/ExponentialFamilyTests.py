@@ -103,6 +103,14 @@ def standardTests():
     }
     mniwParams.update( iwParams )
 
+    dirParams = {
+        'alpha': np.random.random( D ) + 1
+    }
+
+    transDirParams = {
+        'alpha': np.random.random( ( D, D ) ) + 1
+    }
+
     niw = NormalInverseWishart( **niwParams )
     norm = Normal( prior=niw )
     iw = InverseWishart( **iwParams )
@@ -110,34 +118,21 @@ def standardTests():
     mniw = MatrixNormalInverseWishart( **mniwParams )
     reg = Regression( prior=mniw )
 
-    testsForDistWithoutPrior( iw )
-
-    testsForDistWithoutPrior( niw )
-    testForDistWithPrior( norm )
-
-    testForDistWithPrior( reg )
-    testsForDistWithoutPrior( mniw )
-
-    dirParams = {
-        'alpha': np.random.random( D ) + 1
-    }
-
     dirichlet = Dirichlet( **dirParams )
     cat = Categorical( prior=dirichlet )
 
+    transDir = TransitionDirichletPrior( **transDirParams )
+    trans = Transition( prior=transDir )
+
+    testsForDistWithoutPrior( iw )
+    testsForDistWithoutPrior( niw )
+    testForDistWithPrior( norm )
+    testForDistWithPrior( reg )
+    testsForDistWithoutPrior( mniw )
     testsForDistWithoutPrior( dirichlet )
     testForDistWithPrior( cat )
-
-    # samples = np.vstack( norm.metropolisHastings( size=1000, skip=10 ) )
-    # otherSamples = norm.isample( size=1000 )
-    # plt.scatter( samples[ :, 0 ], samples[ :, 1 ], alpha=0.5, s=1, color='blue' )
-    # plt.scatter( otherSamples[ :, 0 ], otherSamples[ :, 1 ], alpha=0.5, s=1, color='red' )
-    # plt.show()
-
-    # metropolistHastingsTest( [ reg ] )
-
-    # gewekeTest( [ norm, cat ] )
-    # gewekeTest( [ norm, reg, cat ] )
+    testsForDistWithoutPrior( transDir )
+    testForDistWithPrior( trans )
 
 def tensorTests():
 

@@ -5,9 +5,6 @@ class MessagePasser( ABC ):
     # Base message passing class for forward backward
     # and kalman filter type algorithms
 
-    def __init__( self ):
-        pass
-
     @property
     def T( self ):
         return self._T

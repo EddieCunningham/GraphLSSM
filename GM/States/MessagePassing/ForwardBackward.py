@@ -12,9 +12,6 @@ __all__ = [ 'CategoricalForwardBackward',
 class CategoricalForwardBackward( MessagePasser ):
     # Categorical emissions.  Everything is done in log space
 
-    def __init__( self ):
-        pass
-
     @property
     def K( self ):
         return self._K

@@ -55,8 +55,8 @@ class LDSState( KalmanFilter, StateBase ):
         # Compute T( x )
         ( x, ys ) = x
         u = constParams
-        t1 = Regression.sufficientStats( np.hstack( x[ :-1 ], x[ 1: ] - u ), constParams=constParams )
-        t2 = Regression.sufficientStats( np.hstack( x, ys ), constParams=constParams )
+        t1 = Regression.sufficientStats( ( x[ :-1 ], x[ 1: ] - u ), constParams=constParams )
+        t2 = Regression.sufficientStats( ( x, ys ), constParams=constParams )
         t3 = Normal.sufficientStats( x[ 0 ], constParams=constParams )
         return t1, t2, t3
 
@@ -95,8 +95,7 @@ class LDSState( KalmanFilter, StateBase ):
         def sampleStep( _x ):
             return Normal.sample( params=( self.C.dot( _x ), self.R ) )
 
-        y = np.apply_along_axis( sampleStep, -1, x )[ None ]
-        return y
+        return np.apply_along_axis( sampleStep, -1, x )[ None ]
 
     def emissionLikelihood( self, x, ys ):
         # Compute P( y | x, ϴ )
@@ -161,34 +160,6 @@ class LDSState( KalmanFilter, StateBase ):
         dummy.params = params
         return dummy.isample( u=u, ys=ys, T=T, forwardFilter=forwardFilter )
 
-    def isample( self, u=None, ys=None, T=None, forwardFilter=True ):
-
-        if( ys is not None ):
-            # This is the only difference, so probably find a better way to code this change
-            self.preprocessData( u, ys )
-        else:
-            assert T is not None
-            self.T = T
-
-        x = self.genStates()
-
-        def workFunc( t, *args ):
-            nonlocal x
-            x[ t ] = self.sampleStep( *args )
-            return x[ t ]
-
-        if( ys is None ):
-            # This is if we want to sample from P( x, y | ϴ )
-            self.noFilterForwardRecurse( workFunc )
-            ys = self.sampleEmissions( x )
-        elif( forwardFilter ):
-            # Otherwise sample from P( x | y, ϴ )
-            self.forwardFilterBackwardRecurse( workFunc )
-        else:
-            self.backwardFilterForwardRecurse( workFunc )
-
-        return x, ys
-
     ######################################################################
 
     @classmethod
@@ -197,32 +168,3 @@ class LDSState( KalmanFilter, StateBase ):
         dummy = StateBase()
         dummy.params = params
         return dummy.ilog_likelihood( x, u=u, forwardFilter=forwardFilter, conditionOnY=conditionOnY )
-
-    def ilog_likelihood( self, x, u=None, forwardFilter=True, conditionOnY=False ):
-
-        ( x, ys ) = x
-        assert ys is not None
-
-        self.preprocessData( u, ys )
-
-        ans = 0.0
-
-        def workFunc( t, *args ):
-            nonlocal ans, x
-            ans += self.likelihoodStep( x[ t ], *args )
-            return x[ t ]
-
-        if( conditionOnY == False ):
-            # This is if we want to compute P( x, y | ϴ )
-            self.noFilterForwardRecurse( workFunc )
-            ans += self.emissionLikelihood( x, ys )
-        else:
-            if( forwardFilter ):
-                # Otherwise compute P( x | y, ϴ )
-                assert conditionOnY == True
-                self.forwardFilterBackwardRecurse( workFunc )
-            else:
-                assert conditionOnY == True
-                self.backwardFilterForwardRecurse( workFunc )
-
-        return ans

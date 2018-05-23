@@ -1,13 +1,14 @@
 import numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
-from scipy.stats import dirichlet
 from scipy.special import gammaln
-from GenModels.GM.Distributions.Categorical import Categorical
+from GenModels.GM.Distributions.Dirichlet import Dirichlet
 
-class Dirichlet( ExponentialFam ):
+__all__ = [ 'TransitionDirichletPrior' ]
+
+class TransitionDirichletPrior( ExponentialFam ):
 
     def __init__( self, alpha=None, prior=None, hypers=None ):
-        super( Dirichlet, self ).__init__( alpha, prior=prior, hypers=hypers )
+        super( TransitionDirichletPrior, self ).__init__( alpha, prior=prior, hypers=hypers )
 
     ##########################################################################
 
@@ -19,9 +20,7 @@ class Dirichlet( ExponentialFam ):
 
     @classmethod
     def dataN( cls, x ):
-        if( x.ndim == 2 ):
-            return x.shape[ 0 ]
-        return 1
+        return x.shape[ 0 ]
 
     ##########################################################################
 
@@ -47,13 +46,13 @@ class Dirichlet( ExponentialFam ):
         if( isinstance( x, tuple ) ):
             assert len( x ) == 1
             x, = x
-        if( x.ndim == 2 ):
+        if( x.ndim == 3 ):
             t = ( 0, )
             for _x in x:
                 t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
             return t
-        assert isinstance( x, np.ndarray ) and x.ndim == 1
-        ( t1, ) = Categorical.standardToNat( x )
+        assert isinstance( x, np.ndarray ) and x.ndim == 2
+        t1 = np.log( x )
         return ( t1, )
 
     @classmethod
@@ -61,11 +60,12 @@ class Dirichlet( ExponentialFam ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
-        A1 = gammaln( alpha ).sum()
-        A2 = -gammaln( alpha.sum() )
-        if( split ):
-            return A1, A2
-        return A1 + A2
+        return sum( [ Dirichlet.log_partition( params=( a, ) ) for a in alpha ] )
+        # A1 = np.sum( [ gammaln( a ).sum() for a in alpha ] )
+        # A2 = np.sum( [ -gammaln( a.sum() ) for a in alpha ] )
+        # if( split ):
+        #     return A1, A2
+        # return A1 + A2
 
     ##########################################################################
 
@@ -75,12 +75,13 @@ class Dirichlet( ExponentialFam ):
         assert ( params is None ) ^ ( natParams is None )
 
         if( params is not None ):
-            if( not isinstance( params, tuple ) and \
+            if( not isinstance( params, tuple ) or \
                 not isinstance( params, list ) ):
                 params = ( params, )
 
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
-        ans = dirichlet.rvs( alpha=alpha, size=size )
+
+        ans = np.swapaxes( np.array( [ Dirichlet.sample( params=( a, ), size=size ) for a in alpha ] ), 0, 1 )
         return ans
 
     ##########################################################################
@@ -94,7 +95,8 @@ class Dirichlet( ExponentialFam ):
             assert len( x ) == 1
             x, = x
         assert isinstance( x, np.ndarray )
-        if( x.ndim == 2 ):
-            return sum( [ dirichlet.logpdf( _x, alpha=alpha ) for _x in x ] )
-        assert isinstance( x, np.ndarray ) and x.ndim == 1
-        return dirichlet.logpdf( x, alpha=alpha )
+        if( x.ndim == 3 ):
+            return sum( [ TransitionDirichletPrior.log_likelihood( _x, params=( alpha, ) ) for _x in x ] )
+
+        assert isinstance( x, np.ndarray ) and x.ndim == 2
+        return sum( [ Dirichlet.log_likelihood( _x, params=( a, ) ) for _x, a in zip( x, alpha ) ] )
