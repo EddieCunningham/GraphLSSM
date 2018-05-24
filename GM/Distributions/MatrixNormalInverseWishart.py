@@ -45,7 +45,7 @@ class MatrixNormalInverseWishart( ExponentialFam ):
     @classmethod
     def standardToNat( cls, M, V, psi, nu, Q ):
 
-        p = M.shape[ 0 ]
+        p = V.shape[ 0 ]
         VInv = np.linalg.inv( V )
         n1 = M @ VInv @ M.T + psi
         n2 = VInv

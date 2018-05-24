@@ -1,31 +1,31 @@
 import numpy as np
+from GenModels.GM.Models import *
 from GenModels.GM.States.StandardStates import *
 from GenModels.GM.Distributions import *
 import time
 import scipy
 
-__all__ = [ 'stateTests' ]
+__all__ = [ 'modelTests' ]
 
 ######################################################################
 
-def testHMMBasic():
+def testHMMModelBasic():
     with np.errstate( under='ignore', divide='raise', over='raise', invalid='raise' ):
         T = 1000
         K = 20
         obsDim = 40
         D = 4
 
-        onesK = np.ones( K )
-        onesObs = np.ones( obsDim )
+        alpha_0 = np.random.random( K ) + 1
+        alpha = np.random.random( ( K, K ) ) + 1
+        L = np.random.random( ( K, obsDim ) ) + 1
 
-        ( p, ) = Dirichlet.sample( params=onesObs )
+        model = HMMModel( alpha_0, alpha, L )
+
+        state = HMMState( prior=model )
+
+        ( p, ) = Dirichlet.sample( params=np.ones( obsDim ) )
         ys = [ Categorical.sample( params=p, size=T ) for _ in range( D ) ]
-        ( initialDist, ) = Dirichlet.sample( params=onesK )
-        transDist = Dirichlet.sample( params=onesK, size=K )
-        emissionDist = Dirichlet.sample( params=onesObs, size=K )
-
-        state = HMMState( initialDist, transDist, emissionDist )
-
         xNoCond  , ysNoCond  = state.isample( T=10 )
         xForward , yForward  = state.isample( ys=ys )
         xBackward, yBackward = state.isample( ys=ys, forwardFilter=False )
@@ -38,26 +38,40 @@ def testHMMBasic():
         state.ilog_likelihood( ( xForward, yForward[ 0 ][ None ] ), forwardFilter=False, conditionOnY=True )
         state.ilog_likelihood( ( xBackward, yBackward[ 0 ][ None ] ), conditionOnY=True )
 
-        print( 'Done with basic HMM state test' )
+        print( 'Done with basic HMM model test' )
 
-def testLDSBasic():
+def testLDSModelBasic():
 
     with np.errstate( all='raise' ), scipy.special.errstate( all='raise' ):
 
-        T = 100
+        T = 10
         D_latent = 7
         D_obs = 3
         D = 4
 
-        u = np.random.random( ( T, D_latent ) )
-        A, sigma = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_latent )
+        LDSParams = {
+            'mu_0': np.random.random( D_latent ),
+            'kappa_0': np.random.random() * D_latent,
+            'psi_0': InverseWishart.sample( D=D_latent ),
+            'nu_0': D_latent,
 
+            'M_trans': np.random.random( ( D_latent, D_latent ) ),
+            'V_trans': InverseWishart.sample( D=D_latent ),
+            'psi_trans': InverseWishart.sample( D=D_latent ),
+            'nu_trans': D_latent,
+
+            'M_emiss': np.random.random( ( D_obs, D_latent ) ),
+            'V_emiss': InverseWishart.sample( D=D_latent ),
+            'psi_emiss': InverseWishart.sample( D=D_obs ),
+            'nu_emiss': D_obs
+        }
+
+        model = LDSModel( **LDSParams )
+        state = LDSState( prior=model )
+
+        u = np.random.random( ( T, D_latent ) )
         C, R = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_obs )
         ys = [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ]
-
-        mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
-
-        state = LDSState( A, sigma, C, R, mu0, sigma0 )
 
         xNoCond  , ysNoCond  = state.isample( u=u, T=T ) # This can get unstable for long sequence lengths
         xForward , yForward  = state.isample( u=u, ys=ys )
@@ -71,8 +85,8 @@ def testLDSBasic():
         state.ilog_likelihood( ( xForward, yForward[ 0 ][ None ] ), u=u, forwardFilter=False, conditionOnY=True )
         state.ilog_likelihood( ( xBackward, yBackward[ 0 ][ None ] ), u=u, conditionOnY=True )
 
-        print( 'Done with basic LDS state test' )
+        print( 'Done with basic LDS model test' )
 
-def stateTests():
-    testHMMBasic()
-    testLDSBasic()
+def modelTests():
+    testHMMModelBasic()
+    testLDSModelBasic()

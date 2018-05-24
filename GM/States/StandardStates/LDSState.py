@@ -1,6 +1,7 @@
 from GenModels.GM.States.StandardStates.StateBase import StateBase
 from GenModels.GM.States.MessagePassing.KalmanFilter import *
-from GenModels.GM.Distributions import Normal
+from GenModels.GM.Distributions import Normal, Regression
+from GenModels.GM.Models import LDSModel
 from GenModels.GM.Utility import *
 import numpy as np
 
@@ -8,7 +9,10 @@ __all__ = [ 'LDSState' ]
 
 class LDSState( KalmanFilter, StateBase ):
 
-    # priorClass = LDSModel
+    priorClass = LDSModel
+
+    def __init__( self, A=None, sigma=None, C=None, R=None, mu0=None, sigma0=None, prior=None, hypers=None ):
+        super( LDSState, self ).__init__( A, sigma, C, R, mu0, sigma0, prior=prior, hypers=hypers )
 
     @property
     def params( self ):
@@ -16,6 +20,7 @@ class LDSState( KalmanFilter, StateBase ):
 
     @params.setter
     def params( self, val ):
+        self.standardChanged = True
         A, sigma, C, R, mu0, sigma0 = val
         self.updateParams( A, sigma, C, R, mu0, sigma0 )
         self._params = val

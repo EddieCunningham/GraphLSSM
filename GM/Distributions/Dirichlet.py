@@ -44,17 +44,15 @@ class Dirichlet( ExponentialFam ):
     @classmethod
     def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
-        if( isinstance( x, tuple ) ):
-            assert len( x ) == 1
-            x, = x
-        if( x.ndim == 2 ):
-            t = ( 0, )
+        if( cls.dataN( x ) > 1 ):
+            t = ( 0, 0 )
             for _x in x:
                 t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
             return t
-        assert isinstance( x, np.ndarray ) and x.ndim == 1
+
         ( t1, ) = Categorical.standardToNat( x )
-        return ( t1, )
+        ( t2, ) = Categorical.log_partition( params=( x, ), split=True )
+        return t1, t2
 
     @classmethod
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):

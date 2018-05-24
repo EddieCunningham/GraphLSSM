@@ -1,5 +1,6 @@
 import numpy as np
 from GenModels.GM.Distributions import *
+from GenModels.GM.States.StandardStates import *
 import matplotlib.pyplot as plt
 from GenModels.GM.Utility import fullyRavel
 
@@ -133,6 +134,9 @@ def standardTests():
     testForDistWithPrior( cat )
     testsForDistWithoutPrior( transDir )
     testForDistWithPrior( trans )
+
+def stateAndModelTests():
+    pass
 
 def tensorTests():
 

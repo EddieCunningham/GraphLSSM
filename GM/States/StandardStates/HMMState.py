@@ -1,27 +1,28 @@
 from GenModels.GM.States.StandardStates.StateBase import StateBase
 from GenModels.GM.States.MessagePassing.ForwardBackward import *
-from GenModels.GM.Distributions import Categorical
+from GenModels.GM.Distributions import Categorical, Transition
+from GenModels.GM.Models import HMMModel
 import numpy as np
 
 __all__ = [ 'HMMState' ]
 
 class HMMState( CategoricalForwardBackward, StateBase ):
 
-    # priorClass = HMMModel
+    priorClass = HMMModel
 
     def __init__( self, initialDist=None, transDist=None, emissionDist=None, prior=None, hypers=None ):
-        # definePrior()
         super( HMMState, self ).__init__( initialDist, transDist, emissionDist, prior=prior, hypers=hypers )
 
-    # @property
-    # def params( self ):
-    #     return self._params
+    @property
+    def params( self ):
+        return self._params
 
-    # @params.setter
-    # def params( self, val ):
-    #     initialDist, transDist, emissionDist = val
-    #     self.updateParams( initialDist, transDist, emissionDist )
-    #     self._params = val
+    @params.setter
+    def params( self, val ):
+        self.standardChanged = True
+        initialDist, transDist, emissionDist = val
+        self.updateParams( initialDist, transDist, emissionDist )
+        self._params = val
 
     ######################################################################
 
@@ -52,14 +53,14 @@ class HMMState( CategoricalForwardBackward, StateBase ):
     ######################################################################
 
     @classmethod
-    def standardToNat( self, initialDist, transDist, emissionDist ):
+    def standardToNat( cls, initialDist, transDist, emissionDist ):
         n1 = Categorical.standardToNat( initialDist )
         n2 = Transition.standardToNat( transDist )
         n3 = Transition.standardToNat( emissionDist )
         return n1, n2, n3
 
     @classmethod
-    def natToStandard( n1, n2, n3 ):
+    def natToStandard( cls, n1, n2, n3 ):
         initialDist = Categorical.natToStandard( n1 )
         transDist = Transition.natToStandard( n2 )
         emissionDist = Transition.natToStandard( n3 )
@@ -80,9 +81,11 @@ class HMMState( CategoricalForwardBackward, StateBase ):
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
-        if( split ):
-            return ( 0, )
-        return 0
+        initialDist, transDist, emissionDist = params if params is not None else cls.natToStandard( *natParams )
+        A1 = Categorical.log_partition( params=initialDist, split=split )
+        A2 = Transition.log_partition( params=transDist, split=split )
+        A3 = Transition.log_partition( params=emissionDist, split=split )
+        return A1 + A2 + A3
 
     ######################################################################
 

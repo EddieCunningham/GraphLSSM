@@ -234,13 +234,7 @@ class ExponentialFam( Conjugate ):
         self.standardChanged = False
         self.naturalChanged = False
 
-        super( ExponentialFam, self ).__init__( prior=prior, hypers=hypers )
-
-        # Set the parameters
-        if( prior is None and hypers is None ):
-            self.params = params
-        else:
-            self.params = self.iparamSample()
+        super( ExponentialFam, self ).__init__( *params, prior=prior, hypers=hypers )
 
         # Set the natural parameters
         self.natParams

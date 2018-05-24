@@ -1,7 +1,7 @@
 import numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.special import gammaln
-from GenModels.GM.Distributions.Dirichlet import Dirichlet
+from GenModels.GM.Distributions import Dirichlet, Transition
 
 __all__ = [ 'TransitionDirichletPrior' ]
 
@@ -20,6 +20,8 @@ class TransitionDirichletPrior( ExponentialFam ):
 
     @classmethod
     def dataN( cls, x ):
+        if( x.ndim == 2 ):
+            return 1
         return x.shape[ 0 ]
 
     ##########################################################################
@@ -43,17 +45,15 @@ class TransitionDirichletPrior( ExponentialFam ):
     @classmethod
     def sufficientStats( cls, x, constParams=None, forPost=False ):
         # Compute T( x )
-        if( isinstance( x, tuple ) ):
-            assert len( x ) == 1
-            x, = x
-        if( x.ndim == 3 ):
-            t = ( 0, )
+        if( cls.dataN( x ) > 1 ):
+            t = ( 0, 0 )
             for _x in x:
                 t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
             return t
-        assert isinstance( x, np.ndarray ) and x.ndim == 2
-        t1 = np.log( x )
-        return ( t1, )
+
+        t1, = Transition.standardToNat( x )
+        t2, = Transition.log_partition( params=( x, ), split=True )
+        return t1, -t2
 
     @classmethod
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
@@ -61,11 +61,6 @@ class TransitionDirichletPrior( ExponentialFam ):
         assert ( params is None ) ^ ( natParams is None )
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
         return sum( [ Dirichlet.log_partition( params=( a, ) ) for a in alpha ] )
-        # A1 = np.sum( [ gammaln( a ).sum() for a in alpha ] )
-        # A2 = np.sum( [ -gammaln( a.sum() ) for a in alpha ] )
-        # if( split ):
-        #     return A1, A2
-        # return A1 + A2
 
     ##########################################################################
 
