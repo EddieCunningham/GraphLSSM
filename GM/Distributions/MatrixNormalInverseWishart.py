@@ -34,10 +34,13 @@ class MatrixNormalInverseWishart( ExponentialFam ):
 
     @classmethod
     def dataN( cls, x ):
-        if( not isinstance( x[ 0 ], np.ndarray ) ):
-            return len( x )
-        assert len( x ) == 2
-        assert isinstance( x[ 0 ], np.ndarray ) and isinstance( x[ 1 ], np.ndarray )
+        A, sigma = x
+        if( isinstance( A, np.ndarray ) and A.ndim == 3 ):
+            assert sigma.ndim == 3
+            return A.shape[ 0 ]
+        elif( isinstance( A, tuple ) ):
+            assert len( sigma ) == len( A )
+            return len( A )
         return 1
 
     ##########################################################################
@@ -45,26 +48,25 @@ class MatrixNormalInverseWishart( ExponentialFam ):
     @classmethod
     def standardToNat( cls, M, V, psi, nu, Q ):
 
-        p = V.shape[ 0 ]
+        n, p = M.shape
+
         VInv = np.linalg.inv( V )
         n1 = M @ VInv @ M.T + psi
         n2 = VInv
         n3 = VInv @ M.T
-        n4 = nu + 2 * p + 1
+        n4 = nu + n + p + 1
         n5 = p + Q
         return n1, n2, n3, n4, n5
 
     @classmethod
     def natToStandard( cls, n1, n2, n3, n4, n5 ):
 
-        p = n2.shape[ 0 ]
+        p, n = n3.shape
 
         V = np.linalg.inv( n2 )
         M = n3.T @ V
         psi = n1 - M @ n2 @ M.T
-        nu = n4 - 1 - 2 * p
-
-        # The roll of Q is to offset excess normal base measures!
+        nu = n4 - 1 - n - p
         Q = n5 - p
         return M, V, psi, nu, Q
 
@@ -77,12 +79,12 @@ class MatrixNormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
         if( cls.dataN( x ) > 1 ):
             t = ( 0, 0, 0, 0, 0 )
-            for _x in x:
-                t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
+            for A, sigma in zip( *x ):
+                t = np.add( t, cls.sufficientStats( ( A, sigma ) ) )
             return t
 
         t1, t2, t3 = Regression.standardToNat( *x )
@@ -96,11 +98,11 @@ class MatrixNormalInverseWishart( ExponentialFam ):
 
         M, V, psi, nu, Q = params if params is not None else cls.natToStandard( *natParams )
 
-        p = psi.shape[ 0 ]
+        n, p = M.shape
 
         A1, A2, A3 = InverseWishart.log_partition( params=( psi, nu ), split=True )
-        A4 = p / 2 * np.linalg.slogdet( V )[ 1 ]
-        A5 = -Q * ( p / 2 * np.log( 2 * np.pi ) )
+        A4 = n / 2 * np.linalg.slogdet( V )[ 1 ]
+        A5 = -Q * ( n / 2 * np.log( 2 * np.pi ) )
 
         if( split ):
             return A1, A2, A3, A4, A5
@@ -119,7 +121,7 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
 
         if( size > 1 ):
-            return [ cls.sample( params=params, natParams=natParams, size=1 ) for _ in range( size ) ]
+            return list( zip( *[ cls.sample( params=params, natParams=natParams, size=1 ) for _ in range( size ) ] ) )
 
         sigma = InverseWishart.sample( params=( psi, nu ) )
         A = TensorNormal.sample( params=( M, ( sigma, V ) ), size=1 )[ 0 ]
@@ -133,7 +135,7 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         assert ( params is None ) ^ ( natParams is None )
         M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
         if( cls.dataN( x ) > 1 ):
-            return sum( [ cls.log_likelihood( _x, params=params, natParams=natParams ) for _x in x ] )
+            return sum( [ cls.log_likelihood( ( A, sigma ), params=params, natParams=natParams ) for A, sigma in zip( *x ) ] )
         A, sigma = x
         return InverseWishart.log_likelihood( sigma, params=( psi, nu ) ) + \
                TensorNormal.log_likelihood( A[ None ], params=( M, ( sigma, V ) ) )

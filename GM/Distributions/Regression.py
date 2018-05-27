@@ -1,6 +1,7 @@
 import numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from GenModels.GM.Distributions.Normal import Normal
+from GenModels.GM.Utility import invPsd
 
 __all__ = [ 'Regression' ]
 
@@ -32,14 +33,14 @@ class Regression( ExponentialFam ):
     @classmethod
     def dataN( cls, x ):
         xs, ys = x
-        return ys.shape[ 0 ]
+        assert xs.ndim == 2
+        return xs.shape[ 0 ]
 
     ##########################################################################
 
     @classmethod
     def standardToNat( cls, A, sigma ):
-
-        sigInv = np.linalg.inv( sigma )
+        sigInv = invPsd( sigma )
 
         n1 = -0.5 * sigInv
         n2 = -0.5 * A.T @ sigInv @ A
@@ -62,7 +63,7 @@ class Regression( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
 
         cls.dataN( x )
@@ -78,10 +79,6 @@ class Regression( ExponentialFam ):
         t2 = x.T.dot( x )
         t3 = x.T.dot( y )
 
-        if( forPost ):
-            t4 = x.shape[ 0 ]
-            t5 = x.shape[ 0 ]
-            return t1, t2, t3, t4, t5
         return t1, t2, t3
 
     @classmethod
@@ -90,10 +87,10 @@ class Regression( ExponentialFam ):
         assert ( params is None ) ^ ( natParams is None )
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
 
-        p = sigma.shape[ 0 ]
+        n = sigma.shape[ 0 ]
 
         A1 = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
-        A2 = p / 2 * np.log( 2 * np.pi )
+        A2 = n / 2 * np.log( 2 * np.pi )
 
         if( split ):
             return A1, A2
@@ -122,7 +119,7 @@ class Regression( ExponentialFam ):
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
 
         x, y = x
-        assert x.shape == y.shape
+        assert x.shape[ 0 ] == y.shape[ 0 ]
         if( x.ndim != 1 ):
-            return sum( [ Normal.log_likelihood( _y, ( A.dot( _x ), sigma ) ) for _x, _y in zip( x, y ) ] )
-        return Normal.log_likelihood( y, ( A.dot( x ), sigma ) )
+            return sum( [ Normal.log_likelihood( _y, params=( A.dot( _x ), sigma ) ) for _x, _y in zip( x, y ) ] )
+        return Normal.log_likelihood( y, params=( A.dot( x ), sigma ) )

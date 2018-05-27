@@ -1,16 +1,20 @@
 from GenModels.GM.States.StandardStates.StateBase import StateBase
 from GenModels.GM.States.MessagePassing.ForwardBackward import *
 from GenModels.GM.Distributions import Categorical, Transition
-from GenModels.GM.Models import HMMModel
 import numpy as np
 
 __all__ = [ 'HMMState' ]
 
+def definePrior():
+    from GenModels.GM.ModelPriors.HMMDirichletPrior import HMMDirichletPrior
+    HMMState.priorClass = HMMDirichletPrior
+
 class HMMState( CategoricalForwardBackward, StateBase ):
 
-    priorClass = HMMModel
+    priorClass = None
 
     def __init__( self, initialDist=None, transDist=None, emissionDist=None, prior=None, hypers=None ):
+        definePrior()
         super( HMMState, self ).__init__( initialDist, transDist, emissionDist, prior=prior, hypers=hypers )
 
     @property
@@ -42,10 +46,11 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
     @property
     def constParams( self ):
-        return self.stateSize
+        return self.stateSize, self.emissionSize
 
     @classmethod
     def dataN( cls, x ):
+        x, y = x
         if( x.ndim == 1 ):
             return 1
         return x.shape[ 0 ]
@@ -54,27 +59,29 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
     @classmethod
     def standardToNat( cls, initialDist, transDist, emissionDist ):
-        n1 = Categorical.standardToNat( initialDist )
-        n2 = Transition.standardToNat( transDist )
-        n3 = Transition.standardToNat( emissionDist )
+        n1, = Categorical.standardToNat( initialDist )
+        n2, = Transition.standardToNat( transDist )
+        n3, = Transition.standardToNat( emissionDist )
         return n1, n2, n3
 
     @classmethod
     def natToStandard( cls, n1, n2, n3 ):
-        initialDist = Categorical.natToStandard( n1 )
-        transDist = Transition.natToStandard( n2 )
-        emissionDist = Transition.natToStandard( n3 )
+        initialDist, = Categorical.natToStandard( n1 )
+        transDist, = Transition.natToStandard( n2 )
+        emissionDist, = Transition.natToStandard( n3 )
         return initialDist, transDist, emissionDist
 
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
         ( x, ys ) = x
-        t1 = Categorical.sufficientStats( x[ 0 ], constParams=constParams )
-        t2 = Transition.sufficientStats( ( x[ :-1 ], x[ 1: ] ), constParams=constParams )
-        t3 = Transition.sufficientStats( ( x, ys ), constParams=constParams )
+        assert constParams is not None
+        K, L = constParams
+        t1, = Categorical.sufficientStats( [ x[ 0 ] ] , constParams=K )
+        t2, = Transition.sufficientStats( ( x[ :-1 ], x[ 1: ] ), constParams=( K, K ) )
+        t3, = Transition.sufficientStats( ( x, ys.squeeze() ), constParams=( K, L ) )
         return t1, t2, t3
 
     @classmethod
@@ -82,9 +89,9 @@ class HMMState( CategoricalForwardBackward, StateBase ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
         initialDist, transDist, emissionDist = params if params is not None else cls.natToStandard( *natParams )
-        A1 = Categorical.log_partition( params=initialDist, split=split )
-        A2 = Transition.log_partition( params=transDist, split=split )
-        A3 = Transition.log_partition( params=emissionDist, split=split )
+        A1 = Categorical.log_partition( params=( initialDist, ), split=split )
+        A2 = Transition.log_partition( params=( transDist, ), split=split )
+        A3 = Transition.log_partition( params=( emissionDist, ), split=split )
         return A1 + A2 + A3
 
     ######################################################################
@@ -96,7 +103,7 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
     def sampleEmissions( self, x ):
         # Sample from P( y | x, ϴ )
-        assert self.dataN( x=x ) == 1
+        assert x.ndim == 1
 
         def sampleStep( _x ):
             p = self.emissionDist[ _x ]
@@ -106,7 +113,7 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
     def emissionLikelihood( self, x, ys ):
         # Compute P( y | x, ϴ )
-        return self._L.T[ ys ].sum( axis=0 ).T[ x ].sum()
+        return self._L[ x, ys ].sum()
 
     ######################################################################
 

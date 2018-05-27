@@ -66,8 +66,8 @@ class KalmanFilter( MessagePasser ):
         assert C.shape[ 0 ] == R.shape[ 0 ] and R.shape[ 0 ] == R.shape[ 1 ]
         assert C.shape[ 1 ] == A.shape[ 0 ]
 
-    def preprocessData( self, u, ys ):
-        assert u is not None and ys is not None
+    def preprocessData( self, ys, u=None ):
+        ys is not None
         self.u = u
 
         ys = np.array( ys )
@@ -114,7 +114,7 @@ class KalmanFilter( MessagePasser ):
         self.sigma0 = sigma0
 
         if( ys is not None ):
-            self.preprocessData( u, ys )
+            self.preprocessData( ys, u=u )
         else:
             self._T = None
             self.u = None
@@ -271,7 +271,7 @@ class SwitchingKalmanFilter( KalmanFilter ):
         self.sigma0 = sigma0
 
         if( ys is not None ):
-            self.preprocessData( u, ys )
+            self.preprocessData( ys, u=u )
         else:
             self._T = None
             self.u = None

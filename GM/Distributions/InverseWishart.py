@@ -51,7 +51,7 @@ class InverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
 
         if( cls.dataN( x ) > 1 ):

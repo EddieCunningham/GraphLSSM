@@ -2,7 +2,7 @@ import numpy as np
 from scipy.linalg import lapack
 import copy
 
-__all__ = [ 'invPsd', 'is_outlier', 'fullyRavel', 'randomStep', 'deepCopy' ]
+__all__ = [ 'invPsd', 'is_outlier', 'fullyRavel', 'randomStep', 'deepCopy', 'stabilize' ]
 
 def invPsd( A, AChol=None, returnChol=False ):
     # https://github.com/mattjj/pybasicbayes/blob/9c00244b2d6fd767549de6ab5d0436cec4e06818/pybasicbayes/util/general.py
@@ -13,7 +13,11 @@ def invPsd( A, AChol=None, returnChol=False ):
         return Ainv, L
     return Ainv
 
-
+def stabilize( A ):
+    w, v = np.linalg.eig( A )
+    badIndices = ( w < 0 ) | ( w > 1 )
+    w[ badIndices ] = np.random.random( badIndices.sum() )
+    return v @ np.diag( w ) @ np.linalg.inv( v )
 
 def is_outlier(points, thresh=3.5):
     """

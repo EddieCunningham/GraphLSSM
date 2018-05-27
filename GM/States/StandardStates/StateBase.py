@@ -96,14 +96,14 @@ class StateBase( ExponentialFam ):
     ######################################################################
 
     @classmethod
-    def sample( cls, ys=None, params=None, T=None, forwardFilter=True ):
-        assert params is not None
+    def sample( cls, ys=None, params=None, natParams=None, T=None, forwardFilter=True, size=1 ):
+        assert ( params is None ) ^ ( natParams is None )
+        params = params if params is not None else cls.natToStandard( *natParams )
 
-        dummy = StateBase()
-        dummy.updateParams( params )
-        return dummy.isample( ys=ys, T=T, forwardFilter=forwardFilter )
+        dummy = cls( *params )
+        return dummy.isample( ys=ys, T=T, forwardFilter=forwardFilter, size=size )
 
-    def isample( self, ys=None, T=None, forwardFilter=True, **kwargs ):
+    def isample( self, ys=None, T=None, forwardFilter=True, size=1, **kwargs ):
 
         if( ys is not None ):
             self.preprocessData( ys=ys, **kwargs )
@@ -133,13 +133,17 @@ class StateBase( ExponentialFam ):
     ######################################################################
 
     @classmethod
-    def log_likelihood( self, x, params=None, forwardFilter=True, conditionOnY=False ):
-        assert params is not None
-        dummy = StateBase()
-        dummy.updateParams( params )
+    def log_likelihood( cls, x, params=None, natParams=None, forwardFilter=True, conditionOnY=False ):
+        assert ( params is None ) ^ ( natParams is None )
+        params = params if params is not None else cls.natToStandard( *natParams )
+
+        dummy = cls( *params )
         return dummy.ilog_likelihood( x, forwardFilter=forwardFilter, conditionOnY=conditionOnY )
 
-    def ilog_likelihood( self, x, forwardFilter=True, conditionOnY=False, **kwargs ):
+    def ilog_likelihood( self, x, forwardFilter=True, conditionOnY=False, expFam=False, **kwargs ):
+
+        if( expFam ):
+            return self.log_likelihoodExpFam( x, constParams=self.constParams, natParams=self.natParams )
 
         ( x, ys ) = x
         assert ys is not None
@@ -150,7 +154,12 @@ class StateBase( ExponentialFam ):
 
         def workFunc( t, *args ):
             nonlocal ans, x
-            ans += self.likelihoodStep( x[ t ], *args )
+            term = self.likelihoodStep( x[ t ], *args )
+            ans += term
+            if( t == 0 ):
+                print( '\nP( x_0 ) = %4.2f'%( term ) )
+            else:
+                print( 'P( x_%d | x_%d ) = %4.2f'%( t, t - 1, term ) )
             return x[ t ]
 
         if( conditionOnY == False ):

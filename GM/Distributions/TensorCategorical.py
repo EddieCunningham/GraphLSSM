@@ -43,7 +43,7 @@ class TensorCategorical( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, Ds=None, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, Ds=None, constParams=None ):
         # Compute T( x )
         # Return the indices of chosen values.  Will deal with everything else
         # in combine

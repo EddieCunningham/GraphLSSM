@@ -53,26 +53,22 @@ class Normal( ExponentialFam ):
         return n1, n2
 
     @classmethod
-    def natToStandard( cls, n1, n2 ):
-        sigma = -0.5 * np.linalg.inv( n1 )
+    def natToStandard( cls, n1, n2, fromPrecision=False ):
+        sigma = np.linalg.inv( n1 )
+        if( fromPrecision == False ):
+            sigma *= -0.5
         mu = sigma.dot( n2 )
         return mu, sigma
 
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
         if( x.ndim == 1 ):
             x = x.reshape( ( 1, -1 ) )
         t1 = x.T.dot( x )
         t2 = x.sum( axis=0 )
-        if( forPost ):
-            # This for when we add to the NIW natural params
-            t3 = x.shape[ 0 ]
-            t4 = x.shape[ 0 ]
-            t5 = x.shape[ 0 ]
-            return t1, t2, t3, t4, t5
         return t1, t2
 
     @classmethod
@@ -142,4 +138,3 @@ class Normal( ExponentialFam ):
     @classmethod
     def marginalizeX2( cls, J11, J12, J22, h1, h2, log_Z ):
         return cls.marginalizeX1( J22, J12.T, J11, h2, h1, log_Z )
-

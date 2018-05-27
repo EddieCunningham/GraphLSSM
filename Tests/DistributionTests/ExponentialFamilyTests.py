@@ -1,5 +1,6 @@
 import numpy as np
 from GenModels.GM.Distributions import *
+from GenModels.GM.ModelPriors import *
 from GenModels.GM.States.StandardStates import *
 import matplotlib.pyplot as plt
 from GenModels.GM.Utility import fullyRavel
@@ -29,63 +30,82 @@ def tensorParamNaturalTest( self ):
         else:
             assert np.allclose( p1, p2 )
 
-def likelihoodNoPartitionTestExpFam( dist ):
-    x = dist.isample( size=10 )
+def likelihoodNoPartitionTestExpFam( dist, **kwargs ):
+    x = dist.isample( size=10, **kwargs )
+    xOld = x
+
     ans1 = dist.ilog_likelihood( x, expFam=True )
     trueAns1 = dist.ilog_likelihood( x )
 
-    x = dist.isample( size=10 )
+    x = dist.isample( size=10, **kwargs )
     ans2 = dist.ilog_likelihood( x, expFam=True )
     trueAns2 = dist.ilog_likelihood( x )
-    assert np.isclose( ans1 - ans2, trueAns1 - trueAns2 ), ( ans1 - ans2 ) - ( trueAns1 - trueAns2 )
 
-def likelihoodTestExpFam( dist ):
-    x = dist.isample( size=10 )
+    if( not np.isclose( ans1 - ans2, trueAns1 - trueAns2 ) ):
+        # Sometimes when the sufficient stats are really big numbers,
+        # the test will fail even though the math is correct
+        print( '\ndiff', ( ans1 - ans2 ) - ( trueAns1 - trueAns2 ) )
+        print( '\nans1', ans1 )
+        print( '\nans2', ans2 )
+        print( '\ntrueAns1', trueAns1 )
+        print( '\ntrueAns2', trueAns2 )
+
+        print( '\nnatParams', dist.natParams )
+        stats1 = dist.sufficientStats( x, constParams=dist.constParams )
+        stats2 = dist.sufficientStats( xOld, constParams=dist.constParams )
+        print( '\nstats1', stats1 )
+        print( '\nstats2', stats2 )
+        assert 0, 'Failed test'
+
+def likelihoodTestExpFam( dist, **kwargs ):
+    x = dist.isample( size=10, **kwargs )
     ans1 = dist.ilog_likelihood( x, expFam=True )
     ans2 = dist.ilog_likelihood( x )
     assert np.isclose( ans1, ans2 ), ans1 - ans2
 
 def paramTestExpFam( dist ):
-    likelihoodTestExpFam(dist.prior)
+    likelihoodTestExpFam( dist.prior )
 
-def jointTestExpFam( dist ):
-    x = dist.isample( size=10 )
+def jointTestExpFam( dist, **kwargs ):
+    x = dist.isample( size=10, **kwargs )
     ans1 = dist.ilog_joint( x, expFam=True )
     ans2 = dist.ilog_joint( x )
     assert np.isclose( ans1, ans2 ), ans1 - ans2
 
-def posteriorTestExpFam( dist ):
-    x = dist.isample( size=10 )
+def posteriorTestExpFam( dist, **kwargs ):
+    x = dist.isample( size=10, **kwargs )
     ans1 = dist.ilog_posterior( x, expFam=True )
     ans2 = dist.ilog_posterior( x )
     assert np.isclose( ans1, ans2 ), ans1 - ans2
 
-def testsForDistWithoutPrior( dist, tensor=False ):
+def testsForDistWithoutPrior( dist, tensor=False, **kwargs ):
 
     if( tensor == False ):
         paramNaturalTest( dist )
     else:
         tensorParamNaturalTest( dist )
 
-    likelihoodNoPartitionTestExpFam( dist )
-    likelihoodTestExpFam( dist )
+    likelihoodNoPartitionTestExpFam( dist, **kwargs )
+    likelihoodTestExpFam( dist, **kwargs )
 
-def testForDistWithPrior( dist, tensor=False ):
+def testForDistWithPrior( dist, tensor=False, **kwargs ):
 
     if( tensor == False ):
         paramNaturalTest( dist )
     else:
         tensorParamNaturalTest( dist )
 
-    likelihoodNoPartitionTestExpFam( dist )
-    likelihoodTestExpFam( dist )
+    likelihoodNoPartitionTestExpFam( dist, **kwargs )
+    likelihoodTestExpFam( dist, **kwargs )
     paramTestExpFam( dist )
-    jointTestExpFam( dist )
-    posteriorTestExpFam( dist )
+    jointTestExpFam( dist, **kwargs )
+    posteriorTestExpFam( dist, **kwargs )
 
 def standardTests():
 
     D = 2
+
+    D2 = 7
 
     iwParams = {
         'psi': InverseWishart.sample( D=D ),
@@ -98,25 +118,32 @@ def standardTests():
     }
     niwParams.update( iwParams )
 
-    mniwParams = {
+    mniwParams1 = {
         'M': np.random.random( ( D, D ) ),
         'V': InverseWishart.sample( D=D )
     }
-    mniwParams.update( iwParams )
+    mniwParams1.update( iwParams )
+
+    mniwParams2 = {
+        'M': np.random.random( ( D, D2 ) ),
+        'V': InverseWishart.sample( D=D2 )
+    }
+    mniwParams2.update( iwParams )
 
     dirParams = {
         'alpha': np.random.random( D ) + 1
     }
 
     transDirParams = {
-        'alpha': np.random.random( ( D, D ) ) + 1
+        'alpha': np.random.random( ( D, D2 ) ) + 1
     }
 
     niw = NormalInverseWishart( **niwParams )
     norm = Normal( prior=niw )
     iw = InverseWishart( **iwParams )
 
-    mniw = MatrixNormalInverseWishart( **mniwParams )
+    mniw = MatrixNormalInverseWishart( **mniwParams1 )
+    mniw2 = MatrixNormalInverseWishart( **mniwParams2 )
     reg = Regression( prior=mniw )
 
     dirichlet = Dirichlet( **dirParams )
@@ -130,13 +157,140 @@ def standardTests():
     testForDistWithPrior( norm )
     testForDistWithPrior( reg )
     testsForDistWithoutPrior( mniw )
+    testsForDistWithoutPrior( mniw2 )
     testsForDistWithoutPrior( dirichlet )
     testForDistWithPrior( cat )
     testsForDistWithoutPrior( transDir )
     testForDistWithPrior( trans )
 
 def stateAndModelTests():
-    pass
+    with np.errstate( all='raise' ):
+
+        K = 20
+        obsDim = 40
+
+        D_latent = 2
+        D_obs = 3
+
+        T = 5
+
+        HMMParams = {
+            'alpha_0': np.random.random( K ) + 1,
+            'alpha_pi': np.random.random( ( K, K ) ) + 1,
+            'alpha_L': np.random.random( ( K, obsDim ) ) + 1
+        }
+
+        LDSParams = {
+            'mu_0': np.random.random( D_latent ),
+            'kappa_0': np.random.random() * D_latent,
+            'psi_0': InverseWishart.sample( D=D_latent ),
+            'nu_0': D_latent,
+
+            'M_trans': np.random.random( ( D_latent, D_latent ) ),
+            'V_trans': InverseWishart.sample( D=D_latent ),
+            'psi_trans': InverseWishart.sample( D=D_latent ),
+            'nu_trans': D_latent,
+
+            'M_emiss': np.random.random( ( D_obs, D_latent ) ),
+            'V_emiss': InverseWishart.sample( D=D_latent ),
+            'psi_emiss': InverseWishart.sample( D=D_obs ),
+            'nu_emiss': D_obs
+        }
+
+        hmmPrior = HMMDirichletPrior( **HMMParams )
+        hmmState = HMMState( prior=hmmPrior )
+
+        ldsPrior = LDSMNIWPrior( **LDSParams )
+        ldsState = LDSState( prior=ldsPrior, stabilize=True )
+
+        # testsForDistWithoutPrior( hmmPrior )
+        # testsForDistWithoutPrior( ldsPrior )
+        # testForDistWithPrior( hmmState, T=T )
+        # testForDistWithPrior( ldsState, T=T )
+
+
+        A, sigma, C, R, mu0, sigma0 = ldsPrior.isample()
+        _A = np.copy( A )
+        _sigma = np.copy( sigma )
+        _C = np.copy( C )
+        _R = np.copy( R )
+        _mu0 = np.copy( mu0 )
+        _sigma0 = np.copy( sigma0 )
+
+        A = np.random.random( ( 2, 2 ) )*2 - 1
+        sigma = InverseWishart.sample( D=2 ) * 0.01
+        C = np.random.random( ( 3, 2 ) )*2 - 1
+        R = InverseWishart.sample( D=3 ) * 0.01
+        mu0 = np.random.random( 2 )*2 - 1
+        sigma0 = InverseWishart.sample( D=2 ) * 0.01
+
+        # print( '\n', A.ravel(), _A.ravel() )
+        # print( '\n', sigma.ravel(), _sigma.ravel() )
+        # print( '\n', C.ravel(), _C.ravel() )
+        # print( '\n', R.ravel(), _R.ravel() )
+        # print( '\n', mu0, _mu0 )
+        # print( '\n', sigma0.ravel(), _sigma0.ravel() )
+
+        ps = {
+            'A': A,
+            'sigma': sigma,
+            'C': C,
+            'R': R,
+            'mu0': mu0,
+            'sigma0': sigma0,
+            'stabilize': True
+        }
+
+        # ps = {
+        #     'A': _A,
+        #     'sigma': _sigma,
+        #     'C': _C,
+        #     'R': _R,
+        #     'mu0': _mu0,
+        #     'sigma0': _sigma0,
+        #     'stabilize': True
+        # }
+
+        ldsState = LDSState( **ps )
+
+        x = ldsState.isample( T=5 )
+
+        ##################################################
+
+        n1, n2, n3, n4, n5, n6, n7, n8 = ldsState.natParams
+        t1, t2, t3, t4, t5, t6, t7, t8 = ldsState.sufficientStats( x, constParams=ldsState.constParams )
+        assert ldsState.dataN( x ) == 1
+        A1, A2, A3, A4, A5, A6, A7 = ldsState.log_partition( x, natParams=ldsState.natParams, split=True )
+
+        trans = ( n1 * t1 ).sum() + ( n2 * t2 ).sum() + ( n3 * t3 ).sum() - ( A1 + A2 )
+        emiss = ( n4 * t4 ).sum() + ( n5 * t5 ).sum() + ( n6 * t6 ).sum() - ( A3 + A4 )
+        init  = ( n7 * t7 ).sum() + ( n8 * t8 ).sum() - ( A5 + A6 + A7 )
+
+        print( '\ntrans', trans )
+        print( 'emiss', emiss )
+        print( 'init', init )
+        print( 'total', trans + emiss + init )
+
+        ##################################################
+        ( _x, _y ) = x
+
+        trans = Regression.log_likelihood( x=( _x[ :-1 ], _x[ 1: ] ), params=( ldsState.A, ldsState.sigma ) )
+        emiss = Regression.log_likelihood( x=( _x, _y[ 0 ] ), params=( ldsState.C, ldsState.R ) )
+        init  = Normal.log_likelihood( x=_x[ 0 ], params=( ldsState.mu0, ldsState.sigma0 ) )
+
+        print( '\ntrans', trans )
+        print( 'emiss', emiss )
+        print( 'init', init )
+        print( 'total', trans + emiss + init )
+
+        ##################################################
+
+        expFamLL = ldsState.ilog_likelihood( x, expFam=True )
+        recursionLL = ldsState.ilog_likelihood( x )
+        print( '\nexpFamLL', expFamLL )
+        print( 'recursionLL', recursionLL )
+
+        assert 0, 'Passed!'
 
 def tensorTests():
 
@@ -191,7 +345,10 @@ def tensorNormalMarginalizationTest():
     # sampled from the marginalized tensor regression distribution
 
 def exponentialFamilyTest():
-    standardTests()
-    tensorTests()
-    tensorNormalMarginalizationTest()
+
+    # standardTests()
+    # tensorTests()
+    # tensorNormalMarginalizationTest()
+    stateAndModelTests()
+    assert 0
     print( 'Passed all of the exp fam tests!' )

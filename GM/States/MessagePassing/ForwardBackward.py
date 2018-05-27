@@ -18,7 +18,12 @@ class CategoricalForwardBackward( MessagePasser ):
 
     @property
     def stateSize( self ):
-        return 1
+        return self.K
+
+    @property
+    def emissionSize( self ):
+        return self._emissionSize
+
 
     def genFilterProbs( self ):
         return np.empty( ( self.T, self.K ) )
@@ -53,6 +58,7 @@ class CategoricalForwardBackward( MessagePasser ):
         self.pi0 = np.log( initialDist )
         self.pi  = np.log( transDist )
         self._L  = np.log( emissionDist )
+        self._emissionSize = self._L.shape[ 1 ]
 
         if( ys is not None ):
             self.preprocessData( ys )

@@ -1,17 +1,26 @@
 from GenModels.GM.States.StandardStates.StateBase import StateBase
 from GenModels.GM.States.MessagePassing.KalmanFilter import *
-from GenModels.GM.Distributions import Normal, Regression
-from GenModels.GM.Models import LDSModel
+from GenModels.GM.Distributions import Normal, Regression, InverseWishart
 from GenModels.GM.Utility import *
 import numpy as np
 
 __all__ = [ 'LDSState' ]
 
+def definePrior():
+    from GenModels.GM.ModelPriors.LDSMNIWPrior import LDSMNIWPrior
+    LDSState.priorClass = LDSMNIWPrior
+
 class LDSState( KalmanFilter, StateBase ):
 
-    priorClass = LDSModel
+    priorClass = None
 
-    def __init__( self, A=None, sigma=None, C=None, R=None, mu0=None, sigma0=None, prior=None, hypers=None ):
+    def __init__( self, A=None, sigma=None, C=None, R=None, mu0=None, sigma0=None, prior=None, hypers=None, stabilize=False ):
+
+        # This flag will force A to have eigenvalues between 0 and 1.  This is so
+        # that the sequences that are sampled don't quickly go off to infinity
+        self._stabilize = stabilize
+
+        definePrior()
         super( LDSState, self ).__init__( A, sigma, C, R, mu0, sigma0, prior=prior, hypers=hypers )
 
     @property
@@ -22,6 +31,8 @@ class LDSState( KalmanFilter, StateBase ):
     def params( self, val ):
         self.standardChanged = True
         A, sigma, C, R, mu0, sigma0 = val
+        if( self._stabilize ):
+            A = stabilize( A )
         self.updateParams( A, sigma, C, R, mu0, sigma0 )
         self._params = val
 
@@ -33,6 +44,7 @@ class LDSState( KalmanFilter, StateBase ):
 
     @classmethod
     def dataN( cls, x ):
+        ( x, ys ) = x
         if( x.ndim == 2 ):
             return 1
         return x.shape[ 0 ]
@@ -40,14 +52,14 @@ class LDSState( KalmanFilter, StateBase ):
     ######################################################################
 
     @classmethod
-    def standardToNat( self, A, sigma, C, R, mu0, sigma0 ):
+    def standardToNat( cls, A, sigma, C, R, mu0, sigma0 ):
         n1, n2, n3 = Regression.standardToNat( A, sigma )
         n4, n5, n6 = Regression.standardToNat( C, R )
         n7, n8 = Normal.standardToNat( mu0, sigma0 )
         return n1, n2, n3, n4, n5, n6, n7, n8
 
     @classmethod
-    def natToStandard( n1, n2, n3, n4, n5, n6, n7, n8 ):
+    def natToStandard( cls, n1, n2, n3, n4, n5, n6, n7, n8 ):
         A, sigma = Regression.natToStandard( n1, n2, n3 )
         C, R = Regression.natToStandard( n4, n5, n6 )
         mu0, sigma0 = Normal.natToStandard( n7, n8 )
@@ -56,33 +68,50 @@ class LDSState( KalmanFilter, StateBase ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
+        assert cls.dataN( x ) == 1 # For now
+
         ( x, ys ) = x
         u = constParams
-        t1 = Regression.sufficientStats( ( x[ :-1 ], x[ 1: ] - u ), constParams=constParams )
-        t2 = Regression.sufficientStats( ( x, ys ), constParams=constParams )
-        t3 = Normal.sufficientStats( x[ 0 ], constParams=constParams )
-        return t1, t2, t3
+        xIn  = x[ :-1 ]
+        xOut = x[ 1: ] - u if u is not None else x[ 1: ]
+        t1, t2, t3 = Regression.sufficientStats( x=( xIn, xOut ), constParams=constParams )
+        t4, t5, t6 = Regression.sufficientStats( x=( x, ys[ 0 ] ), constParams=constParams )
+        t7, t8 = Normal.sufficientStats( x=x[ 0 ], constParams=constParams )
+        return t1, t2, t3, t4, t5, t6, t7, t8
 
     @classmethod
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
-        A, sigma, C, R, mu0, sigma0 = params if params is not None else cls.natToStandard( *natParams )
+        ( x, ys ) = x
 
-        A1 = Regression.log_partition( params=( A, sigma ) )
-        A2 = Regression.log_partition( params=( C, R ) )
-        A3 = Normal.log_partition( params=( mu0, sigma0 ) )
-        return A1 + A2 + A3
+        # Need to multiply each partition by the length of each sequence!!!!
+        A, sigma, C, R, mu0, sigma0 = params if params is not None else cls.natToStandard( *natParams )
+        A1, A2 = Regression.log_partition( x=x, params=( A, sigma ), split=True )
+        n = Regression.dataN( ( x[ :-1 ], x[ 1: ] ) )
+        A1 *= n
+        A2 *= n
+
+        A3, A4 = Regression.log_partition( x=x, params=( C, R ), split=True )
+        n = Regression.dataN( ( x, ys ) )
+        A3 *= n
+        A4 *= n
+
+        A5, A6, A7 = Normal.log_partition( x=x, params=( mu0, sigma0 ), split=True )
+
+        if( split == True ):
+            return A1, A2, A3, A4, A5, A6, A7
+        return A1 + A2 + A3 + A4 + A5 + A6 + A7
 
     ##########################################################################
 
     def preprocessData( self, u=None, ys=None ):
-        assert u is not None and ys is not None
+        ys is not None
 
         if( ys is not None ):
-            super( LDSState, self ).preprocessData( u, ys )
+            super( LDSState, self ).preprocessData( ys, u=u )
         elif( u is not None ):
             self.u = u
 
@@ -95,27 +124,28 @@ class LDSState( KalmanFilter, StateBase ):
 
     def sampleEmissions( self, x ):
         # Sample from P( y | x, ϴ )
-        assert self.dataN( x=x ) == 1
-
+        assert x.ndim == 2
         def sampleStep( _x ):
             return Normal.sample( params=( self.C.dot( _x ), self.R ) )
-
         return np.apply_along_axis( sampleStep, -1, x )[ None ]
 
     def emissionLikelihood( self, x, ys ):
         # Compute P( y | x, ϴ )
-        def likelihoodStep( _x, _y ):
-            return Normal.log_likelihood( _y, params=( self.C.dot( _x ), self.R ) )
-        log_likelihood = np.vectorize( likelihoodStep, signature='(n),(m)->()' )
-        return log_likelihood( x, ys[ 0 ] ).sum()
+        assert ys.size == ys.squeeze().size
+        ans = 0.0
+        for t, ( _x, _y ) in enumerate( zip( x, ys[ 0 ] ) ):
+            term = Normal.log_likelihood( _y, params=( self.C.dot( _x ), self.R ) )
+            print( 'P( y_%d | x_%d ) = %4.2f'%( t, t, term ) )
+            ans += term
+        return ans
 
     ######################################################################
 
     def sampleStep( self, J, h ):
-        return Normal.sample( natParams=( -0.5 * J, h ) )
+        return Normal.sample( params=Normal.natToStandard( J, h, fromPrecision=True ) )
 
     def likelihoodStep( self, x, J, h ):
-        return Normal.log_likelihood( x, natParams=( -0.5 * J, h ) )
+        return Normal.log_likelihood( x, params=Normal.natToStandard( J, h, fromPrecision=True ) )
 
     ######################################################################
 
@@ -160,16 +190,17 @@ class LDSState( KalmanFilter, StateBase ):
     ######################################################################
 
     @classmethod
-    def sample( cls, params, u=None, ys=None, T=None, forwardFilter=True ):
-        dummy = StateBase()
-        dummy.params = params
+    def sample( cls, params=None, natParams=None, u=None, ys=None, T=None, forwardFilter=True ):
+        assert ( params is None ) ^ ( natParams is None )
+        params = params if params is not None else cls.natToStandard( *natParams )
+        dummy = cls( *params )
         return dummy.isample( u=u, ys=ys, T=T, forwardFilter=forwardFilter )
 
     ######################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, u=None, forwardFilter=True, conditionOnY=False ):
-        assert params is not None
-        dummy = StateBase()
-        dummy.params = params
+    def log_likelihood( cls, x, params=None, natParams=None, u=None, forwardFilter=True, conditionOnY=False ):
+        assert ( params is None ) ^ ( natParams is None )
+        params = params if params is not None else cls.natToStandard( *natParams )
+        dummy = cls( *params )
         return dummy.ilog_likelihood( x, u=u, forwardFilter=forwardFilter, conditionOnY=conditionOnY )

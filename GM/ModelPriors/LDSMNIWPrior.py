@@ -1,10 +1,12 @@
 from GenModels.GM.Distributions import ExponentialFam
 from GenModels.GM.Distributions import NormalInverseWishart, MatrixNormalInverseWishart
+from GenModels.GM.States.StandardStates.LDSState import LDSState
+from GenModels.GM.Distributions import Normal, Regression
 import numpy as np
 
-__all__ = [ 'LDSModel' ]
+__all__ = [ 'LDSMNIWPrior' ]
 
-class LDSModel( ExponentialFam ):
+class LDSMNIWPrior( ExponentialFam ):
 
     # This class is a distribution over P( Ѳ | α )
 
@@ -13,9 +15,9 @@ class LDSModel( ExponentialFam ):
     def __init__( self, M_trans, V_trans, psi_trans, nu_trans,
                         M_emiss, V_emiss, psi_emiss, nu_emiss,
                         mu_0   , kappa_0, psi_0    , nu_0    , Q0=0, Q1=0, Q2=0, prior=None, hypers=None ):
-        super( LDSModel, self ).__init__( M_trans, V_trans, psi_trans, nu_trans, Q1,
-                                          M_emiss, V_emiss, psi_emiss, nu_emiss, Q2,
-                                          mu_0   , kappa_0, psi_0    , nu_0    , Q0, prior=prior, hypers=hypers )
+        super( LDSMNIWPrior, self ).__init__( M_trans, V_trans, psi_trans, nu_trans, Q1,
+                                              M_emiss, V_emiss, psi_emiss, nu_emiss, Q2,
+                                              mu_0   , kappa_0, psi_0    , nu_0    , Q0, prior=prior, hypers=hypers )
 
     ##########################################################################
 
@@ -72,9 +74,21 @@ class LDSModel( ExponentialFam ):
     @classmethod
     def dataN( cls, x ):
         A, sigma, C, R, mu0, sigma0 = x
-        if( mu0.ndim == 1 ):
-            return 1
-        return mu0.shape[ 0 ]
+        if( isinstance( mu0, np.ndarray ) and mu0.ndim == 2 ):
+            assert A.ndim == 3
+            assert sigma.ndim == 3
+            assert C.ndim == 3
+            assert R.ndim == 3
+            assert sigma0.ndim == 3
+            return mu0.shape[ 0 ]
+        elif( isinstance( mu0, tuple ) ):
+            assert len( A ) == len( mu0 )
+            assert len( sigma ) == len( mu0 )
+            assert len( C ) == len( mu0 )
+            assert len( R ) == len( mu0 )
+            assert len( sigma0 ) == len( mu0 )
+            return len( mu0 )
+        return 1
 
     ##########################################################################
 
@@ -103,26 +117,34 @@ class LDSModel( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
         if( cls.dataN( x ) > 1 ):
-            t = ( 0, 0 )
-            for _x in x:
-                t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
+            t = ( 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 )
+            for A, sigma, C, R, mu0, sigma0 in zip( *x ):
+                t = np.add( t, cls.sufficientStats( ( A, sigma, C, R, mu0, sigma0 ) ) )
             return t
 
-        t1, t2, t3 = LDSState.standardToNat( *x )
-        t4, t5, t6 = LDSState.log_partition( params=x, split=True )
-        return t1, t2, t3, -t4, -t5, -t6
+        t1, t2, t3, t4, t5, t6, t7, t8 = LDSState.standardToNat( *x )
+
+        A, sigma, C, R, mu0, sigma0 = x
+        # t9, t10, t11, t12, t13, t14, t15 = LDSState.log_partition( params=x, split=True )
+        # Using these instead because LDSState.log_partition requires data ( should probably find way around that )
+        t9, t10 = Regression.log_partition( params=( A, sigma ), split=True )
+        t11, t12 = Regression.log_partition( params=( C, R ), split=True )
+        t13, t14, t15 = Normal.log_partition( params=( mu0, sigma0 ), split=True )
+
+        return t1, t2, t3, -t9, -t10, t4, t5, t6, -t11, -t12, t7, t8, -t13, -t14, -t15
 
     @classmethod
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
-        alpha_0, alpha_pi, alpha_L = params if params is not None else cls.natToStandard( *natParams )
-        A1 = NormalInverseWishart.log_partition( params=alpha_0, split=split )
-        A2 = MatrixNormalInverseWishart.log_partition( params=alpha_pi, split=split )
-        A3 = MatrixNormalInverseWishart.log_partition( params=alpha_L, split=split )
+        M_trans, V_trans, psi_trans, nu_trans, Q1, M_emiss, V_emiss, psi_emiss, nu_emiss, Q2, mu_0, kappa_0, psi_0, nu_0, Q0 = params if params is not None else cls.natToStandard( *natParams )
+
+        A1 = MatrixNormalInverseWishart.log_partition( x=x, params=( M_trans, V_trans, psi_trans, nu_trans, Q1 ), split=split )
+        A2 = MatrixNormalInverseWishart.log_partition( x=x, params=( M_emiss, V_emiss, psi_emiss, nu_emiss, Q2 ), split=split )
+        A3 = NormalInverseWishart.log_partition( x=x, params=( mu_0, kappa_0, psi_0, nu_0, Q0 ), split=split )
         return A1 + A2 + A3
 
     ##########################################################################
@@ -136,7 +158,8 @@ class LDSModel( ExponentialFam ):
 
         A, sigma = MatrixNormalInverseWishart.sample( params=( M_trans, V_trans, psi_trans, nu_trans, Q1 ), size=size )
         C, R = MatrixNormalInverseWishart.sample( params=( M_emiss, V_emiss, psi_emiss, nu_emiss, Q2 ), size=size )
-        mu0, sigma0 = NormalInverseWishart.sample( params=( mu_0, kappa_0, psi_0, nu_0, Q0 ), size=size )
+        mu0sigma0 = NormalInverseWishart.sample( params=( mu_0, kappa_0, psi_0, nu_0, Q0 ), size=size )
+        mu0, sigma0 = mu0sigma0
 
         return A, sigma, C, R, mu0, sigma0
 

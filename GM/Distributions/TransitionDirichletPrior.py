@@ -43,12 +43,12 @@ class TransitionDirichletPrior( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
         if( cls.dataN( x ) > 1 ):
             t = ( 0, 0 )
             for _x in x:
-                t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
+                t = np.add( t, cls.sufficientStats( _x ) )
             return t
 
         t1, = Transition.standardToNat( x )
@@ -76,6 +76,11 @@ class TransitionDirichletPrior( ExponentialFam ):
 
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
 
+        # Quick fix for the moment
+        if( isinstance( alpha, tuple ) ):
+            assert len( alpha ) == 1
+            alpha, = alpha
+
         ans = np.swapaxes( np.array( [ Dirichlet.sample( params=( a, ), size=size ) for a in alpha ] ), 0, 1 )
         return ans
 
@@ -93,5 +98,5 @@ class TransitionDirichletPrior( ExponentialFam ):
         if( x.ndim == 3 ):
             return sum( [ TransitionDirichletPrior.log_likelihood( _x, params=( alpha, ) ) for _x in x ] )
 
-        assert isinstance( x, np.ndarray ) and x.ndim == 2
+        assert isinstance( x, np.ndarray ) and x.ndim == 2, x
         return sum( [ Dirichlet.log_likelihood( _x, params=( a, ) ) for _x, a in zip( x, alpha ) ] )

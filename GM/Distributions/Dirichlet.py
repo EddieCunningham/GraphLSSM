@@ -42,12 +42,12 @@ class Dirichlet( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
         if( cls.dataN( x ) > 1 ):
             t = ( 0, 0 )
             for _x in x:
-                t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
+                t = np.add( t, cls.sufficientStats( _x ) )
             return t
 
         ( t1, ) = Categorical.standardToNat( x )

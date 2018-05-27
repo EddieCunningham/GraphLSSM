@@ -3,6 +3,7 @@ import numpy as np
 from GenModels.GM.Utility import *
 import string
 import tqdm
+from collections import Iterable
 
 __all__ = [ 'Distribution', \
             'Conjugate', \
@@ -281,9 +282,8 @@ class ExponentialFam( Conjugate ):
 
     @classmethod
     @abstractmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
-        # Compute T( x ).  forPost is True if this is being
-        # used for something related to the posterior.
+    def sufficientStats( cls, x, constParams=None ):
+        # Compute T( x )
         pass
 
     ##########################################################################
@@ -348,9 +348,13 @@ class ExponentialFam( Conjugate ):
     def posteriorPriorNatParams( cls, x, constParams=None, priorParams=None, priorNatParams=None ):
         assert ( priorParams is None ) ^ ( priorNatParams is None )
 
-        stats = cls.sufficientStats( x, constParams=constParams, forPost=True )
+        stats = cls.sufficientStats( x, constParams=constParams )
         priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
-        return np.add( stats, priorNatParams )
+
+        dataN = cls.dataN( x )
+        stats = stats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( stats ) ) ] )
+
+        return [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
 
     ##########################################################################
 
@@ -376,6 +380,8 @@ class ExponentialFam( Conjugate ):
         stats = cls.sufficientStats( x, constParams=constParams )
         dataN = cls.dataN( x )
         part = cls.log_partition( x, natParams=natParams ) * dataN
+        assert isinstance( part, Iterable ) == False
+
         return cls.log_pdf( natParams, stats, part )
 
     @classmethod
@@ -412,7 +418,7 @@ class ExponentialFam( Conjugate ):
 
         params = params if params is not None else cls.natToStandard( *natParams )
         stat = cls.priorClass.sufficientStats( params, constParams=constParams )
-        part = cls.priorClass.log_partition( params, params=priorParams, natParams=priorNatParams, split=True )
+        part = cls.priorClass.log_partition( params, params=priorParams, natParams=priorNatParams )
 
         return cls.log_pdf( postNatParams, stat, part )
 
@@ -482,7 +488,7 @@ class ExponentialFam( Conjugate ):
 
         params = params if params is not None else cls.natToStandard( *natParams )
         stat = cls.priorClass.sufficientStats( params, constParams=constParams )
-        part = cls.priorClass.log_partition( params, natParams=postNatParams, split=True )
+        part = cls.priorClass.log_partition( params, natParams=postNatParams )
 
         return cls.log_pdf( postNatParams, stat, part )
 
@@ -533,7 +539,7 @@ class ExponentialFam( Conjugate ):
     def log_pdf( cls, natParams, sufficientStats, log_partition=None ):
 
         ans = 0.0
-        for natParam, stat in zip( natParams, sufficientStats ):
+        for i, ( natParam, stat ) in enumerate( zip( natParams, sufficientStats ) ):
             ans += ( natParam * stat ).sum()
 
         if( log_partition is not None ):
@@ -541,6 +547,8 @@ class ExponentialFam( Conjugate ):
                 ans -= sum( log_partition )
             else:
                 ans -= log_partition
+
+        assert isinstance( ans, Iterable ) == False, log_partition
 
         return ans
 

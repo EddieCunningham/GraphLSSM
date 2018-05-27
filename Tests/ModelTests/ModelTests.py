@@ -1,5 +1,5 @@
 import numpy as np
-from GenModels.GM.Models import *
+from GenModels.GM.ModelPriors import *
 from GenModels.GM.States.StandardStates import *
 from GenModels.GM.Distributions import *
 import time
@@ -9,7 +9,7 @@ __all__ = [ 'modelTests' ]
 
 ######################################################################
 
-def testHMMModelBasic():
+def testHMMDirichletPriorBasic():
     with np.errstate( under='ignore', divide='raise', over='raise', invalid='raise' ):
         T = 1000
         K = 20
@@ -20,9 +20,9 @@ def testHMMModelBasic():
         alpha = np.random.random( ( K, K ) ) + 1
         L = np.random.random( ( K, obsDim ) ) + 1
 
-        model = HMMModel( alpha_0, alpha, L )
+        prior = HMMDirichletPrior( alpha_0, alpha, L )
 
-        state = HMMState( prior=model )
+        state = HMMState( prior=prior )
 
         ( p, ) = Dirichlet.sample( params=np.ones( obsDim ) )
         ys = [ Categorical.sample( params=p, size=T ) for _ in range( D ) ]
@@ -38,12 +38,11 @@ def testHMMModelBasic():
         state.ilog_likelihood( ( xForward, yForward[ 0 ][ None ] ), forwardFilter=False, conditionOnY=True )
         state.ilog_likelihood( ( xBackward, yBackward[ 0 ][ None ] ), conditionOnY=True )
 
-        print( 'Done with basic HMM model test' )
+        print( 'Done with basic HMM prior test' )
 
-def testLDSModelBasic():
+def testLDSMNIWPriorBasic():
 
     with np.errstate( all='raise' ), scipy.special.errstate( all='raise' ):
-
         T = 10
         D_latent = 7
         D_obs = 3
@@ -66,8 +65,8 @@ def testLDSModelBasic():
             'nu_emiss': D_obs
         }
 
-        model = LDSModel( **LDSParams )
-        state = LDSState( prior=model )
+        prior = LDSMNIWPrior( **LDSParams )
+        state = LDSState( prior=prior )
 
         u = np.random.random( ( T, D_latent ) )
         C, R = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_obs )
@@ -85,8 +84,8 @@ def testLDSModelBasic():
         state.ilog_likelihood( ( xForward, yForward[ 0 ][ None ] ), u=u, forwardFilter=False, conditionOnY=True )
         state.ilog_likelihood( ( xBackward, yBackward[ 0 ][ None ] ), u=u, conditionOnY=True )
 
-        print( 'Done with basic LDS model test' )
+        print( 'Done with basic LDS prior test' )
 
 def modelTests():
-    testHMMModelBasic()
-    testLDSModelBasic()
+    testHMMDirichletPriorBasic()
+    testLDSMNIWPriorBasic()

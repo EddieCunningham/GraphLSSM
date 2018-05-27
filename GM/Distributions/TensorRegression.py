@@ -63,7 +63,7 @@ class TensorRegression( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
 
         xs, y = x
@@ -77,11 +77,6 @@ class TensorRegression( TensorExponentialFam ):
         t2 = ( *xs, y )
         t3 = ( y, y )
 
-        if( forPost ):
-            # This for when we add to the MNIW natural params
-            t4 = ( x.shape[ 0 ], )
-            t5 = ( x.shape[ 0 ], )
-            return t1, t2, t3, t4, t5
         return t1, t2, t3
 
 

@@ -33,10 +33,13 @@ class NormalInverseWishart( ExponentialFam ):
 
     @classmethod
     def dataN( cls, x ):
-        if( not isinstance( x[ 0 ], np.ndarray ) ):
-            return len( x )
-        assert len( x ) == 2
-        assert isinstance( x[ 0 ], np.ndarray ) and isinstance( x[ 1 ], np.ndarray )
+        mu, sigma = x
+        if( isinstance( mu, np.ndarray ) and mu.ndim == 2 ):
+            assert sigma.ndim == 3
+            return mu.shape[ 0 ]
+        elif( isinstance( mu, tuple ) ):
+            assert len( sigma ) == len( mu )
+            return len( mu )
         return 1
 
     ##########################################################################
@@ -71,12 +74,12 @@ class NormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
         if( cls.dataN( x ) > 1 ):
             t = ( 0, 0, 0, 0, 0 )
-            for _x in x:
-                t = np.add( t, cls.sufficientStats( _x, forPost=forPost ) )
+            for mu, sigma in zip( *x ):
+                t = np.add( t, cls.sufficientStats( ( mu, sigma ) ) )
             return t
 
         t1, t2 = Normal.standardToNat( *x )
@@ -84,7 +87,7 @@ class NormalInverseWishart( ExponentialFam ):
         return t1, t2, -t3, -t4, -t5
 
     @classmethod
-    def log_partition( cls, x, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
 
@@ -92,11 +95,15 @@ class NormalInverseWishart( ExponentialFam ):
 
         p = psi.shape[ 0 ]
 
-        A1, A2, A3 = InverseWishart.log_partition( x, params=( psi, nu ), split=True )
         A4 = -p / 2 * np.log( kappa )
         A5 = -Q * ( p / 2 * np.log( 2 * np.pi ) )
 
-        return A1, A2, A3, A4, A5
+        if( split == True ):
+            A1, A2, A3 = InverseWishart.log_partition( x, params=( psi, nu ), split=True )
+            return A1, A2, A3, A4, A5
+
+        A = InverseWishart.log_partition( x, params=( psi, nu ), split=False )
+        return A + A4 + A5
 
     ##########################################################################
 
@@ -110,7 +117,8 @@ class NormalInverseWishart( ExponentialFam ):
         mu_0, kappa, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
 
         if( size > 1 ):
-            return [ cls.sample( params=params, natParams=natParams, size=1 ) for _ in range( size ) ]
+            return list( zip( *[ cls.sample( params=params, natParams=natParams, size=1 ) for _ in range( size ) ] ) )
+
         sigma = InverseWishart.sample( params=( psi, nu ) )
         mu = Normal.sample( params=( mu_0, sigma / kappa ) )
         return mu, sigma
@@ -124,7 +132,7 @@ class NormalInverseWishart( ExponentialFam ):
         mu_0, kappa, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
 
         if( cls.dataN( x ) > 1 ):
-            return sum( [ cls.log_likelihood( _x, params=params, natParams=natParams ) for _x in x ] )
+            return sum( [ cls.log_likelihood( ( mu, sigma ), params=params, natParams=natParams ) for mu, sigma in zip( *x ) ] )
         mu, sigma = x
         return InverseWishart.log_likelihood( sigma, params=( psi, nu ) ) + \
                Normal.log_likelihood( mu, params=( mu_0, sigma / kappa ) )

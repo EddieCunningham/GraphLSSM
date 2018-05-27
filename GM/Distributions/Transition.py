@@ -52,9 +52,11 @@ class Transition( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
         x, y = x
+        x = x.squeeze()
+        y = y.squeeze()
         assert isinstance( x, np.ndarray ) and x.ndim == 1, x
         assert isinstance( y, np.ndarray ) and y.ndim == 1, y
         D_in, D_out = constParams
@@ -63,10 +65,6 @@ class Transition( ExponentialFam ):
         xy = np.vstack( ( x, y ) )
         t, _, _ = np.histogram2d( x, y, bins=( range( D_in + 1 ), range( D_out + 1 ) ) )
         return ( t, )
-
-        t1 = np.bincount( x, minlength=D_in )
-        t2 = np.bincount( y, minlength=D_out )
-        return ( np.outer( t1, t2 ), )
 
     @classmethod
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):

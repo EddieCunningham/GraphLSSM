@@ -50,9 +50,9 @@ class Categorical( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sufficientStats( cls, x, constParams=None, forPost=False ):
+    def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
-        assert isinstance( x, np.ndarray ) and x.ndim == 1, x
+        assert ( isinstance( x, np.ndarray ) and x.ndim == 1 ) or isinstance( x, list ), x
         D = constParams
         assert D is not None
         t1 = np.bincount( x, minlength=D )
