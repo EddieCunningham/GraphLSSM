@@ -11,6 +11,34 @@ __all__ = [ 'KalmanFilter',
 class KalmanFilter( MessagePasser ):
     # Kalman filter with only 1 set of parameters
 
+    ######################################################################
+
+    @property
+    def A( self ):
+        return self._A
+
+    @property
+    def sigma( self ):
+        return self._sigma
+
+    @property
+    def C( self ):
+        return self._C
+
+    @property
+    def R( self ):
+        return self._R
+
+    @property
+    def mu0( self ):
+        return self._mu0
+
+    @property
+    def sigma0( self ):
+        return self._sigma0
+
+    ######################################################################
+
     @property
     def T( self ):
         return self._T
@@ -93,13 +121,15 @@ class KalmanFilter( MessagePasser ):
 
     def updateParams( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None ):
 
+        print( 'IN UPDATEPARAMS HEREAISUDBFLAHUBGLEHURBGALURBGLAURNGMLIUHRBGAYBRGLABGLAHJNSGLKAJNGOUIEHRGOIWUENRMOGW78HM3OGIUHR')
+
         self.parameterCheck( A, sigma, C, R, mu0, sigma0, u=u, ys=ys )
 
         self._D_latent = A.shape[ 0 ]
         self._D_obs = C.shape[ 0 ]
 
-        self.A = A
-        self.sigma = sigma
+        self._A = np.copy( A )
+        self._sigma = np.copy( sigma )
 
         sigInv = invPsd( sigma )
         self.J11 = sigInv
@@ -107,11 +137,11 @@ class KalmanFilter( MessagePasser ):
         self.J22 = A.T @ sigInv @ A
         self.log_Z = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
 
-        self.C = C
-        self.R = R
+        self._C = np.copy( C )
+        self._R = np.copy( R )
 
-        self.mu0 = mu0
-        self.sigma0 = sigma0
+        self._mu0 = np.copy( mu0 )
+        self._sigma0 = np.copy( sigma0 )
 
         if( ys is not None ):
             self.preprocessData( ys, u=u )

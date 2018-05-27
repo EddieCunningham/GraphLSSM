@@ -201,7 +201,7 @@ def stateAndModelTests():
         hmmState = HMMState( prior=hmmPrior )
 
         ldsPrior = LDSMNIWPrior( **LDSParams )
-        ldsState = LDSState( prior=ldsPrior, stabilize=True )
+        ldsState = LDSState( prior=ldsPrior, _stabilize=True )
 
         # testsForDistWithoutPrior( hmmPrior )
         # testsForDistWithoutPrior( ldsPrior )
@@ -231,25 +231,25 @@ def stateAndModelTests():
         # print( '\n', mu0, _mu0 )
         # print( '\n', sigma0.ravel(), _sigma0.ravel() )
 
-        ps = {
-            'A': A,
-            'sigma': sigma,
-            'C': C,
-            'R': R,
-            'mu0': mu0,
-            'sigma0': sigma0,
-            'stabilize': True
-        }
-
         # ps = {
-        #     'A': _A,
-        #     'sigma': _sigma,
-        #     'C': _C,
-        #     'R': _R,
-        #     'mu0': _mu0,
-        #     'sigma0': _sigma0,
-        #     'stabilize': True
+        #     'A': A,
+        #     'sigma': sigma,
+        #     'C': C,
+        #     'R': R,
+        #     'mu0': mu0,
+        #     'sigma0': sigma0,
+        #     '_stabilize': True
         # }
+
+        ps = {
+            'A': _A,
+            'sigma': _sigma,
+            'C': _C,
+            'R': _R,
+            'mu0': _mu0,
+            'sigma0': _sigma0,
+            '_stabilize': True
+        }
 
         ldsState = LDSState( **ps )
 
@@ -257,31 +257,129 @@ def stateAndModelTests():
 
         ##################################################
 
+
+        print( '\n\n-----------------------------------' )
+        print( 'ldsState.A is', ldsState.A )
+        print( 'ldsState.sigma is', ldsState.sigma )
+        print( 'ldsState.C is', ldsState.C )
+        print( 'ldsState.R is', ldsState.R )
+
         n1, n2, n3, n4, n5, n6, n7, n8 = ldsState.natParams
+
         t1, t2, t3, t4, t5, t6, t7, t8 = ldsState.sufficientStats( x, constParams=ldsState.constParams )
         assert ldsState.dataN( x ) == 1
         A1, A2, A3, A4, A5, A6, A7 = ldsState.log_partition( x, natParams=ldsState.natParams, split=True )
+
+        print( 'n1', n1 )
+        print( 'n2', n2 )
+        print( 'n3', n3 )
+        print( 'n4', n4 )
+        print( 'n5', n5 )
+        print( 'n6', n6 )
+        print( 't1', t1 )
+        print( 't2', t2 )
+        print( 't3', t3 )
+        print( 't4', t4 )
+        print( 't5', t5 )
+        print( 't6', t6 )
+        print( 'A1', A1 )
+        print( 'A2', A2 )
+        print( 'A3', A3 )
+        print( 'A4', A4 )
+        print( '-----------------------------------\n\n' )
+
+        # print( n2, t2 )
 
         trans = ( n1 * t1 ).sum() + ( n2 * t2 ).sum() + ( n3 * t3 ).sum() - ( A1 + A2 )
         emiss = ( n4 * t4 ).sum() + ( n5 * t5 ).sum() + ( n6 * t6 ).sum() - ( A3 + A4 )
         init  = ( n7 * t7 ).sum() + ( n8 * t8 ).sum() - ( A5 + A6 + A7 )
 
-        print( '\ntrans', trans )
+        print( '\nFrom ldsState')
+        print( 'trans', trans )
         print( 'emiss', emiss )
         print( 'init', init )
         print( 'total', trans + emiss + init )
 
         ##################################################
+
         ( _x, _y ) = x
+        if( _y.ndim == 3 ):
+            _y = _y[ 0 ]
 
-        trans = Regression.log_likelihood( x=( _x[ :-1 ], _x[ 1: ] ), params=( ldsState.A, ldsState.sigma ) )
-        emiss = Regression.log_likelihood( x=( _x, _y[ 0 ] ), params=( ldsState.C, ldsState.R ) )
-        init  = Normal.log_likelihood( x=_x[ 0 ], params=( ldsState.mu0, ldsState.sigma0 ) )
+        print( '\n\n-----------------------------------' )
+        print( 'ldsState.A is', ldsState.A )
+        print( 'ldsState.sigma is', ldsState.sigma )
+        print( 'ldsState.C is', ldsState.C )
+        print( 'ldsState.R is', ldsState.R )
 
-        print( '\ntrans', trans )
+        n1, n2, n3 = Regression.standardToNat( ldsState.A  , ldsState.sigma  )
+
+        n4, n5, n6 = Regression.standardToNat( ldsState.C  , ldsState.R      )
+        n7, n8     =     Normal.standardToNat( ldsState.mu0, ldsState.sigma0 )
+
+        t1, t2, t3 = Regression.sufficientStats( x=( _x[ :-1 ], _x[ 1: ] ) )
+        t4, t5, t6 = Regression.sufficientStats( x=( _x       , _y       ) )
+        t7, t8     =     Normal.sufficientStats( x=( _x[ 0 ]             ) )
+
+        n = Regression.dataN( ( _x, _y ) )
+
+        A1, A2     = Regression.log_partition( x=( _x[ :-1 ], _x[ 1: ] ), params=( ldsState.A  , ldsState.sigma  ), split=True )
+        A1 *= n - 1
+        A2 *= n - 1
+        A3, A4     = Regression.log_partition( x=( _x       , _y       ), params=( ldsState.C  , ldsState.R      ), split=True )
+        A3 *= n
+        A4 *= n
+        A5, A6, A7 =     Normal.log_partition( x=( _x[ 0 ]             ), params=( ldsState.mu0, ldsState.sigma0 ), split=True )
+
+        print( 'n1', n1 )
+        print( 'n2', n2 )
+        print( 'n3', n3 )
+        print( 'n4', n4 )
+        print( 'n5', n5 )
+        print( 'n6', n6 )
+        print( 't1', t1 )
+        print( 't2', t2 )
+        print( 't3', t3 )
+        print( 't4', t4 )
+        print( 't5', t5 )
+        print( 't6', t6 )
+        print( 'A1', A1 )
+        print( 'A2', A2 )
+        print( 'A3', A3 )
+        print( 'A4', A4 )
+        print( '-----------------------------------\n\n' )
+
+        trans = ( n1 * t1 ).sum() + ( n2 * t2 ).sum() + ( n3 * t3 ).sum() - ( A1 + A2 )
+        emiss = ( n4 * t4 ).sum() + ( n5 * t5 ).sum() + ( n6 * t6 ).sum() - ( A3 + A4 )
+        init  = ( n7 * t7 ).sum() + ( n8 * t8 ).sum() - ( A5 + A6 + A7 )
+
+        # print( n2, t2 )
+
+        print( '\nFrom components expfam')
+        print( 'trans', trans )
         print( 'emiss', emiss )
         print( 'init', init )
         print( 'total', trans + emiss + init )
+        print()
+        print()
+        print()
+        print()
+
+        ##################################################
+
+        trans = Regression.log_likelihood( x=( _x[ :-1 ], _x[ 1: ] ), params=( ldsState.A, ldsState.sigma ) )
+        emiss = Regression.log_likelihood( x=( _x, _y ), params=( ldsState.C, ldsState.R ) )
+        init  = Normal.log_likelihood( x=_x[ 0 ], params=( ldsState.mu0, ldsState.sigma0 ) )
+
+        print( '\nFrom components ll')
+        print( 'trans', trans )
+        print( 'emiss', emiss )
+        print( 'init', init )
+        print( 'total', trans + emiss + init )
+        print()
+        print()
+        print()
+        print()
 
         ##################################################
 

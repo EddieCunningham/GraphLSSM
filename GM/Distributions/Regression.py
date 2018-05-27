@@ -86,11 +86,22 @@ class Regression( ExponentialFam ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
+        if( natParams is not None ):
+            n1, n2, n3 = cls.standardToNat( A, sigma )
+            assert np.allclose( n1, natParams[ 0 ] )
+            assert np.allclose( n2, natParams[ 1 ] )
+            assert np.allclose( n3, natParams[ 2 ] )
 
         n = sigma.shape[ 0 ]
 
         A1 = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
         A2 = n / 2 * np.log( 2 * np.pi )
+
+        print( 'In log partition' )
+        print( 'A', A )
+        print( 'sigma', sigma )
+        print( 'A1', A1 )
+        print( 'A2', A2 )
 
         if( split ):
             return A1, A2

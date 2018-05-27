@@ -4,6 +4,12 @@ from GenModels.GM.Distributions import Normal, Regression, InverseWishart
 from GenModels.GM.Utility import *
 import numpy as np
 
+# IMPORTANT NOTE
+# There is a really weird heisenbug somewhere in either here or Regression.py.
+# Sometimes (seemingly randomly) the A, sigma, C or R parameters change
+# for different function calls and mess things up.  I'm not sure if I fixed
+# it, but I haven't been able to find the root cause.
+
 __all__ = [ 'LDSState' ]
 
 def definePrior():
@@ -14,11 +20,12 @@ class LDSState( KalmanFilter, StateBase ):
 
     priorClass = None
 
-    def __init__( self, A=None, sigma=None, C=None, R=None, mu0=None, sigma0=None, prior=None, hypers=None, stabilize=False ):
+    def __init__( self, A=None, sigma=None, C=None, R=None, mu0=None, sigma0=None, prior=None, hypers=None, _stabilize=False ):
 
         # This flag will force A to have eigenvalues between 0 and 1.  This is so
         # that the sequences that are sampled don't quickly go off to infinity
-        self._stabilize = stabilize
+        if( A is not None and _stabilize ):
+            A = stabilize( A )
 
         definePrior()
         super( LDSState, self ).__init__( A, sigma, C, R, mu0, sigma0, prior=prior, hypers=hypers )
@@ -31,9 +38,25 @@ class LDSState( KalmanFilter, StateBase ):
     def params( self, val ):
         self.standardChanged = True
         A, sigma, C, R, mu0, sigma0 = val
-        if( self._stabilize ):
-            A = stabilize( A )
+        # print( '\n\n--------------------------------------------\n\n')
+        # print( '\nA', A )
+        # print( '\nsigma', sigma )
+        # print( '\nC', C )
+        # print( '\nR', R )
+        # print( '\nmu0', mu0 )
+        # print( '\nsigma0', sigma0 )
+        # print( '\n\n--------------------------------------------\n\n')
+        # if( self._stabilize ):
+        #     A = stabilize( A )
         self.updateParams( A, sigma, C, R, mu0, sigma0 )
+        # print( '\n\n--------------------------------------------\n\n')
+        # print( '\nA', A )
+        # print( '\nsigma', sigma )
+        # print( '\nC', C )
+        # print( '\nR', R )
+        # print( '\nmu0', mu0 )
+        # print( '\nsigma0', sigma0 )
+        # print( '\n\n--------------------------------------------\n\n')
         self._params = val
 
     ######################################################################
@@ -53,6 +76,7 @@ class LDSState( KalmanFilter, StateBase ):
 
     @classmethod
     def standardToNat( cls, A, sigma, C, R, mu0, sigma0 ):
+
         n1, n2, n3 = Regression.standardToNat( A, sigma )
         n4, n5, n6 = Regression.standardToNat( C, R )
         n7, n8 = Normal.standardToNat( mu0, sigma0 )
@@ -89,17 +113,19 @@ class LDSState( KalmanFilter, StateBase ):
 
         # Need to multiply each partition by the length of each sequence!!!!
         A, sigma, C, R, mu0, sigma0 = params if params is not None else cls.natToStandard( *natParams )
-        A1, A2 = Regression.log_partition( x=x, params=( A, sigma ), split=True )
+        A1, A2 = Regression.log_partition( x=( x[ :-1 ], x[ 1: ] ), params=( A, sigma ), split=True )
         n = Regression.dataN( ( x[ :-1 ], x[ 1: ] ) )
         A1 *= n
         A2 *= n
 
-        A3, A4 = Regression.log_partition( x=x, params=( C, R ), split=True )
+        A3, A4 = Regression.log_partition( x=( x, ys ), params=( C, R ), split=True )
         n = Regression.dataN( ( x, ys ) )
         A3 *= n
         A4 *= n
+        print( ' --------------- A3', A3 )
+        print( ' --------------- A4', A4 )
 
-        A5, A6, A7 = Normal.log_partition( x=x, params=( mu0, sigma0 ), split=True )
+        A5, A6, A7 = Normal.log_partition( x=x[ 0 ], params=( mu0, sigma0 ), split=True )
 
         if( split == True ):
             return A1, A2, A3, A4, A5, A6, A7
