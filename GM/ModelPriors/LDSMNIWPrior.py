@@ -99,12 +99,14 @@ class LDSMNIWPrior( ExponentialFam ):
         n1 , n2 , n3 , n4 , n5  = MatrixNormalInverseWishart.standardToNat( M_trans, V_trans, psi_trans, nu_trans, Q1 )
         n6 , n7 , n8 , n9 , n10 = MatrixNormalInverseWishart.standardToNat( M_emiss, V_emiss, psi_emiss, nu_emiss, Q2 )
         n11, n12, n13, n14, n15 = NormalInverseWishart.standardToNat( mu_0, kappa_0, psi_0, nu_0, Q0 )
-        return n1, n2, n3, n4, n5, n6, n7, n8, n9, n10, n11, n12, n13, n14, n15
+        return n1, n2, n3, n6, n7, n8, n11, n12, n4, n5, n9, n10, n13, n14, n15
+        # return n1, n2, n3, n4, n5, n6, n7, n8, n9, n10, n11, n12, n13, n14, n15
 
     @classmethod
-    def natToStandard( cls, n1, n2, n3, n4, n5, n6, n7, n8, n9, n10, n11, n12, n13, n14, n15 ):
+    def natToStandard( cls, n1, n2, n3, n6, n7, n8, n11, n12, n4, n5, n9, n10, n13, n14, n15 ):
+    # def natToStandard( cls, n1, n2, n3, n4, n5, n6, n7, n8, n9, n10, n11, n12, n13, n14, n15 ):
         M_trans, V_trans, psi_trans, nu_trans, Q1 = MatrixNormalInverseWishart.natToStandard( n1, n2, n3, n4, n5 )
-        M_emiss, V_emiss, psi_emiss, nu_emiss, Q2 = MatrixNormalInverseWishart.natToStandard( n6 , n7 , n8 , n9 , n10 )
+        M_emiss, V_emiss, psi_emiss, nu_emiss, Q2 = MatrixNormalInverseWishart.natToStandard( n6, n7 , n8 , n9 , n10 )
         mu_0   , kappa_0, psi_0    , nu_0    , Q0 = NormalInverseWishart.natToStandard( n11, n12, n13, n14, n15 )
         return M_trans, V_trans, psi_trans, nu_trans, Q1, M_emiss, V_emiss, psi_emiss, nu_emiss, Q2, mu_0, kappa_0, psi_0, nu_0, Q0
 
@@ -134,7 +136,8 @@ class LDSMNIWPrior( ExponentialFam ):
         t11, t12 = Regression.log_partition( params=( C, R ), split=True )
         t13, t14, t15 = Normal.log_partition( params=( mu0, sigma0 ), split=True )
 
-        return t1, t2, t3, -t9, -t10, t4, t5, t6, -t11, -t12, t7, t8, -t13, -t14, -t15
+        return t1, t2, t3, t4, t5, t6, t7, t8, -t9, -t10, -t11, -t12, -t13, -t14, -t15
+        # return t1, t2, t3, -t9, -t10, t4, t5, t6, -t11, -t12, t7, t8, -t13, -t14, -t15
 
     @classmethod
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):

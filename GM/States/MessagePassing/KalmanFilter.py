@@ -121,8 +121,6 @@ class KalmanFilter( MessagePasser ):
 
     def updateParams( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None ):
 
-        print( 'IN UPDATEPARAMS HEREAISUDBFLAHUBGLEHURBGALURBGLAURNGMLIUHRBGAYBRGLABGLAHJNSGLKAJNGOUIEHRGOIWUENRMOGW78HM3OGIUHR')
-
         self.parameterCheck( A, sigma, C, R, mu0, sigma0, u=u, ys=ys )
 
         self._D_latent = A.shape[ 0 ]
@@ -252,6 +250,10 @@ class KalmanFilter( MessagePasser ):
 class SwitchingKalmanFilter( KalmanFilter ):
     # Kalman filter with multiple dynamics parameters and modes
 
+    @property
+    def As( self ):
+        return self._As
+
     def parameterCheck( self, z, As, sigmas, C, R, mu0, sigma0, u=None, ys=None ):
 
         if( ys is not None ):
@@ -288,17 +290,17 @@ class SwitchingKalmanFilter( KalmanFilter ):
         self.z = z
 
         # Save everything because memory probably isn't a big issue
-        self.As = As
+        self._As = As
         self.J11s = [ invPsd( sigma ) for sigma in sigmas ]
         self.J12s = [ -sigInv @ A for A, sigInv in zip( self.As, self.J11s ) ]
         self.J22s = [ A.T @ sigInv @ A for A, sigInv in zip( self.As, self.J11s ) ]
         self.log_Zs = np.array( [ 0.5 * np.linalg.slogdet( sigma )[ 1 ] for sigma in sigmas ] )
 
-        self.C = C
-        self.R = R
+        self._C = C
+        self._R = R
 
-        self.mu0 = mu0
-        self.sigma0 = sigma0
+        self._mu0 = mu0
+        self._sigma0 = sigma0
 
         if( ys is not None ):
             self.preprocessData( ys, u=u )

@@ -97,12 +97,6 @@ class Regression( ExponentialFam ):
         A1 = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
         A2 = n / 2 * np.log( 2 * np.pi )
 
-        print( 'In log partition' )
-        print( 'A', A )
-        print( 'sigma', sigma )
-        print( 'A1', A1 )
-        print( 'A2', A2 )
-
         if( split ):
             return A1, A2
         return A1 + A2

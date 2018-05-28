@@ -38,25 +38,7 @@ class LDSState( KalmanFilter, StateBase ):
     def params( self, val ):
         self.standardChanged = True
         A, sigma, C, R, mu0, sigma0 = val
-        # print( '\n\n--------------------------------------------\n\n')
-        # print( '\nA', A )
-        # print( '\nsigma', sigma )
-        # print( '\nC', C )
-        # print( '\nR', R )
-        # print( '\nmu0', mu0 )
-        # print( '\nsigma0', sigma0 )
-        # print( '\n\n--------------------------------------------\n\n')
-        # if( self._stabilize ):
-        #     A = stabilize( A )
         self.updateParams( A, sigma, C, R, mu0, sigma0 )
-        # print( '\n\n--------------------------------------------\n\n')
-        # print( '\nA', A )
-        # print( '\nsigma', sigma )
-        # print( '\nC', C )
-        # print( '\nR', R )
-        # print( '\nmu0', mu0 )
-        # print( '\nsigma0', sigma0 )
-        # print( '\n\n--------------------------------------------\n\n')
         self._params = val
 
     ######################################################################
@@ -71,6 +53,12 @@ class LDSState( KalmanFilter, StateBase ):
         if( x.ndim == 2 ):
             return 1
         return x.shape[ 0 ]
+
+    @classmethod
+    def sequenceLength( cls, x ):
+        assert cls.dataN( x ) == 1
+        ( x, ys ) = x
+        return Regression.dataN( ( x, ys ) )
 
     ######################################################################
 
@@ -88,6 +76,24 @@ class LDSState( KalmanFilter, StateBase ):
         C, R = Regression.natToStandard( n4, n5, n6 )
         mu0, sigma0 = Normal.natToStandard( n7, n8 )
         return A, sigma, C, R, mu0, sigma0
+
+    ##########################################################################
+
+    # Need to take take into account sequence length when computing the posterior parameters.
+    # TODO: GENERALIZE THE EXPONENTIAL DISTRIBUTION BASE CLASS TO DISTRIBUTIONS THAT ARE
+    # MADE WITH COMPONENTS, LIKE THIS CLASS
+    @classmethod
+    def posteriorPriorNatParams( cls, x, constParams=None, priorParams=None, priorNatParams=None ):
+        assert ( priorParams is None ) ^ ( priorNatParams is None )
+
+        t1, t2, t3, t4, t5, t6, t7, t8 = cls.sufficientStats( x, constParams=constParams )
+        priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
+
+        assert cls.dataN( x ) == 1 # For the moment
+        N = cls.sequenceLength( x )
+        stats = [ t1, t2, t3, t4, t5, t6, t7, t8, N - 1, N - 1, N, N, 1, 1, 1 ]
+
+        return [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
 
     ##########################################################################
 
@@ -109,21 +115,19 @@ class LDSState( KalmanFilter, StateBase ):
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
+
+        N = cls.sequenceLength( x )
         ( x, ys ) = x
 
         # Need to multiply each partition by the length of each sequence!!!!
         A, sigma, C, R, mu0, sigma0 = params if params is not None else cls.natToStandard( *natParams )
         A1, A2 = Regression.log_partition( x=( x[ :-1 ], x[ 1: ] ), params=( A, sigma ), split=True )
-        n = Regression.dataN( ( x[ :-1 ], x[ 1: ] ) )
-        A1 *= n
-        A2 *= n
+        A1 *= N - 1
+        A2 *= N - 1
 
         A3, A4 = Regression.log_partition( x=( x, ys ), params=( C, R ), split=True )
-        n = Regression.dataN( ( x, ys ) )
-        A3 *= n
-        A4 *= n
-        print( ' --------------- A3', A3 )
-        print( ' --------------- A4', A4 )
+        A3 *= N
+        A4 *= N
 
         A5, A6, A7 = Normal.log_partition( x=x[ 0 ], params=( mu0, sigma0 ), split=True )
 
@@ -161,7 +165,6 @@ class LDSState( KalmanFilter, StateBase ):
         ans = 0.0
         for t, ( _x, _y ) in enumerate( zip( x, ys[ 0 ] ) ):
             term = Normal.log_likelihood( _y, params=( self.C.dot( _x ), self.R ) )
-            print( 'P( y_%d | x_%d ) = %4.2f'%( t, t, term ) )
             ans += term
         return ans
 

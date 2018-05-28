@@ -172,7 +172,7 @@ def stateAndModelTests():
         D_latent = 2
         D_obs = 3
 
-        T = 5
+        T = 3
 
         HMMParams = {
             'alpha_0': np.random.random( K ) + 1,
@@ -186,7 +186,7 @@ def stateAndModelTests():
             'psi_0': InverseWishart.sample( D=D_latent ),
             'nu_0': D_latent,
 
-            'M_trans': np.random.random( ( D_latent, D_latent ) ),
+            'M_trans': np.random.random( ( D_latent, D_latent ) ) * 0.1, # Keep this small so the x samples don't get too big
             'V_trans': InverseWishart.sample( D=D_latent ),
             'psi_trans': InverseWishart.sample( D=D_latent ),
             'nu_trans': D_latent,
@@ -203,192 +203,11 @@ def stateAndModelTests():
         ldsPrior = LDSMNIWPrior( **LDSParams )
         ldsState = LDSState( prior=ldsPrior, _stabilize=True )
 
-        # testsForDistWithoutPrior( hmmPrior )
-        # testsForDistWithoutPrior( ldsPrior )
-        # testForDistWithPrior( hmmState, T=T )
-        # testForDistWithPrior( ldsState, T=T )
+        testsForDistWithoutPrior( hmmPrior )
+        testsForDistWithoutPrior( ldsPrior )
+        testForDistWithPrior( hmmState, T=T )
+        testForDistWithPrior( ldsState, T=T ) # I think this is correct, but it will most likely fail because the sequences of x that it samples have really large numbers
 
-
-        A, sigma, C, R, mu0, sigma0 = ldsPrior.isample()
-        _A = np.copy( A )
-        _sigma = np.copy( sigma )
-        _C = np.copy( C )
-        _R = np.copy( R )
-        _mu0 = np.copy( mu0 )
-        _sigma0 = np.copy( sigma0 )
-
-        A = np.random.random( ( 2, 2 ) )*2 - 1
-        sigma = InverseWishart.sample( D=2 ) * 0.01
-        C = np.random.random( ( 3, 2 ) )*2 - 1
-        R = InverseWishart.sample( D=3 ) * 0.01
-        mu0 = np.random.random( 2 )*2 - 1
-        sigma0 = InverseWishart.sample( D=2 ) * 0.01
-
-        # print( '\n', A.ravel(), _A.ravel() )
-        # print( '\n', sigma.ravel(), _sigma.ravel() )
-        # print( '\n', C.ravel(), _C.ravel() )
-        # print( '\n', R.ravel(), _R.ravel() )
-        # print( '\n', mu0, _mu0 )
-        # print( '\n', sigma0.ravel(), _sigma0.ravel() )
-
-        # ps = {
-        #     'A': A,
-        #     'sigma': sigma,
-        #     'C': C,
-        #     'R': R,
-        #     'mu0': mu0,
-        #     'sigma0': sigma0,
-        #     '_stabilize': True
-        # }
-
-        ps = {
-            'A': _A,
-            'sigma': _sigma,
-            'C': _C,
-            'R': _R,
-            'mu0': _mu0,
-            'sigma0': _sigma0,
-            '_stabilize': True
-        }
-
-        ldsState = LDSState( **ps )
-
-        x = ldsState.isample( T=5 )
-
-        ##################################################
-
-
-        print( '\n\n-----------------------------------' )
-        print( 'ldsState.A is', ldsState.A )
-        print( 'ldsState.sigma is', ldsState.sigma )
-        print( 'ldsState.C is', ldsState.C )
-        print( 'ldsState.R is', ldsState.R )
-
-        n1, n2, n3, n4, n5, n6, n7, n8 = ldsState.natParams
-
-        t1, t2, t3, t4, t5, t6, t7, t8 = ldsState.sufficientStats( x, constParams=ldsState.constParams )
-        assert ldsState.dataN( x ) == 1
-        A1, A2, A3, A4, A5, A6, A7 = ldsState.log_partition( x, natParams=ldsState.natParams, split=True )
-
-        print( 'n1', n1 )
-        print( 'n2', n2 )
-        print( 'n3', n3 )
-        print( 'n4', n4 )
-        print( 'n5', n5 )
-        print( 'n6', n6 )
-        print( 't1', t1 )
-        print( 't2', t2 )
-        print( 't3', t3 )
-        print( 't4', t4 )
-        print( 't5', t5 )
-        print( 't6', t6 )
-        print( 'A1', A1 )
-        print( 'A2', A2 )
-        print( 'A3', A3 )
-        print( 'A4', A4 )
-        print( '-----------------------------------\n\n' )
-
-        # print( n2, t2 )
-
-        trans = ( n1 * t1 ).sum() + ( n2 * t2 ).sum() + ( n3 * t3 ).sum() - ( A1 + A2 )
-        emiss = ( n4 * t4 ).sum() + ( n5 * t5 ).sum() + ( n6 * t6 ).sum() - ( A3 + A4 )
-        init  = ( n7 * t7 ).sum() + ( n8 * t8 ).sum() - ( A5 + A6 + A7 )
-
-        print( '\nFrom ldsState')
-        print( 'trans', trans )
-        print( 'emiss', emiss )
-        print( 'init', init )
-        print( 'total', trans + emiss + init )
-
-        ##################################################
-
-        ( _x, _y ) = x
-        if( _y.ndim == 3 ):
-            _y = _y[ 0 ]
-
-        print( '\n\n-----------------------------------' )
-        print( 'ldsState.A is', ldsState.A )
-        print( 'ldsState.sigma is', ldsState.sigma )
-        print( 'ldsState.C is', ldsState.C )
-        print( 'ldsState.R is', ldsState.R )
-
-        n1, n2, n3 = Regression.standardToNat( ldsState.A  , ldsState.sigma  )
-
-        n4, n5, n6 = Regression.standardToNat( ldsState.C  , ldsState.R      )
-        n7, n8     =     Normal.standardToNat( ldsState.mu0, ldsState.sigma0 )
-
-        t1, t2, t3 = Regression.sufficientStats( x=( _x[ :-1 ], _x[ 1: ] ) )
-        t4, t5, t6 = Regression.sufficientStats( x=( _x       , _y       ) )
-        t7, t8     =     Normal.sufficientStats( x=( _x[ 0 ]             ) )
-
-        n = Regression.dataN( ( _x, _y ) )
-
-        A1, A2     = Regression.log_partition( x=( _x[ :-1 ], _x[ 1: ] ), params=( ldsState.A  , ldsState.sigma  ), split=True )
-        A1 *= n - 1
-        A2 *= n - 1
-        A3, A4     = Regression.log_partition( x=( _x       , _y       ), params=( ldsState.C  , ldsState.R      ), split=True )
-        A3 *= n
-        A4 *= n
-        A5, A6, A7 =     Normal.log_partition( x=( _x[ 0 ]             ), params=( ldsState.mu0, ldsState.sigma0 ), split=True )
-
-        print( 'n1', n1 )
-        print( 'n2', n2 )
-        print( 'n3', n3 )
-        print( 'n4', n4 )
-        print( 'n5', n5 )
-        print( 'n6', n6 )
-        print( 't1', t1 )
-        print( 't2', t2 )
-        print( 't3', t3 )
-        print( 't4', t4 )
-        print( 't5', t5 )
-        print( 't6', t6 )
-        print( 'A1', A1 )
-        print( 'A2', A2 )
-        print( 'A3', A3 )
-        print( 'A4', A4 )
-        print( '-----------------------------------\n\n' )
-
-        trans = ( n1 * t1 ).sum() + ( n2 * t2 ).sum() + ( n3 * t3 ).sum() - ( A1 + A2 )
-        emiss = ( n4 * t4 ).sum() + ( n5 * t5 ).sum() + ( n6 * t6 ).sum() - ( A3 + A4 )
-        init  = ( n7 * t7 ).sum() + ( n8 * t8 ).sum() - ( A5 + A6 + A7 )
-
-        # print( n2, t2 )
-
-        print( '\nFrom components expfam')
-        print( 'trans', trans )
-        print( 'emiss', emiss )
-        print( 'init', init )
-        print( 'total', trans + emiss + init )
-        print()
-        print()
-        print()
-        print()
-
-        ##################################################
-
-        trans = Regression.log_likelihood( x=( _x[ :-1 ], _x[ 1: ] ), params=( ldsState.A, ldsState.sigma ) )
-        emiss = Regression.log_likelihood( x=( _x, _y ), params=( ldsState.C, ldsState.R ) )
-        init  = Normal.log_likelihood( x=_x[ 0 ], params=( ldsState.mu0, ldsState.sigma0 ) )
-
-        print( '\nFrom components ll')
-        print( 'trans', trans )
-        print( 'emiss', emiss )
-        print( 'init', init )
-        print( 'total', trans + emiss + init )
-        print()
-        print()
-        print()
-        print()
-
-        ##################################################
-
-        expFamLL = ldsState.ilog_likelihood( x, expFam=True )
-        recursionLL = ldsState.ilog_likelihood( x )
-        print( '\nexpFamLL', expFamLL )
-        print( 'recursionLL', recursionLL )
-
-        assert 0, 'Passed!'
 
 def tensorTests():
 
@@ -444,9 +263,8 @@ def tensorNormalMarginalizationTest():
 
 def exponentialFamilyTest():
 
-    # standardTests()
-    # tensorTests()
-    # tensorNormalMarginalizationTest()
+    standardTests()
+    tensorTests()
+    tensorNormalMarginalizationTest()
     stateAndModelTests()
-    assert 0
     print( 'Passed all of the exp fam tests!' )

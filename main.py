@@ -1,9 +1,9 @@
 from GenModels.Tests import *
 
-# distributionTest()
+distributionTest()
 exponentialFamilyTest()
-# marginalizationTest()
-# graphMarginalizationTest()
-# stateTests()
+marginalizationTest()
+graphMarginalizationTest()
+stateTests()
 
-# modelTests()
+modelTests()

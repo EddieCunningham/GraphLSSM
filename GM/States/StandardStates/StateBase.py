@@ -156,10 +156,6 @@ class StateBase( ExponentialFam ):
             nonlocal ans, x
             term = self.likelihoodStep( x[ t ], *args )
             ans += term
-            if( t == 0 ):
-                print( '\nP( x_0 ) = %4.2f'%( term ) )
-            else:
-                print( 'P( x_%d | x_%d ) = %4.2f'%( t, t - 1, term ) )
             return x[ t ]
 
         if( conditionOnY == False ):
