@@ -1,8 +1,9 @@
 import numpy as np
 from GenModels.GM.ModelPriors import HMMDirichletPrior
 from GenModels.GM.States.StandardStates import HMMState
+from GenModels.GM.Models.ModelBase import _InferenceModel
 
-class HMMModel():
+class HMMModel( _InferenceModel ):
 
     # This is a wrapper around a state class along with its prior class
 
@@ -22,15 +23,23 @@ class HMMModel():
         if( alpha_0 is not None ):
             # Use a prior
             self.prior = HMMDirichletPrior( alpha_0, alpha, L )
-            self.state = HMMState( prior=prior )
+            self.state = HMMState( prior=self.prior )
         else:
-            self.prior = None
+            assert 0
             self.state = HMMState( initialDist, transDist, emissionDist )
+            # Use a weak prior in this case
+            self.prior = HMMDirichletPrior( np.ones_like( initialDist ), np.ones_like( transDist ), np.ones_like( emissionDist ) )
 
-    def sample( cls, ys=None, T=None, forwardFilter=True ):
-        # Sample from P( x | Ѳ; α )
-        return self.state.isample( ys=ys, T=T, forwardFilter=forwardFilter )
+    def predict( self, T=3, size=1 ):
+        return self.state.isample( T=T, size=size )
 
-    def resample( cls, x ):
-        # Sample from P( Ѳ | x; α )
-        self.state.resample( x=x )
+    @classmethod
+    def generate( self, T=10, latentSize=3, obsSize=2, size=10 ):
+        # Generate a fake data
+        params = {
+            'alpha_0': np.ones( latentSize ),
+            'alpha': np.ones( ( latentSize, latentSize ) ),
+            'L': np.ones( ( latentSize, obsSize ) )
+        }
+        dummy = HMMModel( **params )
+        return np.array( list( zip( *dummy.predict( T=T, size=size ) ) )[ 1 ] ).squeeze()

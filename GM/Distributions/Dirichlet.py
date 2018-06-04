@@ -1,7 +1,7 @@
 import numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import dirichlet
-from scipy.special import gammaln
+from scipy.special import gammaln, digamma
 from GenModels.GM.Distributions.Categorical import Categorical
 
 class Dirichlet( ExponentialFam ):
@@ -19,9 +19,33 @@ class Dirichlet( ExponentialFam ):
 
     @classmethod
     def dataN( cls, x ):
+        if( isinstance( x, tuple ) ):
+            assert len( x ) == 1
+            x = x[ 0 ]
+        cls.checkShape( x )
         if( x.ndim == 2 ):
             return x.shape[ 0 ]
         return 1
+
+    @classmethod
+    def unpackSingleSample( cls, x ):
+        return x[ 0 ]
+
+    @classmethod
+    def sampleShapes( cls ):
+        # ( Sample #, dim )
+        return ( None, None )
+
+    def isampleShapes( cls ):
+        return ( None, self.D )
+
+    @classmethod
+    def checkShape( cls, x ):
+        if( isinstance( x, tuple ) ):
+            assert len( x ) == 1
+            x = x[ 0 ]
+        assert isinstance( x, np.ndarray ), x
+        assert x.ndim == 2 or x.ndim == 1
 
     ##########################################################################
 
@@ -65,20 +89,53 @@ class Dirichlet( ExponentialFam ):
             return A1, A2
         return A1 + A2
 
+    @classmethod
+    def log_partitionGradient( cls, params=None, natParams=None ):
+        # Derivative w.r.t. natural params
+        assert ( params is None ) ^ ( natParams is None )
+        n, = natParams if natParams is not None else cls.standardToNat( *params )
+
+        d = digamma( ( n + 1 ) ) - digamma( ( n + 1 ).sum() )
+        return d
+
+    def _testLogPartitionGradient( self ):
+
+        import autograd.numpy as anp
+        import autograd.scipy as asp
+        from autograd import jacobian
+
+        n, = self.natParams
+
+        def part( _n ):
+            d = anp.sum( asp.special.gammaln( ( _n + 1 ) ) ) - asp.special.gammaln( anp.sum( _n + 1 ) )
+            return d
+
+        d = jacobian( part )( n )
+        dAdn = self.log_partitionGradient( natParams=self.natParams )
+
+        assert np.allclose( d, dAdn )
+
     ##########################################################################
+
+    @classmethod
+    def generate( cls, D=2, size=1 ):
+        params = ( np.ones( D ), )
+        samples = cls.sample( params=params, size=size )
+        return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
     def sample( cls, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
 
-        if( params is not None ):
-            if( not isinstance( params, tuple ) and \
-                not isinstance( params, list ) ):
-                params = ( params, )
+        # if( params is not None ):
+        #     if( not isinstance( params, tuple ) and \
+        #         not isinstance( params, list ) ):
+        #         params = ( params, )
 
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
         ans = dirichlet.rvs( alpha=alpha, size=size )
+        cls.checkShape( ans )
         return ans
 
     ##########################################################################

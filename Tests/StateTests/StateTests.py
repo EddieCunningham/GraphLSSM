@@ -10,33 +10,31 @@ __all__ = [ 'stateTests' ]
 
 def testHMMBasic():
     with np.errstate( under='ignore', divide='raise', over='raise', invalid='raise' ):
-        T = 1000
-        K = 20
-        obsDim = 40
-        D = 4
+        T = 40
+        D_latent = 3
+        D_obs = 2
+        meas = 4
+        size = 5
 
-        onesK = np.ones( K )
-        onesObs = np.ones( obsDim )
+        initialDist = Dirichlet.generate( D=D_latent )
+        transDist = TransitionDirichletPrior.generate( D_in=D_latent, D_out=D_latent )
+        emissionDist = TransitionDirichletPrior.generate( D_in=D_latent, D_out=D_obs )
 
-        ( p, ) = Dirichlet.sample( params=onesObs )
-        ys = [ Categorical.sample( params=p, size=T ) for _ in range( D ) ]
-        ( initialDist, ) = Dirichlet.sample( params=onesK )
-        transDist = Dirichlet.sample( params=onesK, size=K )
-        emissionDist = Dirichlet.sample( params=onesObs, size=K )
+        state = HMMState( initialDist=initialDist, transDist=transDist, emissionDist=emissionDist )
 
-        state = HMMState( initialDist, transDist, emissionDist )
+        _, ys = HMMState.generate( measurements=meas, T=T, D_latent=D_latent, D_obs=D_obs, size=size )
 
-        xNoCond  , ysNoCond  = state.isample( T=10 )
+        xNoCond  , ysNoCond  = state.isample( T=T, measurements=meas, size=size )
         xForward , yForward  = state.isample( ys=ys )
         xBackward, yBackward = state.isample( ys=ys, forwardFilter=False )
 
-        state.ilog_likelihood( ( xNoCond, ysNoCond[ 0 ][ None ] ) )
-        state.ilog_likelihood( ( xForward, yForward[ 0 ][ None ] ), forwardFilter=False )
-        state.ilog_likelihood( ( xBackward, yBackward[ 0 ][ None ] ) )
+        print( state.ilog_likelihood( ( xNoCond, ysNoCond ) ) )
+        print( state.ilog_likelihood( ( xForward, yForward ), forwardFilter=False ) )
+        print( state.ilog_likelihood( ( xBackward, yBackward ) ) )
 
-        state.ilog_likelihood( ( xNoCond, ysNoCond[ 0 ][ None ] ), conditionOnY=True )
-        state.ilog_likelihood( ( xForward, yForward[ 0 ][ None ] ), forwardFilter=False, conditionOnY=True )
-        state.ilog_likelihood( ( xBackward, yBackward[ 0 ][ None ] ), conditionOnY=True )
+        print( state.ilog_likelihood( ( xNoCond, ysNoCond ), conditionOnY=True ) )
+        print( state.ilog_likelihood( ( xForward, yForward ), forwardFilter=False, conditionOnY=True ) )
+        print( state.ilog_likelihood( ( xBackward, yBackward ), conditionOnY=True ) )
 
         print( 'Done with basic HMM state test' )
 

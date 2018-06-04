@@ -15,7 +15,12 @@ class MessagePasser( ABC ):
 
     @property
     @abstractmethod
-    def stateSize( self ):
+    def D_latent( self ):
+        pass
+
+    @property
+    @abstractmethod
+    def D_obs( self ):
         pass
 
     @abstractmethod
@@ -36,6 +41,10 @@ class MessagePasser( ABC ):
 
     @abstractmethod
     def updateParams( self, ys ):
+        pass
+
+    @abstractmethod
+    def updateNatParams( self, ys ):
         pass
 
     @abstractmethod

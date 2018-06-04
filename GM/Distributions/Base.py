@@ -4,12 +4,15 @@ from GenModels.GM.Utility import *
 import string
 import tqdm
 from collections import Iterable
+from GenModels.GM.Distributions.Mixins.Sampling import _GibbsMixin, _MetropolisHastingMixin
+from autograd import jacobian
+from functools import partial
 
 __all__ = [ 'Distribution', \
             'Conjugate', \
             'ExponentialFam' ]
 
-class Distribution( ABC ):
+class Distribution( ABC, _GibbsMixin, _MetropolisHastingMixin ):
 
     priorClass = None
 
@@ -43,13 +46,43 @@ class Distribution( ABC ):
         # These are things that are constant for every instance of the class
         pass
 
+    ##########################################################################
+
     @classmethod
     @abstractmethod
     def dataN( cls, x ):
         # This is necessary to know how to tell the size of an output
         pass
 
+    @classmethod
+    @abstractmethod
+    def unpackSingleSample( cls, x ):
+        # This is for convenience when we know size == 1
+        pass
+
+    @classmethod
+    @abstractmethod
+    def sampleShapes( cls ):
+        # Specify the shape of a sample
+        pass
+
+    @abstractmethod
+    def isampleShapes( cls ):
+        # Specify the shape of a sample when the parameters are known
+        pass
+
+    @abstractmethod
+    def checkShape( cls, x ):
+        # Check that the shape of a sample is correct
+        pass
+
     ##########################################################################
+
+    @classmethod
+    @abstractmethod
+    def generate( cls, *dims, size=1, **kwargs ):
+        # Generate samples easily without having to specify parameters
+        pass
 
     @classmethod
     @abstractmethod
@@ -77,45 +110,14 @@ class Distribution( ABC ):
         xs = [ None for _ in range( size ) ]
         thetas = [ None for _ in range( size ) ]
         for i in range( size ):
-            theta = cls.paramSample( priorParams=priorParams )
-            x = cls.sample( params=theta )
+            theta = cls.priorClass.unpackSingleSample( cls.paramSample( priorParams=priorParams ) )
+            x = cls.unpackSingleSample( cls.sample( params=theta ) )
             xs[ i ] = x
             thetas[ i ] = theta
         return xs, thetas
 
     def ijointSample( self, size=1 ):
         return self.jointSample( self.prior.params, size=size )
-
-    @classmethod
-    def gibbsJointSample( cls, priorParams, burnIn=5000, skip=100, size=1, verbose=True ):
-        params = cls.paramSample( priorParams )
-        it = range( burnIn )
-        if( verbose == True ):
-            it = tqdm.tqdm( it, desc='Burn in' )
-        for _ in it:
-            x = cls.sample( params )
-            params = cls.posteriorSample( x, priorParams )
-
-        xResult = [ None for _ in range( size ) ]
-        pResult = [ None for _ in range( size ) ]
-
-        it = range( size )
-        if( verbose == True ):
-            it = tqdm.tqdm( it, desc='Gibbs (once every %d)'%( skip ) )
-
-        for i in it:
-            x = cls.sample( params )
-            params = cls.posteriorSample( x, priorParams )
-            xResult[ i ] = x
-            pResult[ i ] = params
-            for _ in range( skip ):
-                x = cls.sample( params )
-                params = cls.posteriorSample( x, priorParams )
-
-        return np.array( xResult ), np.array( pResult )
-
-    def igibbsJointSample( self, burnIn=100, skip=10, size=1 ):
-        return self.gibbsJointSample( self.prior.params, burnIn=burnIn, skip=skip, size=size )
 
     @classmethod
     def log_joint( cls, x, params, priorParams ):
@@ -179,46 +181,14 @@ class Distribution( ABC ):
 
     def resample( self, x=None ):
         if( x is None ):
-            self.params = self.iparamSample()
+            newParams = self.priorClass.unpackSingleSample( self.iparamSample() )
         else:
-            self.params = self.iposteriorSample( x )
+            newParams = self.priorClass.unpackSingleSample( self.iposteriorSample( x ) )
 
-    ##########################################################################
-
-    def metropolisHastings( self, x=None, maxN=10000, burnIn=3000, size=1000, skip=50, verbose=True, concatX=True ):
-
-        x = self.isample()
-
-        p = self.ilog_likelihood( x )
-
-        maxN = max( maxN, burnIn + size * skip )
-        it = range( maxN )
-        if( verbose ):
-            it = tqdm.tqdm( it, desc='Metropolis Hastings (once every %d)'%( skip ) )
-
-        samples = []
-
-        for i in it:
-            candidate = randomStep( x )
-            pCandidate = self.ilog_likelihood( candidate )
-            if( pCandidate >= p ):
-                x, p = ( candidate, pCandidate )
-            else:
-                u = np.random.rand()
-                if( u < np.exp( pCandidate - p ) ):
-                    x, p = ( candidate, pCandidate )
-
-            if( i > burnIn and i % skip == 0 ):
-                if( concatX ):
-                    samples.append( deepCopy( fullyRavel( x ) ) )
-                else:
-                    samples.append( deepCopy( x ) )
-                if( len( samples ) >= size ):
-                    break
-
-        samples = np.vstack( samples )
-
-        return samples
+        if( isinstance( newParams, np.ndarray ) ):
+            self.params = ( newParams, )
+        else:
+            self.params = newParams
 
 ####################################################################################################################################
 
@@ -278,7 +248,7 @@ class ExponentialFam( Conjugate ):
     def natToStandard( cls, *natParams ):
         pass
 
-    ##########################################################################
+    ####################################################################################################################################################
 
     @classmethod
     @abstractmethod
@@ -290,14 +260,121 @@ class ExponentialFam( Conjugate ):
 
     @classmethod
     @abstractmethod
-    def log_partition( cls, x, params=None, natParams=None, split=False ):
-        # The terms that make up the log partition
+    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+        # The terms that make up the log partition.  x is in case the base measure
+        # needs x
         pass
 
-    def ilog_partition( self, x, split=False ):
+    def ilog_partition( self, x=None, split=False ):
         if( self.standardChanged ):
-            return self.log_partition( x, params=self.params, split=split )
-        return self.log_partition( x, natParams=self.natParams, split=split )
+            return self.log_partition( x=x, params=self.params, split=split )
+        return self.log_partition( x=x, natParams=self.natParams, split=split )
+
+    ##########################################################################
+
+    @classmethod
+    def expectedNatParams( cls, priorParams=None, priorNatParams=None ):
+        # This is for when we want to do variational inference.
+        # Use the fact that in conjugate models, the conjugate prior
+        # t( x ) = ( n, -logZ ) for the child
+        expectedNatParamsAndPartition = cls.prior.log_partitionGradient( params=priorParams, natParams=priorNatParams )
+        assert 0, 'Need to find how to separate nat params and partition'
+        return expectedNatParamsAndPartition[ :-1 ]
+
+    def iexpectedNatParams( self ):
+        if( self.standardChanged ):
+            return self.expectedNatParams( priorParams=self.prior.params )
+        return self.expectedNatParams( priorNatParams=self.prior.natParams )
+
+    ##########################################################################
+
+    @classmethod
+    # @abstractmethod
+    def log_partitionGradient( cls, params=None, natParams=None ):
+        # This is the expected sufficient statistic E_{ p( x | n ) }[ T( x ) ]
+        pass
+
+    # @abstractmethod
+    def _testLogPartitionGradient( self ):
+        # Use autograd here to check
+        pass
+
+    def ilog_partitionGradient( self ):
+        return self.log_partitionGradient( natParams=self.natParams )
+
+    @classmethod
+    def expectedSufficientStats( cls, params=None, natParams=None ):
+        return cls.log_partitionGradient( params=params, natParams=natParams )
+
+    def iexpectedSufficientStats( self ):
+        return self.ilog_partitionGradient()
+
+    ##########################################################################
+
+    @classmethod
+    def score( cls, x, params=None, natParams=None, constParams=None ):
+        # v( n, x ) = d/dn{ logP( x | n ) }
+        cls.checkShape( x )
+        stats = cls.sufficientStats( x, constParams=constParams )
+        part = cls.log_partitionGradient( params=params, natParams=natParams )
+        assert len( stats ) == len( part )
+        return [ s - p for s, p in zip( stats, part ) ]
+
+    def iscore( self, x ):
+        if( self.standardChanged ):
+            return self.score( x, params=self.params, constParams=self.constParams )
+        return self.score( x, natParams=self.natParams, constParams=self.constParams )
+
+    ##########################################################################
+
+    @classmethod
+    # @abstractmethod
+    def fisherInfo( cls, x=None, params=None, natParams=None ):
+        # This is the fisher information matrix
+        # TODO (probably not worth it unless I figure out how to use autograd for it)
+        pass
+
+    def ifisherInfo( self, x=None ):
+        return self.fisherInfo( x=x, natParams=self.natParams )
+
+    ##########################################################################
+
+    @classmethod
+    def log_statMGF( cls, s, x=None, params=None, natParams=None ):
+        assert ( params is None ) ^ ( natParams is None )
+        natParams = natParams if natParams is not None else cls.standardToNat( *params )
+        nS = [ _s + n for _s, n in zip( s, natParams ) ]
+        return cls.log_partition( x=x, natParams=nS ) - cls.log_partition( x=x, natParams=natParams )
+
+    def ilog_statMGF( self, s, x=None ):
+        # x is only required when the base measure is a function of x
+        return self.log_MGF( s, x=x, natParams=self.natParams )
+
+    ##########################################################################
+
+    @classmethod
+    def KLDivergence( cls, x=None, params1=None, natParams1=None, params2=None, natParams2=None ):
+        assert ( params1 is None ) ^ ( natParams1 is None )
+        assert ( params2 is None ) ^ ( natParams2 is None )
+        natParams1 = natParams1 if natParams1 is not None else cls.standardToNat( *params1 )
+        natParams2 = natParams2 if natParams2 is not None else cls.standardToNat( *params2 )
+        natDiff = natParams1 - natParams2
+
+        ans = 0.0
+        for n, p in zip( natDiff, cls.log_partitionGradient( x=x, natParams=natParams1 ) ):
+            ans += ( n * p ).sum()
+
+        ans -= cls.log_partition( x=x, natParams=natParams1 )
+        ans -= cls.log_partition( x=x, natParams=natParams2 )
+        return ans
+
+    def iKLDivergence( self, x=None, otherParams=None, otherNatParams=None, other=None ):
+        if( other is not None ):
+            assert isinstance( other, ExponentialFam )
+            return self.KLDivergence( x=x, natParams1=self.natParams, natParams2=other.natParams )
+
+        assert ( otherParams is None ) ^ ( otherNatParams is None )
+        return self.KLDivergence( x=x, natParams1=self.natParams, params=otherParams, natParams2=otherNatParams )
 
     ####################################################################################################################################################
 
@@ -331,8 +408,8 @@ class ExponentialFam( Conjugate ):
         xs = [ None for _ in range( size ) ]
         thetas = [ None for _ in range( size ) ]
         for i in range( size ):
-            theta = cls.paramSample( priorParams=priorParams, priorNatParams=priorNatParams )
-            x = cls.sample( params=theta )
+            theta = cls.priorClass.unpackSingleSample( cls.paramSample( priorParams=priorParams, priorNatParams=priorNatParams ) )
+            x = cls.unpackSingleSample( cls.sample( params=theta ) )
             xs[ i ] = x
             thetas[ i ] = theta
         return xs, thetas
@@ -348,6 +425,7 @@ class ExponentialFam( Conjugate ):
     def posteriorPriorNatParams( cls, x, constParams=None, priorParams=None, priorNatParams=None ):
         assert ( priorParams is None ) ^ ( priorNatParams is None )
 
+        cls.checkShape( x )
         stats = cls.sufficientStats( x, constParams=constParams )
         priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
 
@@ -356,6 +434,24 @@ class ExponentialFam( Conjugate ):
 
         return [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
 
+    @classmethod
+    def variationalPosteriorPriorNatParams( cls, ys=None, constParams=None, priorParams=None, priorNatParams=None ):
+        assert ( priorParams is None ) ^ ( priorNatParams is None )
+
+        # Because this will only be used to do variational inference,
+        # make sure that the observed data is passed in
+        assert ys is not None
+
+        expectedStats = cls.expectedSufficientStats( ys=ys, priorParams=priorParams, natParams=priorNatParams )
+
+        # Assume that these are variational parameters
+        priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
+
+        dataN = cls.dataN( ys )
+        expectedStats = expectedStats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( expectedStats ) ) ] )
+
+        return [ np.add( s, p ) for s, p in zip( expectedStats, priorNatParams ) ]
+
     ##########################################################################
 
     @classmethod
@@ -363,6 +459,7 @@ class ExponentialFam( Conjugate ):
         # Sample from P( Ѳ | x; α )
         assert ( priorParams is None ) ^ ( priorNatParams is None )
 
+        cls.checkShape( x )
         postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
         return cls.priorClass.sample( natParams=postNatParams, size=size )
 
@@ -377,6 +474,7 @@ class ExponentialFam( Conjugate ):
     def log_likelihoodExpFam( cls, x, constParams=None, params=None, natParams=None ):
         assert ( params is None ) ^ ( natParams is None )
         natParams = natParams if natParams is not None else cls.standardToNat( *params )
+        cls.checkShape( x )
         stats = cls.sufficientStats( x, constParams=constParams )
         dataN = cls.dataN( x )
         part = cls.log_partition( x, natParams=natParams ) * dataN
@@ -403,6 +501,7 @@ class ExponentialFam( Conjugate ):
         # Compute P( Ѳ; α )
         assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
         params = params if params is not None else cls.natToStandard( *natParams )
+        cls.priorClass.checkShape( params )
         return cls.priorClass.log_likelihood( params, params=priorParams, natParams=priorNatParams )
 
     def ilog_params( self, expFam=False ):
@@ -414,9 +513,11 @@ class ExponentialFam( Conjugate ):
     def log_jointExpFam( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None ):
         assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
 
+        cls.checkShape( x )
         postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
 
         params = params if params is not None else cls.natToStandard( *natParams )
+        cls.priorClass.checkShape( params )
         stat = cls.priorClass.sufficientStats( params, constParams=constParams )
         part = cls.priorClass.log_partition( params, params=priorParams, natParams=priorNatParams )
 
@@ -444,49 +545,14 @@ class ExponentialFam( Conjugate ):
     ##########################################################################
 
     @classmethod
-    def gibbsJointSample( cls, constParams=None, priorParams=None, priorNatParams=None, burnIn=5000, skip=100, size=1, verbose=True ):
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
-
-        params = cls.paramSample( priorParams=priorParams, priorNatParams=priorNatParams )
-        it = range( burnIn )
-        if( verbose == True ):
-            it = tqdm.tqdm( it, desc='Burn in' )
-        for _ in it:
-            x = cls.sample( params=params )
-            params = cls.posteriorSample( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
-
-        xResult = [ None for _ in range( size ) ]
-        pResult = [ None for _ in range( size ) ]
-
-        it = range( size )
-        if( verbose == True ):
-            it = tqdm.tqdm( it, desc='Gibbs (once every %d)'%( skip ) )
-
-        for i in it:
-            x = cls.sample( params=params )
-            params = cls.posteriorSample( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
-            xResult[ i ] = x
-            pResult[ i ] = params
-            for _ in range( skip ):
-                x = cls.sample( params=params )
-                params = cls.posteriorSample( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
-
-        return xResult, pResult
-
-    def igibbsJointSample( self, burnIn=100, skip=10, size=1 ):
-        if( self.prior.standardChanged ):
-            return self.gibbsJointSample( constParams=self.constParams, priorParams=self.prior.params, burnIn=burnIn, skip=skip, size=size )
-        return self.gibbsJointSample( constParams=self.constParams, priorNatParams=self.prior.natParams, burnIn=burnIn, skip=skip, size=size )
-
-    ##########################################################################
-
-    @classmethod
     def log_posteriorExpFam( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None ):
         assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
 
+        cls.checkShape( x )
         postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
 
         params = params if params is not None else cls.natToStandard( *natParams )
+        cls.priorClass.checkShape( params )
         stat = cls.priorClass.sufficientStats( params, constParams=constParams )
         part = cls.priorClass.log_partition( params, natParams=postNatParams )
 
@@ -497,7 +563,10 @@ class ExponentialFam( Conjugate ):
         # Compute P( Ѳ | x; α )
         assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
         params = params if params is not None else cls.natToStandard( *natParams )
+        cls.checkShape( x )
         postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
+
+        assert cls.priorClass.dataN( params ) == 1
         return cls.priorClass.log_likelihood( params, natParams=postNatParams )
 
     def ilog_posterior( self, x, expFam=False ):
@@ -518,6 +587,8 @@ class ExponentialFam( Conjugate ):
         # Compute P( x; α )
         assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
         params = params if params is not None else cls.natToStandard( *natParams )
+
+        cls.checkShape( x )
 
         likelihood = cls.log_likelihood( x, params=params, natParams=natParams )
         posterior = cls.log_posterior( x, params=params, natParams=natParams, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
@@ -551,6 +622,8 @@ class ExponentialFam( Conjugate ):
         assert isinstance( ans, Iterable ) == False, log_partition
 
         return ans
+
+    ##########################################################################
 
 ####################################################################################################################################
 

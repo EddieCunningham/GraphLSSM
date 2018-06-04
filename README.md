@@ -6,11 +6,13 @@ With this framework, a user can do Bayesian inference over graphical structures.
 
 This library extends previous graphical generative model techniques by adding support for hypergraphs (to incorporate ordering constraints on parents) and provides an efficient way to deal with directed cycles (for efficient message passing that is independent of the cycle's diameter).
 
+The structure of this repo is heavily inspired by https://github.com/mattjj/pyhsmm and its other associated components (pybasicbayes, pyslds, etc.)
+
 # Parts of the library
 **Distributions**
 - Completed
 	- Exponential family base
-		- Inference over 
+		- Inference over
 			- P( x | Ѳ; α ), P( Ѳ | x; α ), P( x, Ѳ; α ), P( Ѳ; α )
 		- Conjugate modeling
 		- Natural parameters, sufficient statistics, partition function & base measure
@@ -52,7 +54,7 @@ This library extends previous graphical generative model techniques by adding su
 		- Can be easily parallelized
 		- Not recursive
 	- Discrete State Graphical Filtering (Up-Down)
-		- Filter over graphical structure 
+		- Filter over graphical structure
 		- Can have directed cycles
 		- Uses feedback vertex set cuts to filter
 	- Hidden Markov Model State

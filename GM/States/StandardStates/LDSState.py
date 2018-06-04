@@ -32,7 +32,17 @@ class LDSState( KalmanFilter, StateBase ):
 
     @property
     def params( self ):
+        if( self.naturalChanged ):
+            self._params = self.natToStandard( *self.natParams )
+            self.naturalChanged = False
         return self._params
+
+    @property
+    def natParams( self ):
+        if( self.standardChanged ):
+            self._natParams = self.standardToNat( *self.params )
+            self.standardChanged = False
+        return self._natParams
 
     @params.setter
     def params( self, val ):
@@ -41,6 +51,13 @@ class LDSState( KalmanFilter, StateBase ):
         self.updateParams( A, sigma, C, R, mu0, sigma0 )
         self._params = val
 
+    @natParams.setter
+    def natParams( self, val ):
+        self.naturalChanged = True
+        n1, n2, n3, n4, n5, n6, n7, n8 = val
+        self.updateNatParams( n1, n2, n3, n4, n5, n6, n7, n8 )
+        self._natParams = val
+
     ######################################################################
 
     @property
@@ -48,23 +65,68 @@ class LDSState( KalmanFilter, StateBase ):
         return self.u
 
     @classmethod
-    def dataN( cls, x ):
-        ( x, ys ) = x
-        if( x.ndim == 2 ):
-            return 1
-        return x.shape[ 0 ]
+    def dataN( cls, x, conditionOnY=False ):
+        cls.checkShape( x, conditionOnY=conditionOnY )
+        if( conditionOnY == False ):
+            x, y = x
+        if( isinstance( x, tuple ) ):
+            return len( x )
+        return 1
 
     @classmethod
-    def sequenceLength( cls, x ):
-        assert cls.dataN( x ) == 1
-        ( x, ys ) = x
-        return Regression.dataN( ( x, ys ) )
+    def sequenceLength( cls, x, conditionOnY=False ):
+        cls.checkShape( x, conditionOnY=conditionOnY )
+
+        if( cls.dataN( x, conditionOnY=conditionOnY ) == 1 ):
+            if( conditionOnY == False ):
+                xs, ys = x
+                return xs.shape[ 0 ]
+            return x.shape[ 0 ]
+
+        if( conditionOnY == False ):
+            xs, ys = x
+            return xs[ 0 ].shape[ 1 ]
+
+        return x[ 0 ].shape[ 1 ]
+
+    @classmethod
+    def unpackSingleSample( cls, x, conditionOnY=False ):
+        if( conditionOnY == False ):
+            xs, ys = x
+            return xs[ 0 ], ys[ 0 ]
+        return x[ 0 ]
+
+    @classmethod
+    def sampleShapes( cls, conditionOnY=False ):
+        # We can have multiple measurements for the same latent state
+        # ( ( Sample #, time, dim1 ), ( Sample #, measurement #, time, dim2 ) )
+        if( conditionOnY == False ):
+            return ( ( None, None, None ), ( None, None, None, None ) )
+        return ( None, None, None )
+
+    def isampleShapes( cls, conditionOnY=False ):
+        if( conditionOnY == False ):
+            return ( ( None, self.T, self.D_latent ), ( None, self.T, None, self.D_obs ) )
+        return ( None, self.T, self.D_latent )
+
+    @classmethod
+    def checkShape( cls, x, conditionOnY=False ):
+        if( conditionOnY == False ):
+            xs, ys = x
+            if( isinstance( xs, tuple ) ):
+                assert isinstance( ys, tuple )
+                assert len( xs ) == len( ys )
+                for x, y in zip( xs, ys ):
+                    assert x.shape == y.shape
+            else:
+                assert x.shape == y.shape
+        else:
+            assert x.ndim == 3 or x.ndim == 2
 
     ######################################################################
 
     @classmethod
     def standardToNat( cls, A, sigma, C, R, mu0, sigma0 ):
-
         n1, n2, n3 = Regression.standardToNat( A, sigma )
         n4, n5, n6 = Regression.standardToNat( C, R )
         n7, n8 = Normal.standardToNat( mu0, sigma0 )
@@ -99,7 +161,7 @@ class LDSState( KalmanFilter, StateBase ):
 
     @classmethod
     def sufficientStats( cls, x, constParams=None ):
-        # Compute T( x )
+        # Compute T( x ).  This is for when we're treating this class as P( x, y | Ѳ )
         assert cls.dataN( x ) == 1 # For now
 
         ( x, ys ) = x
@@ -156,7 +218,7 @@ class LDSState( KalmanFilter, StateBase ):
         # Sample from P( y | x, ϴ )
         assert x.ndim == 2
         def sampleStep( _x ):
-            return Normal.sample( params=( self.C.dot( _x ), self.R ) )
+            return Normal.sample( natParams=( -0.5 * self.J1Emiss, self._hy.dot( _x ) ) )
         return np.apply_along_axis( sampleStep, -1, x )[ None ]
 
     def emissionLikelihood( self, x, ys ):
@@ -164,8 +226,7 @@ class LDSState( KalmanFilter, StateBase ):
         assert ys.size == ys.squeeze().size
         ans = 0.0
         for t, ( _x, _y ) in enumerate( zip( x, ys[ 0 ] ) ):
-            term = Normal.log_likelihood( _y, params=( self.C.dot( _x ), self.R ) )
-            ans += term
+            ans += Normal.log_likelihood( _y, natParams=( -0.5 * self.J1Emiss, self._hy.dot( _x ) ) )
         return ans
 
     ######################################################################
@@ -183,21 +244,19 @@ class LDSState( KalmanFilter, StateBase ):
         #                           ∝ P( y_t+1 | x_t+1 ) * P( x_t+1 | x_t ) * P( y_t+2:T | x_t+1 )
 
         if( beta is None ):
-            _J =  self.J11              if t > 0 else invPsd( self.sigma0 )
-            _h = -self.J12.dot( prevX ) if t > 0 else invPsd( self.sigma0 ).dot( self.mu0 )
+            _J =  self.J11              if t > 0 else self.J0
+            _h = -self.J12.dot( prevX ) if t > 0 else self.h0
             return _J, _h
 
         J, h, _ = beta
 
         if( t == 0 ):
-            J0, h0 = Normal.standardToNat( self.mu0, self.sigma0, returnPrecision=True )
-
-            _J = J + self.Jy + J0
-            _h = h + self.hy[ 0 ] + h0
+            _J = J + self.Jy + self.J0
+            _h = h + self.hy[ 0 ] + self.h0
 
         else:
             _J = J + self.Jy + self.J11
-            _h = h + self.hy[ t ] + self.J11.dot( self.A.dot( prevX ) + self.u[ t - 1 ] )
+            _h = h + self.hy[ t ] - self.J12.dot( prevX ) + self.J11.dot( self.u[ t - 1 ] )
 
         return _J, _h
 
@@ -233,3 +292,45 @@ class LDSState( KalmanFilter, StateBase ):
         params = params if params is not None else cls.natToStandard( *natParams )
         dummy = cls( *params )
         return dummy.ilog_likelihood( x, u=u, forwardFilter=forwardFilter, conditionOnY=conditionOnY )
+
+    ######################################################################
+
+    def expectedStatsBlock( self, t, alphas, betas ):
+        # E[ x_t * x_t^T ], E[ x_t+1 * x_t^T ] and E[ x_t+1 * x_t+1^T ]
+
+        # Find the natural parameters for P( x_t+1, x_t | Y )
+        # P( x_t+1, x_t | Y ) = P( y_t+1 | x_t+1 ) * P( y_t+2:T | x_t+1 ) * P( x_t+1 | x_t ) * P( x_t, y_1:t )
+
+        Jhy = self.emissionProb( t + 1 )
+        Jht = self.transitionProb( t, t + 1 )
+        Jhf = self.alignOnLower( *alphas[ t ] )
+        Jhb = self.alignOnUpper( *betas[ t + 1 ] )
+
+        J11, J12, J22, h1, h2, _ = self.multiplyTerms( [ Jhy, Jht, Jhf, Jhb ] )
+
+        J = np.block( [ J11, J12 ], [ J12.T, J22 ] )
+        h = np.hstack( ( h1, h2 ) )
+
+        # The first expected sufficient statistic for N( x_t+1, x_t | Y ) will
+        # be a block matrix with blocks E[ x_t+1 * x_t+1^T ], E[ x_t+1 * x_t^T ]
+        # and E[ x_t * x_t^T ]
+        E = Normal.expectedSufficientStats( natParams=( -0.5 * J, h ) )[ 0 ]
+
+        D = h1.shape[ 0 ]
+        Ext1_xt1 = E[ np.ix( [ 0, D ], [ 0, D ] ) ]
+        Ext1_xt = E[ np.ix( [ D, 2 * D ], [ 0, D ] ) ]
+        Ext_xt = E[ np.ix( [ D, 2 * D ], [ D, 2 * D ] ) ]
+        return Ext1_xt1, Ext1_xt, Ext_xt
+
+    def conditionedExpectedSufficientStats( self, alphas, betas ):
+
+        t1, t2, t3 = self.expectedStatsBlock( 0, alphas, betas )
+
+        for t in range( 1, self.T - 1 ):
+
+            Ext1_xt1, Ext1_xt, Ext_xt = self.expectedStatsBlock( t, alphas, betas )
+            t1 += Ext1_xt1
+            t2 += Ext1_xt
+            t3 += Ext_xt
+
+        return t1, t2, t3

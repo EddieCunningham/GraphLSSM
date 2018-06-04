@@ -32,9 +32,35 @@ class Regression( ExponentialFam ):
 
     @classmethod
     def dataN( cls, x ):
+        cls.checkShape( x )
         xs, ys = x
-        assert xs.ndim == 2
-        return xs.shape[ 0 ]
+        if( xs.ndim == 2 ):
+            return xs.shape[ 0 ]
+        return 1
+
+    @classmethod
+    def unpackSingleSample( cls, x ):
+        xs, ys = x
+        return xs[ 0 ], ys[ 0 ]
+
+    @classmethod
+    def sampleShapes( cls ):
+        # ( ( Sample #, dim1 ), ( Sample #, dim2 ) )
+        return ( ( None, None ), ( None, None ) )
+
+    def isampleShapes( cls ):
+        return ( ( None, self.A.shape[ 0 ] ), ( None, self.A.shape[ 1 ] ) )
+
+    @classmethod
+    def checkShape( cls, x ):
+        assert isinstance( x, tuple )
+        x, y = x
+        assert isinstance( x, np.ndarray ) and isinstance( y, np.ndarray )
+        if( x.ndim == 2 ):
+            assert y.ndim == 2
+            assert x.shape[ 0 ] == y.shape[ 0 ]
+        else:
+            assert x.ndim == 1 and y.ndim == 1
 
     ##########################################################################
 
@@ -101,7 +127,21 @@ class Regression( ExponentialFam ):
             return A1, A2
         return A1 + A2
 
+    @classmethod
+    def log_partitionGradient( cls, params=None, natParams=None ):
+        # ?? Not sure what to do considering one of the natural parameters is redundant
+        assert 0, 'Just don\'t call this.  Not sure what to do at the moment'
+
+    def _testLogPartitionGradient( self ):
+        pass
+
     ##########################################################################
+
+    @classmethod
+    def generate( cls, D_in=3, D_out=2, size=1 ):
+        params = ( np.zeros( ( D_out, D_in ) ), np.eye( D_out ) )
+        samples = cls.sample( params=params, size=size )
+        return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
     def sample( cls, x=None, params=None, natParams=None, size=1 ):
@@ -110,10 +150,15 @@ class Regression( ExponentialFam ):
         A, sigma = params if params is not None else cls.natToStandard( *natParams )
         D = A.shape[ 1 ]
         if( x is None ):
-            x = np.array( [ Normal.sample( params=( np.zeros( D ), np.eye( D ) ), size=1 ) for _ in range( size ) ] )
-            y = np.array( [ Normal.sample( params=( A.dot( _x ), sigma ), size=1 ) for _x in x ] )
-            return ( x, y )
-        return Normal.sample( params=( A.dot( x ), sigma ), size=size )
+            x = np.array( [ Normal.unpackSingleSample( Normal.sample( params=( np.zeros( D ), np.eye( D ) ), size=1 ) ) for _ in range( size ) ] )
+            y = np.array( [ Normal.unpackSingleSample( Normal.sample( params=( A.dot( _x ), sigma ), size=1 ) ) for _x in x ] )
+            ans = ( x, y )
+            cls.checkShape( ans )
+            return ans
+
+        ans = Normal.sample( params=( A.dot( x ), sigma ), size=size )
+        Normal.checkShape( ans )
+        return ans
 
     ##########################################################################
 
@@ -128,3 +173,35 @@ class Regression( ExponentialFam ):
         if( x.ndim != 1 ):
             return sum( [ Normal.log_likelihood( _y, params=( A.dot( _x ), sigma ) ) for _x, _y in zip( x, y ) ] )
         return Normal.log_likelihood( y, params=( A.dot( x ), sigma ) )
+
+    ##########################################################################
+
+    @classmethod
+    def toJoint( cls, u=None, params=None, natParams=None ):
+        # Given the parameters for P( y | A, sigma, x, u ),
+        # return the natural parameters for P( [ y, x ] | A, sigma, u )
+        assert ( params is None ) ^ ( natParams is None )
+        n1, n2, n3 = natParams if natParams is not None else cls.standardToNat( *params )
+
+        _n1 = np.block( [ n1, 0.5 * n3.T ], [ 0.5 * n3, n2 ] )
+        if( u is None ):
+            _n2 = np.zeros( n1.shape[ 0 ] )
+        else:
+            _n2 = np.hstack( ( -2 * n1.dot( u ), -n3.dot( u ) ) )
+
+        return _n1, _n2
+
+    @classmethod
+    def toInverse( cls, y, u=None, params=None, natParams=None ):
+        # Given the parameters for P( y | A, sigma, x, u ),
+        # return the natural parameters for P( x | A, sigma, y, u )
+        assert ( params is None ) ^ ( natParams is None )
+        n1, n2, n3 = natParams if natParams is not None else cls.standardToNat( *params )
+
+        _n1 = n2
+        if( u is None ):
+            _n2 = n3.dot( y )
+        else:
+            _n2 = n3.dot( y - u )
+
+        return _n1, _n2

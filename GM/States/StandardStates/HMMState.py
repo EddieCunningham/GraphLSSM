@@ -46,14 +46,80 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
     @property
     def constParams( self ):
-        return self.stateSize, self.emissionSize
+        return self.D_latent, self.D_obs
 
     @classmethod
-    def dataN( cls, x ):
-        x, y = x
-        if( x.ndim == 1 ):
-            return 1
-        return x.shape[ 0 ]
+    def dataN( cls, x, conditionOnY=False, checkY=False ):
+        cls.checkShape( x, conditionOnY=conditionOnY, checkY=checkY )
+        if( conditionOnY == False ):
+            x, y = x
+        if( isinstance( x, tuple ) ):
+            return len( x )
+        return 1
+
+    @classmethod
+    def sequenceLength( cls, x, conditionOnY=False, checkY=False ):
+        cls.checkShape( x, conditionOnY=conditionOnY, checkY=checkY )
+
+        if( cls.dataN( x, conditionOnY=conditionOnY, checkY=checkY ) == 1 ):
+            if( conditionOnY == False ):
+                xs, ys = x
+                return xs.shape[ 0 ]
+
+            if( checkY == False ):
+                return x.shape[ 0 ]
+            else:
+                return x.shape[ 1 ]
+        else:
+            assert 0, 'Only pass in a single example'
+
+    @classmethod
+    def unpackSingleSample( cls, x, conditionOnY=False, checkY=False ):
+        if( conditionOnY == False ):
+            xs, ys = x
+            return xs[ 0 ], ys[ 0 ]
+        return x[ 0 ]
+
+    @classmethod
+    def sampleShapes( cls, conditionOnY=False ):
+        # We can have multiple measurements for the same latent state
+        # ( ( Sample #, time ), ( Sample #, measurement #, time ) )
+        if( conditionOnY == False ):
+            return ( ( None, None ), ( None, None, None ) )
+        return ( None, None )
+
+    def isampleShapes( cls, conditionOnY=False ):
+        if( conditionOnY == False ):
+            return ( ( None, self.T ), ( None, self.T, None ) )
+        return ( None, self.T )
+
+    @classmethod
+    def checkShape( cls, x, conditionOnY=False, checkY=False ):
+        if( conditionOnY == False ):
+            xs, ys = x
+            if( isinstance( xs, tuple ) ):
+                assert isinstance( ys, tuple )
+                assert len( xs ) == len( ys )
+                for x, y in zip( xs, ys ):
+                    assert x.shape[ 0 ] == y.shape[ 1 ]
+            else:
+                assert isinstance( xs, np.ndarray )
+                assert isinstance( ys, np.ndarray )
+                assert xs.ndim == 1
+                assert ys.ndim == 1
+                assert xs[ 0 ].shape == ys[ 1 ].shape
+        else:
+            if( isinstance( x, tuple ) ):
+                for _x in x:
+                    if( checkY == True ):
+                        assert _x.ndim == 2 or _x.ndim == 1
+                    else:
+                        assert _x.ndim == 1
+            else:
+                if( checkY == True ):
+                    assert x.ndim == 2 or x.ndim == 1
+                else:
+                    assert x.ndim == 1
 
     ######################################################################
 
@@ -106,6 +172,7 @@ class HMMState( CategoricalForwardBackward, StateBase ):
         assert x.ndim == 1
 
         def sampleStep( _x ):
+            _x = _x[ 0 ]
             p = self.emissionDist[ _x ]
             return Categorical.sample( params=( p, ) )
 
@@ -118,7 +185,7 @@ class HMMState( CategoricalForwardBackward, StateBase ):
     ######################################################################
 
     def sampleStep( self, p ):
-        return int( Categorical.sample( natParams=( p, ) )[ 0 ] )
+        return int( Categorical.sample( natParams=( p, ) ) )
 
     def likelihoodStep( self, x, p ):
         return Categorical.log_likelihood( np.array( [ x ] ), natParams=( p, ) )
@@ -144,4 +211,30 @@ class HMMState( CategoricalForwardBackward, StateBase ):
         #                         ∝ P( x_t+1 | x_t ) * P( x_t, y_1:t )
 
         unNormalized = alpha + self.pi[ prevX ] if t < self.T - 1 else alpha
-        return ( unNormalized - np.logaddexp.reduce( unNormalized ), )
+        normalized = unNormalized - np.logaddexp.reduce( unNormalized )
+        return ( normalized, )
+
+    ######################################################################
+
+    def conditionedExpectedSufficientStats( self, alphas, betas ):
+
+        t = np.zeros_like( self.pi )
+
+        for t in range( self.T - 1 ):
+            L = self.emissionProb( t + 1 )
+            pi = self.transitionProb( t, t + 1 )
+            jointPi = self.multiplyTerms( [ L, pi, alphas[ t ], betas[ t + 1 ] ] )
+            t += jointPi
+
+        return t
+
+    ######################################################################
+
+    @classmethod
+    def generate( cls, measurements=4, T=5, D_latent=3, D_obs=2, size=1 ):
+        initialDist = np.ones( D_latent ) / D_latent
+        transDist = np.ones( ( D_latent, D_latent ) ) / D_latent
+        emissionDist = np.ones( ( D_latent, D_obs ) ) / D_obs
+
+        dummy = cls( initialDist, transDist, emissionDist )
+        return dummy.isample( measurements=measurements, T=T, size=size )

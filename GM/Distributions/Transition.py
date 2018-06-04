@@ -28,8 +28,30 @@ class Transition( ExponentialFam ):
 
     @classmethod
     def dataN( cls, x ):
+        cls.checkShape( x )
         x, y = x
         return x.shape[ 0 ]
+
+    @classmethod
+    def unpackSingleSample( cls, x ):
+        x, y = x
+        return x[ 0 ], y[ 0 ]
+
+    @classmethod
+    def sampleShapes( cls ):
+        # ( ( Sample #, dim1 ), ( Sample #, dim2 ) )
+        return ( ( None, None ), ( None, None ) )
+
+    def isampleShapes( cls ):
+        return ( ( None, self.D_in ), ( None, self.D_out ) )
+
+    @classmethod
+    def checkShape( cls, x ):
+        assert isinstance( x, tuple )
+        x, y = x
+        assert isinstance( x, np.ndarray ) and isinstance( y, np.ndarray )
+        assert x.ndim == 1 and y.ndim == 1
+        assert x.shape[ 0 ] == y.shape[ 0 ]
 
     ##########################################################################
 
@@ -55,16 +77,35 @@ class Transition( ExponentialFam ):
     def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
         x, y = x
-        x = x.squeeze()
-        y = y.squeeze()
-        assert isinstance( x, np.ndarray ) and x.ndim == 1, x
-        assert isinstance( y, np.ndarray ) and y.ndim == 1, y
+
+        assert isinstance( x, np.ndarray )
+        assert isinstance( y, np.ndarray )
         D_in, D_out = constParams
         assert D_in is not None and D_out is not None
 
-        xy = np.vstack( ( x, y ) )
-        t, _, _ = np.histogram2d( x, y, bins=( range( D_in + 1 ), range( D_out + 1 ) ) )
-        return ( t, )
+        x = x.squeeze()
+        y = y.squeeze()
+
+        if( y.ndim > 1 and x.ndim == 1 ):
+            # Mutiple ys for this x
+            t, _, _ = np.histogram2d( x, y[ 0 ], bins=( range( D_in + 1 ), range( D_out + 1 ) ) )
+            for _y in y[ 1: ]:
+                _t, _, _ = np.histogram2d( x, _y, bins=( range( D_in + 1 ), range( D_out + 1 ) ) )
+                t += _t
+            return ( t, )
+
+        elif( y.ndim > 1 and x.ndim > 1 ):
+            assert y.shape[ 0 ] == x.shape[ 0 ]
+            # Mutiple x, y pairs
+            t, _, _ = np.histogram2d( x[ 0 ], y[ 0 ], bins=( range( D_in + 1 ), range( D_out + 1 ) ) )
+            for _x, _y in zip( x[ 1: ], y[ 1: ] ):
+                _t, _, _ = np.histogram2d( _x, _y, bins=( range( D_in + 1 ), range( D_out + 1 ) ) )
+                t += _t
+            return ( t, )
+        else:
+            # A single x, y pair
+            t, _, _ = np.histogram2d( x, y, bins=( range( D_in + 1 ), range( D_out + 1 ) ) )
+            return ( t, )
 
     @classmethod
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
@@ -75,19 +116,36 @@ class Transition( ExponentialFam ):
             return ( 0, )
         return 0
 
+    @classmethod
+    def log_partitionGradient( cls, params=None, natParams=None ):
+        return ( 0, )
+
+    def _testLogPartitionGradient( self ):
+        # Don't need to test this
+        pass
+
     ##########################################################################
+
+    @classmethod
+    def generate( cls, D_in=3, D_out=2, size=1 ):
+        params = ( np.ones( ( D_in, D_out ) ) / ( D_in * D_out ), )
+        samples = cls.sample( params=params, size=size )
+        return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
     def sample( cls, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        if( params is not None ):
-            if( not isinstance( params, tuple ) ):
-                params = ( params, )
+        # if( params is not None ):
+        #     if( not isinstance( params, tuple ) ):
+        #         params = ( params, )
         assert ( params is None ) ^ ( natParams is None )
         ( pi, ) = params if params is not None else cls.natToStandard( *natParams )
         x = np.random.choice( pi.shape[ 0 ], size )
         y = np.array( [ np.random.choice( pi.shape[ 1 ], 1, p=pi[ _x ] ) for _x in x ] ).ravel()
-        return ( x, y )
+
+        ans = ( x, y )
+        cls.checkShape( ans )
+        return ans
 
     ##########################################################################
 

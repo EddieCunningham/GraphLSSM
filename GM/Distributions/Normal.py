@@ -38,9 +38,27 @@ class Normal( ExponentialFam ):
 
     @classmethod
     def dataN( cls, x ):
+        cls.checkShape( x )
         if( x.ndim == 2 ):
             return x.shape[ 0 ]
         return 1
+
+    @classmethod
+    def unpackSingleSample( cls, x ):
+        return x[ 0 ]
+
+    @classmethod
+    def sampleShapes( cls ):
+        # ( Sample #, dim )
+        return ( None, None )
+
+    def isampleShapes( cls ):
+        return ( None, self.mus.shape[ 0 ] )
+
+    @classmethod
+    def checkShape( cls, x ):
+        assert isinstance( x, np.ndarray )
+        assert x.ndim == 2 or x.ndim == 1
 
     ##########################################################################
 
@@ -93,17 +111,67 @@ class Normal( ExponentialFam ):
             return ( A1, A2, log_h )
         return A1 + A2 + log_h
 
+    @classmethod
+    def log_partitionGradient( cls, params=None, natParams=None ):
+        # Derivative w.r.t. natural params
+        assert ( params is None ) ^ ( natParams is None )
+        # n1, n2 = natParams if natParams is not None else cls.standardToNat( *params )
+        # n1Inv = np.linalg.inv( n1 )
+
+        # d1 = 0.25 * n1Inv @ np.outer( n2, n2 ) @ n1Inv - 0.5 * n1Inv
+        # d2 = -0.5 * n1Inv.dot( n2 )
+        # return d1, d2
+        mu, sigma = params if params is not None else cls.natToStandard( *natParams )
+        d1 = np.outer( mu, mu ) + sigma
+        d2 = mu
+        return d1, d2
+
+    def _testLogPartitionGradient( self ):
+
+        import autograd.numpy as anp
+        from autograd import jacobian
+
+        n1, n2 = self.natParams
+
+        def part( _n1 ):
+            _n1Inv = anp.linalg.inv( _n1 )
+            A = -0.25 * anp.dot( anp.dot( n2, _n1Inv ), n2 ) - 0.5 * anp.linalg.slogdet( -2 * _n1 )[ 1 ]
+            return A
+
+        d1 = jacobian( part )( n1 )
+
+        def part( _n2 ):
+            _n1Inv = anp.linalg.inv( n1 )
+            A = -0.25 * anp.dot( anp.dot( _n2, _n1Inv ), _n2 ) - 0.5 * anp.linalg.slogdet( -2 * n1 )[ 1 ]
+            return A
+
+        d2 = jacobian( part )( n2 )
+
+        dAdn1, dAdn2 = self.log_partitionGradient( natParams=self.natParams )
+
+        assert np.allclose( d1, dAdn1 )
+        assert np.allclose( d2, dAdn2 )
+
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None, D=None, size=1 ):
+    def generate( cls, D=2, size=1 ):
+        params = ( np.zeros( D ), np.eye( D ) )
+        samples = cls.sample( params=params, size=size )
+        return samples if size > 1 else cls.unpackSingleSample( samples )
+
+    @classmethod
+    def sample( cls, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        if( params is None and natParams is None ):
-            assert D is not None
-            params = ( np.zeros( D ), np.eye( D ) )
         assert ( params is None ) ^ ( natParams is None )
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
-        return multivariate_normal.rvs( mean=mu, cov=sigma, size=size )
+        ans = multivariate_normal.rvs( mean=mu, cov=sigma, size=size )
+        if( mu.size == 1 ):
+            ans = ans.reshape( ( -1, 1 ) )
+        if( size == 1 ):
+            ans = ans[ None ]
+        cls.checkShape( ans )
+        return ans
 
     ##########################################################################
 

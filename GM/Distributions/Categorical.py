@@ -27,7 +27,27 @@ class Categorical( ExponentialFam ):
 
     @classmethod
     def dataN( cls, x ):
-        return x.shape[ 0 ]
+        cls.checkShape( x )
+        if( x.ndim == 2 ):
+            return x.shape[ 0 ]
+        return 1
+
+    @classmethod
+    def unpackSingleSample( cls, x ):
+        return x[ 0 ]
+
+    @classmethod
+    def sampleShapes( cls ):
+        # ( Sample #, dim )
+        return ( None, None )
+
+    def isampleShapes( cls ):
+        return ( None, self.D )
+
+    @classmethod
+    def checkShape( cls, x ):
+        assert isinstance( x, np.ndarray )
+        assert x.ndim == 2 or x.ndim == 1
 
     ##########################################################################
 
@@ -66,23 +86,36 @@ class Categorical( ExponentialFam ):
             return ( 0, )
         return 0
 
+    @classmethod
+    def log_partitionGradient( cls, params=None, natParams=None ):
+        return ( 0, )
+
+    def _testLogPartitionGradient( self ):
+        # Don't need to test this
+        pass
+
     ##########################################################################
+
+    @classmethod
+    def generate( cls, D=2, size=1 ):
+        params = ( np.ones( D ) / D, )
+        samples = cls.sample( params=params, size=size )
+        return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
     def sample( cls, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        if( params is not None ):
-            if( not isinstance( params, tuple ) ):
-                params = ( params, )
+        # if( params is not None ):
+        #     if( not isinstance( params, tuple ) ):
+        #         params = ( params, )
         assert ( params is None ) ^ ( natParams is None )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
-        if( p.ndim > 1 ):
-            assert p.size == p.squeeze().size
-            p = p.squeeze()
-        # assert p.ndim == 1, p
+        # if( p.ndim > 1 ):
+        #     assert p.size == p.squeeze().size
+        #     p = p.squeeze()
         ans = np.random.choice( p.shape[ 0 ], size, p=p )
+        cls.checkShape( ans )
         return ans
-        return ans if size > 1 else ans[ 0 ]
 
     ##########################################################################
 

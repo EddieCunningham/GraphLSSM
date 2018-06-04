@@ -3,7 +3,10 @@ from GenModels.GM.Distributions import *
 from GenModels.GM.ModelPriors import *
 from GenModels.GM.States.StandardStates import *
 import matplotlib.pyplot as plt
-from GenModels.GM.Utility import fullyRavel
+from GenModels.GM.Utility import *
+
+from autograd import jacobian
+import autograd.numpy as anp
 
 # Just a note, was trying to use umap projection for geweke test, but
 # it fails all the time, even with very large burn in periods
@@ -13,6 +16,47 @@ from GenModels.GM.Utility import fullyRavel
 # import umap
 
 __all__ = [ 'exponentialFamilyTest' ]
+
+# np.random.seed( 2 )
+
+def partitionTest( dist, **kwargs ):
+    # Check the gradients
+    if( isinstance( dist, Regression ) ):
+        return
+    # This is a classmethod because the test has to be class specific.
+    # Can't use autograd with regular numpy or scipy
+    dist._testLogPartitionGradient()
+
+def scoreTest( dist, **kwargs ):
+    # v( x, n ) = dlog_P( x | n ) / dn = t( x ) - dlog_A( n ) / dn
+
+    return
+    # Fisher info matrix not implemented
+    x = dist.isample( **kwargs )
+    stepSize = 0.1
+
+    for _ in range( 50 ):
+
+        score = dist.iscore( x )
+
+        # This wont work, but fix it whenever fisherInfo gets implemented
+        fisher = np.linalg.inv( dist.ifisherInfo( x ) )
+
+        n = list( dist.natParams )
+        for i, s, f in enumerate( score, fisher ):
+            n[ i ] -= f @ s
+
+        dist.natParams = n
+
+    assert 0
+
+def statMGFTest( dist, **kwargs ):
+    pass
+
+def klDivergenceTest( dist, **kwargs ):
+    pass
+
+####################################################################################
 
 def paramNaturalTest( dist ):
     params = dist.params
@@ -29,6 +73,8 @@ def tensorParamNaturalTest( self ):
                 assert np.allclose( _p1, _p2 )
         else:
             assert np.allclose( p1, p2 )
+
+####################################################################################
 
 def likelihoodNoPartitionTestExpFam( dist, **kwargs ):
     x = dist.isample( size=10, **kwargs )
@@ -63,6 +109,8 @@ def likelihoodTestExpFam( dist, **kwargs ):
     ans2 = dist.ilog_likelihood( x )
     assert np.isclose( ans1, ans2 ), ans1 - ans2
 
+####################################################################################
+
 def paramTestExpFam( dist ):
     likelihoodTestExpFam( dist.prior )
 
@@ -78,6 +126,8 @@ def posteriorTestExpFam( dist, **kwargs ):
     ans2 = dist.ilog_posterior( x )
     assert np.isclose( ans1, ans2 ), ans1 - ans2
 
+####################################################################################
+
 def testsForDistWithoutPrior( dist, tensor=False, **kwargs ):
 
     if( tensor == False ):
@@ -88,18 +138,19 @@ def testsForDistWithoutPrior( dist, tensor=False, **kwargs ):
     likelihoodNoPartitionTestExpFam( dist, **kwargs )
     likelihoodTestExpFam( dist, **kwargs )
 
+    partitionTest( dist, **kwargs )
+    scoreTest( dist, **kwargs )
+    # statMGFTest( dist, **kwargs )
+    # klDivergenceTest( dist, **kwargs )
+
 def testForDistWithPrior( dist, tensor=False, **kwargs ):
 
-    if( tensor == False ):
-        paramNaturalTest( dist )
-    else:
-        tensorParamNaturalTest( dist )
-
-    likelihoodNoPartitionTestExpFam( dist, **kwargs )
-    likelihoodTestExpFam( dist, **kwargs )
+    testsForDistWithoutPrior( dist, tensor=tensor, **kwargs )
     paramTestExpFam( dist )
     jointTestExpFam( dist, **kwargs )
     posteriorTestExpFam( dist, **kwargs )
+
+####################################################################################
 
 def standardTests():
 
@@ -108,7 +159,7 @@ def standardTests():
     D2 = 7
 
     iwParams = {
-        'psi': InverseWishart.sample( D=D ),
+        'psi': InverseWishart.generate( D=D ),
         'nu': D
     }
 
@@ -120,13 +171,13 @@ def standardTests():
 
     mniwParams1 = {
         'M': np.random.random( ( D, D ) ),
-        'V': InverseWishart.sample( D=D )
+        'V': InverseWishart.generate( D=D )
     }
     mniwParams1.update( iwParams )
 
     mniwParams2 = {
         'M': np.random.random( ( D, D2 ) ),
-        'V': InverseWishart.sample( D=D2 )
+        'V': InverseWishart.generate( D=D2 )
     }
     mniwParams2.update( iwParams )
 
@@ -152,16 +203,18 @@ def standardTests():
     transDir = TransitionDirichletPrior( **transDirParams )
     trans = Transition( prior=transDir )
 
-    testsForDistWithoutPrior( iw )
-    testsForDistWithoutPrior( niw )
     testForDistWithPrior( norm )
-    testForDistWithPrior( reg )
-    testsForDistWithoutPrior( mniw )
-    testsForDistWithoutPrior( mniw2 )
+    testsForDistWithoutPrior( iw )
     testsForDistWithoutPrior( dirichlet )
+    testForDistWithPrior( reg )
+    testsForDistWithoutPrior( mniw2 )
+    testsForDistWithoutPrior( mniw )
     testForDistWithPrior( cat )
+    testsForDistWithoutPrior( niw )
     testsForDistWithoutPrior( transDir )
     testForDistWithPrior( trans )
+
+####################################################################################
 
 def stateAndModelTests():
     with np.errstate( all='raise' ):
@@ -183,17 +236,17 @@ def stateAndModelTests():
         LDSParams = {
             'mu_0': np.random.random( D_latent ),
             'kappa_0': np.random.random() * D_latent,
-            'psi_0': InverseWishart.sample( D=D_latent ),
+            'psi_0': InverseWishart.generate( D=D_latent ),
             'nu_0': D_latent,
 
             'M_trans': np.random.random( ( D_latent, D_latent ) ) * 0.1, # Keep this small so the x samples don't get too big
-            'V_trans': InverseWishart.sample( D=D_latent ),
-            'psi_trans': InverseWishart.sample( D=D_latent ),
+            'V_trans': InverseWishart.generate( D=D_latent ),
+            'psi_trans': InverseWishart.generate( D=D_latent ),
             'nu_trans': D_latent,
 
             'M_emiss': np.random.random( ( D_obs, D_latent ) ),
-            'V_emiss': InverseWishart.sample( D=D_latent ),
-            'psi_emiss': InverseWishart.sample( D=D_obs ),
+            'V_emiss': InverseWishart.generate( D=D_latent ),
+            'psi_emiss': InverseWishart.generate( D=D_obs ),
             'nu_emiss': D_obs
         }
 
@@ -208,6 +261,7 @@ def stateAndModelTests():
         testForDistWithPrior( hmmState, T=T )
         testForDistWithPrior( ldsState, T=T ) # I think this is correct, but it will most likely fail because the sequences of x that it samples have really large numbers
 
+####################################################################################
 
 def tensorTests():
 
@@ -218,10 +272,10 @@ def tensorTests():
 
     tnParams = {
         'M': np.random.random( ( D1, D2, D3, D4 ) ),
-        'covs': ( InverseWishart.sample( D=D1 ), \
-                  InverseWishart.sample( D=D2 ), \
-                  InverseWishart.sample( D=D3 ), \
-                  InverseWishart.sample( D=D4 ) )
+        'covs': ( InverseWishart.generate( D=D1 ), \
+                  InverseWishart.generate( D=D2 ), \
+                  InverseWishart.generate( D=D3 ), \
+                  InverseWishart.generate( D=D4 ) )
     }
 
     tn = TensorNormal( **tnParams )
@@ -231,8 +285,8 @@ def tensorTests():
     N = 5
 
     trParams = {
-        'A': TensorNormal.sample( Ds=tuple( [ D for _ in range( N ) ] ) )[ 0 ],
-        'sigma': InverseWishart.sample( D=D )
+        'A': TensorNormal.generate( Ds=tuple( [ D for _ in range( N ) ] ) )[ 0 ],
+        'sigma': InverseWishart.generate( D=D )
     }
 
     tr = TensorRegression( **trParams )
@@ -246,14 +300,16 @@ def tensorTests():
     tc = TensorCategorical( **tcParams )
     testsForDistWithoutPrior( tc, tensor=True )
 
+####################################################################################
+
 def tensorNormalMarginalizationTest():
 
     D = 4
     N = 3
 
     trParams = {
-        'A': TensorNormal.sample( Ds=tuple( [ D for _ in range( N ) ] ) )[ 0 ],
-        'sigma': InverseWishart.sample( D=D )
+        'A': TensorNormal.generate( Ds=tuple( [ D for _ in range( N ) ] ) )[ 0 ],
+        'sigma': InverseWishart.generate( D=D )
     }
 
     tr = TensorRegression( **trParams )
@@ -261,10 +317,12 @@ def tensorNormalMarginalizationTest():
     # from a tensor regression distribution and compare the plots to vectors
     # sampled from the marginalized tensor regression distribution
 
+####################################################################################
+
 def exponentialFamilyTest():
 
     standardTests()
-    tensorTests()
-    tensorNormalMarginalizationTest()
+    # tensorTests()
+    # tensorNormalMarginalizationTest()
     stateAndModelTests()
     print( 'Passed all of the exp fam tests!' )

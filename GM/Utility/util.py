@@ -1,8 +1,14 @@
 import numpy as np
 from scipy.linalg import lapack
 import copy
+import autograd
+from scipy.special import digamma
+from functools import partial
 
-__all__ = [ 'invPsd', 'is_outlier', 'fullyRavel', 'randomStep', 'deepCopy', 'stabilize' ]
+__all__ = [ 'multigammalnDerivative', 'invPsd', 'is_outlier', 'fullyRavel', 'randomStep', 'deepCopy', 'stabilize' ]
+
+def multigammalnDerivative( d, x ):
+    return digamma( x + ( 1 - np.arange( 1, d + 1 ) ) / 2 ).sum()
 
 def invPsd( A, AChol=None, returnChol=False ):
     # https://github.com/mattjj/pybasicbayes/blob/9c00244b2d6fd767549de6ab5d0436cec4e06818/pybasicbayes/util/general.py
@@ -70,14 +76,7 @@ def fullyRavel( x ):
         return y
     return recurse( y )
 
-    # return y
-
-
-    # if( isinstance( x, tuple ) or isinstance( x, list ) ):
-    #     x = np.hstack( [ _x.ravel() for _x in x ] )
-    # return x.ravel()
-
-def randomStep( x ):
+def randomStep( x, stepSize=1.0 ):
 
     y = copy.deepcopy( x )
     def recurse( y ):
@@ -85,18 +84,10 @@ def randomStep( x ):
             for _y in y:
                 recurse( _y )
         else:
-            y += np.random.standard_normal( size=y.shape )
+            y += np.random.standard_normal( size=y.shape ) * stepSize
     recurse( y )
 
     return y
 
 def deepCopy( x ):
     return copy.deepcopy( x )
-
-
-def random_combination(iterable, r):
-    "Random selection from itertools.combinations(iterable, r)"
-    pool = tuple(iterable)
-    n = len(pool)
-    indices = sorted(random.sample(xrange(n), r))
-    return tuple(pool[i] for i in indices)

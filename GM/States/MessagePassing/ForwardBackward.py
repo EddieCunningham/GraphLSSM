@@ -1,7 +1,7 @@
 from GenModels.GM.States.MessagePassing.FilterBase import MessagePasser
 import numpy as np
 from functools import reduce
-from GenModels.GM.Distributions import Normal
+from GenModels.GM.Distributions import Normal, Categorical, Transition
 
 __all__ = [ 'CategoricalForwardBackward',
             'GaussianForwardBackward',
@@ -17,11 +17,11 @@ class CategoricalForwardBackward( MessagePasser ):
         return self._K
 
     @property
-    def stateSize( self ):
+    def D_latent( self ):
         return self.K
 
     @property
-    def emissionSize( self ):
+    def D_obs( self ):
         return self._emissionSize
 
 
@@ -53,11 +53,20 @@ class CategoricalForwardBackward( MessagePasser ):
     def updateParams( self, initialDist, transDist, emissionDist, ys=None ):
 
         self.parameterCheck( initialDist, transDist, emissionDist, ys=ys )
-        self._K = transDist.shape[ 0 ]
 
-        self.pi0 = np.log( initialDist )
-        self.pi  = np.log( transDist )
-        self._L  = np.log( emissionDist )
+        nInit, = Categorical.standardToNat( initialDist )
+        nTrans, = Transition.standardToNat( transDist )
+        nEmiss, = Transition.standardToNat( emissionDist )
+
+        self.updateNatParams( nInit, nTrans, nEmiss, ys=ys )
+
+    def updateNatParams( self, log_initialDist, log_transDist, log_emissionDist, ys=None ):
+
+        self._K = log_transDist.shape[ 0 ]
+
+        self.pi0 = log_initialDist
+        self.pi  = log_transDist
+        self._L  = log_emissionDist
         self._emissionSize = self._L.shape[ 1 ]
 
         if( ys is not None ):
@@ -144,6 +153,9 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
         else:
             self._T = None
 
+    def updateNatParams( self, initialDist, transDist, mus, sigmas, ys=None ):
+        assert 0, 'Redo this class'
+
 #########################################################################################
 
 class SLDSForwardBackward( CategoricalForwardBackward ):
@@ -194,6 +206,9 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
         else:
             self._T = None
 
+    def updateNatParams( self, initialDist, transDist, mu0, sigma0, u, As, sigmas, ys=None ):
+        assert 0, 'Redo this class'
+
     ######################################################################
 
     def emissionProb( self, t, forward=False ):
@@ -209,10 +224,3 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
 
     def marginalBackward( self, firstBeta ):
         return np.logaddexp.reduce( firstBeta + self.forwardBaseCase() )
-
-#########################################################################################
-
-class FactorialForwardBackward( CategoricalForwardBackward ):
-    # This is literally just a normal HMM except with multiple state sequences.
-    # The emission probability is different tho
-    pass

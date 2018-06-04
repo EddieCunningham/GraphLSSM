@@ -132,6 +132,7 @@ class LDSMNIWPrior( ExponentialFam ):
         A, sigma, C, R, mu0, sigma0 = x
         # t9, t10, t11, t12, t13, t14, t15 = LDSState.log_partition( params=x, split=True )
         # Using these instead because LDSState.log_partition requires data ( should probably find way around that )
+        # This is a global factor!!! Should definitely make a seperate class for this
         t9, t10 = Regression.log_partition( params=( A, sigma ), split=True )
         t11, t12 = Regression.log_partition( params=( C, R ), split=True )
         t13, t14, t15 = Normal.log_partition( params=( mu0, sigma0 ), split=True )

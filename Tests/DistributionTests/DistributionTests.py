@@ -17,6 +17,7 @@ def marginalTest( dist, N=4 ):
     x = dist.isample( size=10 )
 
     dist.resample()
+
     marginal = dist.ilog_marginal( x )
 
     for _ in range( N ):
@@ -135,7 +136,7 @@ def distributionTest():
     D = 2
 
     iwParams = {
-        'psi': InverseWishart.sample( D=D ),
+        'psi': InverseWishart.generate( D=D ),
         'nu': D
     }
 
@@ -147,7 +148,7 @@ def distributionTest():
 
     mniwParams = {
         'M': np.random.random( ( D, D ) ),
-        'V': InverseWishart.sample( D=D )
+        'V': InverseWishart.generate( D=D )
     }
     mniwParams.update( iwParams )
 

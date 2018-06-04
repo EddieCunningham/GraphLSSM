@@ -104,7 +104,7 @@ class TensorNormal( TensorExponentialFam ):
         N = len( shapes )
         totalDim = np.prod( [ size ] + shapes )
 
-        X = Normal.sample( D=1, size=totalDim ).reshape( [ size ] + shapes )
+        X = Normal.generate( D=1, size=totalDim ).reshape( [ size ] + shapes )
 
         ind1 = string.ascii_letters[ : N ]
         ind2 = string.ascii_letters[ N : N * 2 ]

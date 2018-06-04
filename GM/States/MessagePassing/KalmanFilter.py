@@ -1,7 +1,7 @@
 from GenModels.GM.States.MessagePassing.FilterBase import MessagePasser
 import numpy as np
 from functools import reduce
-from GenModels.GM.Distributions import Normal
+from GenModels.GM.Distributions import Normal, Regression
 from GenModels.GM.Utility import *
 from toolz import curry
 
@@ -46,10 +46,6 @@ class KalmanFilter( MessagePasser ):
     @T.setter
     def T( self, val ):
         self._T = val
-
-    @property
-    def stateSize( self ):
-        return self.D_latent
 
     @property
     def D_latent( self ):
@@ -104,18 +100,16 @@ class KalmanFilter( MessagePasser ):
         else:
             assert ys.ndim == 3
 
-        assert self.C.shape[ 0 ] == ys.shape[ 2 ]
+        assert self.J1Emiss.shape[ 0 ] == ys.shape[ 2 ]
         if( u is not None ):
             assert ys.shape[ 1 ] == u.shape[ 0 ]
             assert u.shape[ 1 ] == self.D_latent
 
         self._T = ys.shape[ 1 ]
 
-        RInv = invPsd( self.R )
+        self.hy = ys.dot( self._hy ).sum( 0 )
 
         # P( y | x ) ~ N( -0.5 * Jy, hy )
-        self.hy = ys.dot( RInv @ self.C ).sum( 0 )
-        self.Jy = self.C.T @ RInv @ self.C
         partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
         self.log_Zy = partition( self.Jy, self.hy )
 
@@ -123,23 +117,30 @@ class KalmanFilter( MessagePasser ):
 
         self.parameterCheck( A, sigma, C, R, mu0, sigma0, u=u, ys=ys )
 
-        self._D_latent = A.shape[ 0 ]
-        self._D_obs = C.shape[ 0 ]
+        n1Trans, n2Trans, n3Trans = Regression.standardToNat( A, sigma )
+        n1Emiss, n2Emiss, n3Emiss = Regression.standardToNat( C, R )
+        n1Init, n2Init = Normal.standardToNat( mu0, sigma0 )
 
-        self._A = np.copy( A )
-        self._sigma = np.copy( sigma )
+        self.updateNatParams( n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=u, ys=ys )
 
-        sigInv = invPsd( sigma )
-        self.J11 = sigInv
-        self.J12 = -sigInv @ A
-        self.J22 = A.T @ sigInv @ A
-        self.log_Z = 0.5 * np.linalg.slogdet( sigma )[ 1 ]
+    def updateNatParams( self, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=None, ys=None ):
+        # This doesn't exactly use natural parameters, but uses J = -2 * n1 and h = n2
 
-        self._C = np.copy( C )
-        self._R = np.copy( R )
+        self._D_latent = n1Trans.shape[ 0 ]
+        self._D_obs = n1Emiss.shape[ 0 ]
 
-        self._mu0 = np.copy( mu0 )
-        self._sigma0 = np.copy( sigma0 )
+        self.J11 = -2 * n1Trans
+        self.J12 = -n3Trans.T
+        self.J22 = -2 * n2Trans
+        self.log_Z = 0.5 * np.linalg.slogdet( np.linalg.inv( self.J11 ) )[ 1 ]
+
+        self.J1Emiss = -2 * n1Emiss
+        self.Jy = -2 * n2Emiss
+        self._hy = n3Emiss.T
+
+        self.J0 = -2 * n1Init
+        self.h0 = n2Init
+        self.log_Z0 = Normal.log_partition( natParams=( -2 * self.J0, self.h0 ) )
 
         if( ys is not None ):
             self.preprocessData( ys, u=u )
@@ -150,6 +151,7 @@ class KalmanFilter( MessagePasser ):
     ######################################################################
 
     def transitionProb( self, t, t1, forward=False ):
+        # Generate P( x_t | x_t-1 ) as a function of [ x_t, x_t-1 ]
 
         J11 = self.J11
         J12 = self.J12
@@ -184,16 +186,24 @@ class KalmanFilter( MessagePasser ):
 
     ######################################################################
 
+    @classmethod
+    def alignOnUpper( cls, J, h, log_Z ):
+        return ( J, None, None, h, None, log_Z )
+
+    @classmethod
+    def alignOnLower( cls, J, h, log_Z ):
+        return ( None, None, J, None, h, log_Z )
+
+    ######################################################################
+
     def forwardStep( self, t, alpha, workspace=None, out=None ):
         # Write P( y_1:t-1, x_t-1 ) in terms of [ x_t, x_t-1 ]
-        J, h, log_Z = alpha
-        _alpha = ( None, None, J, None, h, log_Z )
+        _alpha = self.alignOnLower( *alpha )
         super( KalmanFilter, self ).forwardStep( t, _alpha, workspace=workspace, out=out )
 
     def backwardStep( self, t, beta, workspace=None, out=None ):
         # Write P( y_t+2:T | x_t+1 ) in terms of [ x_t+1, x_t ]
-        J, h, log_Z = beta
-        _beta = ( J, None, None, h, None, log_Z )
+        _beta = self.alignOnUpper( *beta )
         super( KalmanFilter, self ).backwardStep( t, _beta, workspace=workspace, out=out )
 
     ######################################################################
@@ -232,13 +242,8 @@ class KalmanFilter( MessagePasser ):
         # P( y_0 | x_0 )
         Jy, hy, log_Zy = self.emissionProb( 0, forward=True )
 
-        # P( x_0 )
-        J, h = Normal.standardToNat( self.mu0, self.sigma0 )
-        J /= -0.5
-        log_Z = Normal.log_partition( params=( self.mu0, self.sigma0 ) )
-
         # P( y_0, x_0 )
-        return self.multiplyTerms( ( ( J, h, log_Z ), ( Jy, hy, log_Zy ) ) )
+        return self.multiplyTerms( ( ( self.J0, self.h0, self.log_Z0 ), ( Jy, hy, log_Zy ) ) )
 
     def backwardBaseCase( self ):
         return [ np.zeros( ( self.D_latent, self.D_latent ) ), \
@@ -284,23 +289,32 @@ class SwitchingKalmanFilter( KalmanFilter ):
     def updateParams( self, z, As, sigmas, C, R, mu0, sigma0, u=None, ys=None ):
 
         self.parameterCheck( z, As, sigmas, C, R, mu0, sigma0, u=u, ys=ys )
-        self._D_latent = mu0.shape[ 0 ]
-        self._D_obs = C.shape[ 0 ]
+
+        n1Trans, n2Trans, n3Trans = zip( *[ Regression.standardToNat( A, sigma ) for A, sigma in zip( As, sigmas ) ] )
+        n1Emiss, n2Emiss, n3Emiss = Regression.standardToNat( C, R )
+        n1Init, n2Init = Normal.standardToNat( mu0, sigma0 )
+
+        self.updateNatParams( z, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=u, ys=ys )
+
+    def updateNatParams( self, z, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=None, ys=None ):
+
+        self._D_latent = n2Init.shape[ 0 ]
+        self._D_obs = n1Emiss.shape[ 0 ]
 
         self.z = z
 
-        # Save everything because memory probably isn't a big issue
-        self._As = As
-        self.J11s = [ invPsd( sigma ) for sigma in sigmas ]
-        self.J12s = [ -sigInv @ A for A, sigInv in zip( self.As, self.J11s ) ]
-        self.J22s = [ A.T @ sigInv @ A for A, sigInv in zip( self.As, self.J11s ) ]
-        self.log_Zs = np.array( [ 0.5 * np.linalg.slogdet( sigma )[ 1 ] for sigma in sigmas ] )
+        self.J11s = [ -2 * n for n in n1Trans ]
+        self.J12s = [ -n.T for n in n3Trans ]
+        self.J22s = [ -2 * n for n in n2Trans ]
+        self.log_Zs = [ 0.5 * np.linalg.slogdet( np.linalg.inv( J11 ) )[ 1 ] for J11 in self.J11s ]
 
-        self._C = C
-        self._R = R
+        self.J1Emiss = -2 * n1Emiss
+        self.Jy = -2 * n2Emiss
+        self._hy = n3Emiss.T
 
-        self._mu0 = mu0
-        self._sigma0 = sigma0
+        self.J0 = -2 * n1Init
+        self.h0 = n2Init
+        self.log_Z0 = Normal.log_partition( natParams=( -2 * self.J0, self.h0 ) )
 
         if( ys is not None ):
             self.preprocessData( ys, u=u )
