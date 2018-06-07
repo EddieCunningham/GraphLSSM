@@ -1,12 +1,27 @@
 from GenModels.GM.States.MessagePassing.FilterBase import MessagePasser
 import numpy as np
 from functools import reduce
+from collections import namedtuple
 from GenModels.GM.Distributions import Normal, Regression
-from GenModels.GM.Utility import *
 from toolz import curry
 
 __all__ = [ 'KalmanFilter',
             'SwitchingKalmanFilter' ]
+
+class MaskedData():
+
+    def __init__( self, data, mask, shape=None ):
+        assert isinstance( data, np.ndarray )
+        assert isinstance( mask, np.ndarray )
+        assert mask.dtype == bool
+        self.mask = mask
+        self.data = data
+        self.shape = shape if shape is not None else self.data.shape[ -1 ]
+
+    def __getitem__( self, key ):
+        if( np.any( self.mask[ key ] ) ):
+            return np.zeros( self.shape )
+        return self.data[ key ]
 
 class KalmanFilter( MessagePasser ):
     # Kalman filter with only 1 set of parameters
@@ -36,6 +51,16 @@ class KalmanFilter( MessagePasser ):
     @property
     def sigma0( self ):
         return self._sigma0
+
+    ######################################################################
+
+    @property
+    def u( self ):
+        return self._u
+
+    @u.setter
+    def u( self, val ):
+        self._u = MaskedData( *val )
 
     ######################################################################
 
@@ -92,7 +117,6 @@ class KalmanFilter( MessagePasser ):
 
     def preprocessData( self, ys, u=None ):
         ys is not None
-        self.u = u
 
         ys = np.array( ys )
         if( ys.ndim == 2 ):
@@ -101,9 +125,6 @@ class KalmanFilter( MessagePasser ):
             assert ys.ndim == 3
 
         assert self.J1Emiss.shape[ 0 ] == ys.shape[ 2 ]
-        if( u is not None ):
-            assert ys.shape[ 1 ] == u.shape[ 0 ]
-            assert u.shape[ 1 ] == self.D_latent
 
         self._T = ys.shape[ 1 ]
 
@@ -146,7 +167,14 @@ class KalmanFilter( MessagePasser ):
             self.preprocessData( ys, u=u )
         else:
             self._T = None
-            self.u = None
+
+        if( u is not None ):
+            assert u.shape == ( self.T, self.D_latent )
+            uMask = np.isnan( u )
+            self.u = ( u, uMask, None )
+        else:
+            uMask = np.zeros( self.T, dtype=bool )
+            self.u = ( None, uMask, self.D_latent )
 
     ######################################################################
 
@@ -157,15 +185,10 @@ class KalmanFilter( MessagePasser ):
         J12 = self.J12
         J22 = self.J22
 
-        if( self.u is not None ):
-            u = self.u[ t ]
-            h1 = J11.dot( u )
-            h2 = J12.T.dot( u )
-            log_Z = 0.5 * u.dot( h1 ) + self.log_Z
-        else:
-            h1 = np.zeros( J11.shape[ 0 ] )
-            h2 = np.zeros_like( h1 )
-            log_Z = self.log_Z
+        u = self.u[ t ]
+        h1 = J11.dot( u )
+        h2 = J12.T.dot( u )
+        log_Z = 0.5 * u.dot( h1 ) + self.log_Z
 
         return J11, J12, J22, h1, h2, log_Z
 

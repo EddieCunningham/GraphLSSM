@@ -1,6 +1,6 @@
 from GenModels.GM.States.StandardStates.StateBase import StateBase
 from GenModels.GM.States.MessagePassing.ForwardBackward import *
-from GenModels.GM.Distributions import Categorical, Transition
+from GenModels.GM.Distributions import Categorical, Transition, Dirichlet, TransitionDirichletPrior
 import numpy as np
 
 __all__ = [ 'HMMState' ]
@@ -232,9 +232,9 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
     @classmethod
     def generate( cls, measurements=4, T=5, D_latent=3, D_obs=2, size=1 ):
-        initialDist = np.ones( D_latent ) / D_latent
-        transDist = np.ones( ( D_latent, D_latent ) ) / D_latent
-        emissionDist = np.ones( ( D_latent, D_obs ) ) / D_obs
+        initialDist = Dirichlet.generate( D=D_latent )
+        transDist = TransitionDirichletPrior.generate( D_in=D_latent, D_out=D_latent )
+        emissionDist = TransitionDirichletPrior.generate( D_in=D_latent, D_out=D_obs )
 
         dummy = cls( initialDist, transDist, emissionDist )
         return dummy.isample( measurements=measurements, T=T, size=size )

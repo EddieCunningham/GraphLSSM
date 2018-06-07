@@ -1,8 +1,8 @@
 from GenModels.GM.States.StandardStates.StateBase import StateBase
 from GenModels.GM.States.MessagePassing.KalmanFilter import *
-from GenModels.GM.Distributions import Normal, Regression, InverseWishart
-from GenModels.GM.Utility import *
+from GenModels.GM.Distributions import Normal, Regression, InverseWishart, MatrixNormalInverseWishart, NormalInverseWishart
 import numpy as np
+from GenModels.GM.Utility import stabilize as stab
 
 # IMPORTANT NOTE
 # There is a really weird heisenbug somewhere in either here or Regression.py.
@@ -20,13 +20,7 @@ class LDSState( KalmanFilter, StateBase ):
 
     priorClass = None
 
-    def __init__( self, A=None, sigma=None, C=None, R=None, mu0=None, sigma0=None, prior=None, hypers=None, _stabilize=False ):
-
-        # This flag will force A to have eigenvalues between 0 and 1.  This is so
-        # that the sequences that are sampled don't quickly go off to infinity
-        if( A is not None and _stabilize ):
-            A = stabilize( A )
-
+    def __init__( self, A=None, sigma=None, C=None, R=None, mu0=None, sigma0=None, prior=None, hypers=None ):
         definePrior()
         super( LDSState, self ).__init__( A, sigma, C, R, mu0, sigma0, prior=prior, hypers=hypers )
 
@@ -65,8 +59,8 @@ class LDSState( KalmanFilter, StateBase ):
         return self.u
 
     @classmethod
-    def dataN( cls, x, conditionOnY=False ):
-        cls.checkShape( x, conditionOnY=conditionOnY )
+    def dataN( cls, x, conditionOnY=False, checkY=False ):
+        cls.checkShape( x, conditionOnY=conditionOnY, checkY=checkY )
         if( conditionOnY == False ):
             x, y = x
         if( isinstance( x, tuple ) ):
@@ -74,23 +68,23 @@ class LDSState( KalmanFilter, StateBase ):
         return 1
 
     @classmethod
-    def sequenceLength( cls, x, conditionOnY=False ):
-        cls.checkShape( x, conditionOnY=conditionOnY )
+    def sequenceLength( cls, x, conditionOnY=False, checkY=False ):
+        cls.checkShape( x, conditionOnY=conditionOnY, checkY=checkY )
 
-        if( cls.dataN( x, conditionOnY=conditionOnY ) == 1 ):
+        if( cls.dataN( x, conditionOnY=conditionOnY, checkY=checkY ) == 1 ):
             if( conditionOnY == False ):
                 xs, ys = x
                 return xs.shape[ 0 ]
-            return x.shape[ 0 ]
 
-        if( conditionOnY == False ):
-            xs, ys = x
-            return xs[ 0 ].shape[ 1 ]
-
-        return x[ 0 ].shape[ 1 ]
+            if( checkY == False ):
+                return x.shape[ 0 ]
+            else:
+                return x.shape[ 1 ]
+        else:
+            assert 0, 'Only pass in a single example'
 
     @classmethod
-    def unpackSingleSample( cls, x, conditionOnY=False ):
+    def unpackSingleSample( cls, x, conditionOnY=False, checkY=False ):
         if( conditionOnY == False ):
             xs, ys = x
             return xs[ 0 ], ys[ 0 ]
@@ -110,18 +104,32 @@ class LDSState( KalmanFilter, StateBase ):
         return ( None, self.T, self.D_latent )
 
     @classmethod
-    def checkShape( cls, x, conditionOnY=False ):
+    def checkShape( cls, x, conditionOnY=False, checkY=False ):
         if( conditionOnY == False ):
             xs, ys = x
             if( isinstance( xs, tuple ) ):
                 assert isinstance( ys, tuple )
                 assert len( xs ) == len( ys )
                 for x, y in zip( xs, ys ):
-                    assert x.shape == y.shape
+                    assert x.shape[ 0 ] == y.shape[ 1 ]
             else:
-                assert x.shape == y.shape
+                assert isinstance( xs, np.ndarray )
+                assert isinstance( ys, np.ndarray )
+                assert xs.ndim == 2
+                assert ys.ndim == 2
+                assert xs[ 0 ].shape == ys[ 1 ].shape
         else:
-            assert x.ndim == 3 or x.ndim == 2
+            if( isinstance( x, tuple ) ):
+                for _x in x:
+                    if( checkY == True ):
+                        assert _x.ndim == 3 or _x.ndim == 2
+                    else:
+                        assert _x.ndim == 2
+            else:
+                if( checkY == True ):
+                    assert x.ndim == 3 or x.ndim == 2
+                else:
+                    assert x.ndim == 2
 
     ######################################################################
 
@@ -162,14 +170,12 @@ class LDSState( KalmanFilter, StateBase ):
     @classmethod
     def sufficientStats( cls, x, constParams=None ):
         # Compute T( x ).  This is for when we're treating this class as P( x, y | Ѳ )
-        assert cls.dataN( x ) == 1 # For now
-
         ( x, ys ) = x
         u = constParams
         xIn  = x[ :-1 ]
         xOut = x[ 1: ] - u if u is not None else x[ 1: ]
         t1, t2, t3 = Regression.sufficientStats( x=( xIn, xOut ), constParams=constParams )
-        t4, t5, t6 = Regression.sufficientStats( x=( x, ys[ 0 ] ), constParams=constParams )
+        t4, t5, t6 = Regression.sufficientStats( x=( x, ys ), constParams=constParams )
         t7, t8 = Normal.sufficientStats( x=x[ 0 ], constParams=constParams )
         return t1, t2, t3, t4, t5, t6, t7, t8
 
@@ -244,8 +250,8 @@ class LDSState( KalmanFilter, StateBase ):
         #                           ∝ P( y_t+1 | x_t+1 ) * P( x_t+1 | x_t ) * P( y_t+2:T | x_t+1 )
 
         if( beta is None ):
-            _J =  self.J11              if t > 0 else self.J0
-            _h = -self.J12.dot( prevX ) if t > 0 else self.h0
+            _J =  self.J11                                                if t > 0 else self.J0
+            _h = -self.J12.dot( prevX ) + self.J11.dot( self.u[ t - 1 ] ) if t > 0 else self.h0
             return _J, _h
 
         J, h, _ = beta
@@ -334,3 +340,46 @@ class LDSState( KalmanFilter, StateBase ):
             t3 += Ext_xt
 
         return t1, t2, t3
+
+    ######################################################################
+
+    def fullSample( self, measurements=1, T=None, size=1, stabilize=False ):
+
+        if( stabilize == True ):
+
+            J11 = np.copy( self.J11 )
+            J12 = np.copy( self.J12 )
+            J22 = np.copy( self.J22 )
+
+            A, sigma = Regression.natToStandard( -0.5 * self.J11, -0.5 * self.J22, -self.J12.T )
+            A = stab( A )
+
+            n1, n2, n3 = Regression.standardToNat( A, sigma )
+
+            self.J11 = -2 * n1
+            self.J12 = -n3.T
+            self.J22 = -2 * n2
+            self.log_Z = 0.5 * np.linalg.slogdet( np.linalg.inv( self.J11 ) )[ 1 ]
+
+        ans = super( LDSState, self ).fullSample( measurements=measurements, T=T, size=size )
+
+        if( stabilize == True ):
+
+            self.J11 = J11
+            self.J12 = J12
+            self.J22 = J22
+            self.log_Z = 0.5 * np.linalg.slogdet( np.linalg.inv( self.J11 ) )[ 1 ]
+
+        return ans
+
+    ######################################################################
+
+    @classmethod
+    def generate( cls, measurements=4, T=5, D_latent=3, D_obs=2, size=1, stabilize=False ):
+
+        A, sigma = MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_latent )
+        C, R = MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_obs )
+        mu0, sigma0 = NormalInverseWishart.generate( D=D_latent )
+
+        dummy = LDSState( A=A, sigma=sigma, C=C, R=R, mu0=mu0, sigma0=sigma0 )
+        return dummy.isample( measurements=measurements, T=T, size=size, stabilize=stabilize )

@@ -69,38 +69,38 @@ class MessagePasser( ABC ):
 
     ######################################################################
 
-    def forwardStep( self, t, alpha, workspace=None, out=None ):
+    def forwardStep( self, t, alpha ):
 
         # Generate P( x_t | x_t-1 ) as a function of [ x_t, x_t-1 ]
         transition = self.transitionProb( t - 1, t, forward=True )
 
         # Compute P( x_t | x_t-1 ) * P( y_1:t-1, x_t-1 ) = P( y_1:t-1, x_t, x_t-1 )
-        self.multiplyTerms( ( transition, alpha ), out=workspace )
+        workspace = self.multiplyTerms( ( transition, alpha ) )
 
         # Integrate out x_t-1 = P( y_1:t-1, x_t )
-        self.integrate( workspace, forward=True, out=out )
+        out = self.integrate( workspace, forward=True )
 
         # Generate P( y_t | x_t ) as a function of x_t
         emission = self.emissionProb( t, forward=True )
 
         # Compute P( y_t | x_t ) * P( y_1:t-1, x_t ) = P( y_1:t, x_t )
-        self.multiplyTerms( ( emission, out ), out=out )
+        return self.multiplyTerms( ( emission, out ) )
 
     ######################################################################
 
-    def backwardStep( self, t, beta, workspace=None, out=None ):
+    def backwardStep( self, t, beta ):
 
         # Generate P( x_t+1 | x_t ) as a function of [ x_t+1, x_t ]
         transition = self.transitionProb( t, t + 1, forward=False )
 
-        # Generate P( y_t+1 | x_t+1 ) as a function of [ x_t+1, x_t ]
+        # Generate P( y_t+1 | x_t+1 ) as a function of x_t+1
         emission = self.emissionProb( t + 1, forward=False )
 
         # Compute P( y_t+1 | x_t+1 ) * P( x_t+1 | x_t ) * P( y_t+2:T | x_t+1 ) = P( y_t+1:T, x_t+1 | x_t )
-        self.multiplyTerms( ( emission, transition, beta ), out=workspace )
+        workspace = self.multiplyTerms( ( emission, transition, beta ) )
 
         # Integrate out x_t+1 = P( y_t+1:T | x_t )
-        self.integrate( workspace, forward=False, out=out )
+        return self.integrate( workspace, forward=False )
 
     ######################################################################
 
@@ -112,7 +112,7 @@ class MessagePasser( ABC ):
         alphas[ 0 ] = self.forwardBaseCase()
 
         for t in range( 1, self.T ):
-            self.forwardStep( t, alphas[ t - 1 ], workspace=workspace, out=alphas[ t ] )
+            alphas[ t ] = self.forwardStep( t, alphas[ t - 1 ] )
 
         return alphas
 
@@ -126,9 +126,21 @@ class MessagePasser( ABC ):
         betas[ -1 ] = self.backwardBaseCase()
 
         for t in reversed( range( self.T - 1 ) ):
-            self.backwardStep( t, betas[ t + 1 ], workspace=workspace, out=betas[ t ] )
+            betas[ t ] = self.backwardStep( t, betas[ t + 1 ] )
 
         return betas
+
+    ######################################################################
+
+    def childParentJoint( self, t, alphas, betas ):
+        # P( x_t+1, x_t, Y ) = P( y_t+1 | x_t+1 ) * P( y_t+2:T | x_t+1 ) * P( x_t+1 | x_t ) * P( x_t, y_1:t )
+
+        emission = self.emissionProb( t + 1, forward=False )
+        transition = self.transitionProb( t, t + 1, forward=False )
+        alpha = alphas[ t ]
+        beta = betas[ t + 1 ]
+
+        return self.multiplyTerms( ( emission, transition, alpha, beta ) )
 
     ######################################################################
 

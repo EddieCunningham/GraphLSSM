@@ -9,21 +9,18 @@ __all__ = [ 'marginalizationTest' ]
 
 def testCategoricalForwardBackward():
 
-    T = 1000
-    K = 20
-    obsDim = 40
-    D = 4
+    T = 400
+    D_latent = 22
+    D_obs = 31
+    measurements = 2
 
     mp = CategoricalForwardBackward()
 
-    onesK = np.ones( K )
-    onesObs = np.ones( obsDim )
+    initialDist = Dirichlet.generate( D=D_latent )
+    transDist = TransitionDirichletPrior.generate( D_in=D_latent, D_out=D_latent )
+    emissionDist = TransitionDirichletPrior.generate( D_in=D_latent, D_out=D_obs )
 
-    ( p, ) = Dirichlet.sample( params=onesObs )
-    ys = [ Categorical.sample( params=p, size=T ) for _ in range( D ) ]
-    ( initialDist, ) = Dirichlet.sample( params=onesK )
-    transDist = Dirichlet.sample( params=onesK, size=K )
-    emissionDist = Dirichlet.sample( params=onesObs, size=K )
+    ys = [ Categorical.generate( D=D_obs, size=T ) for _ in range( measurements ) ]
 
     start = time.time()
     mp.updateParams( initialDist, transDist, emissionDist, ys )
@@ -42,7 +39,75 @@ def testCategoricalForwardBackward():
         comp = np.logaddexp.reduce( a + b )
         assert np.isclose( comp, marginal ), comp - marginal
 
+    for t in range( T - 1 ):
+        joint = mp.childParentJoint( t, alphas, betas )
+
+        parentProb = np.logaddexp.reduce( joint, axis=1 )
+        childProb = np.logaddexp.reduce( joint, axis=0 )
+
+        trueParent = alphas[ t ] + betas[ t ]
+        trueChild = alphas[ t + 1 ] + betas[ t + 1 ]
+
+        assert np.allclose( parentProb, trueParent )
+        assert np.allclose( childProb, trueChild )
+
     print( 'Passed the categorical forward backward marginal test!\n\n' )
+
+def testCategoricalForwardBackwardWithKnownStates():
+
+    T = 50
+    K = 3
+    obsDim = 2
+    D = 3
+
+    mp = CategoricalForwardBackward()
+
+    initialDist = Dirichlet.generate( D=K )
+    transDist = TransitionDirichletPrior.generate( D_in=K, D_out=K )
+    emissionDist = TransitionDirichletPrior.generate( D_in=K, D_out=obsDim )
+
+    ys = [ Categorical.generate( D=obsDim, size=T ) for _ in range( D ) ]
+
+    start = time.time()
+    mp.updateParams( initialDist, transDist, emissionDist, ys )
+    end = time.time()
+    print( 'Preprocess: ', end - start )
+
+    kS = int( np.random.random() * T / 10 ) + 2
+    knownStates = np.random.choice( T, kS )
+    knownStates = np.vstack( ( knownStates, np.random.choice( K, knownStates.shape[ 0 ] ) ) ).reshape( ( 2, -1 ) ).T
+
+    # Sort and remove duplicates
+    knownStates = np.array( sorted( knownStates, key=lambda x: x[ 0 ] ) )
+    knownStates = knownStates[ 1: ][ ~( np.diff( knownStates[ :, 0 ] ) == 0 ) ]
+
+    # print( knownStates )
+
+    start = time.time()
+    alphas = mp.forwardFilter( knownLatentStates=knownStates )
+    betas = mp.backwardFilter( knownLatentStates=knownStates )
+    end = time.time()
+    print( 'Both filters: ', end - start )
+
+    marginal = np.logaddexp.reduce( alphas[ -1 ] )
+    for a, b in zip( alphas, betas ):
+        # print( a + b )
+        comp = np.logaddexp.reduce( a + b )
+        assert np.isclose( comp, marginal ), comp - marginal
+
+    for t in range( T - 1 ):
+        joint = mp.childParentJoint( t, alphas, betas )
+
+        parentProb = np.logaddexp.reduce( joint, axis=1 )
+        childProb = np.logaddexp.reduce( joint, axis=0 )
+
+        trueParent = alphas[ t ] + betas[ t ]
+        trueChild = alphas[ t + 1 ] + betas[ t + 1 ]
+
+        assert np.allclose( parentProb, trueParent )
+        assert np.allclose( childProb, trueChild )
+
+    print( 'Passed the categorical forward backward marginal test with known states!\n\n' )
 
 ######################################################################
 
@@ -55,26 +120,29 @@ def testGaussianForwardBackward():
 
     mp = GaussianForwardBackward()
 
-    onesK = np.ones( K )
+    initialDist = Dirichlet.generate( D=K )
+    transDist = TransitionDirichletPrior.generate( D_in=K, D_out=K )
 
-    ( p, ) = Dirichlet.sample( params=onesK )
+    mus, sigmas = list( zip( *[ NormalInverseWishart.generate( D=obsDim ) for _ in range( K ) ] ) )
+
     ys = np.random.random( ( D, T, obsDim ) )
-    ( initialDist, ) = Dirichlet.sample( params=onesK )
-    transDist = Dirichlet.sample( params=onesK, size=K )
-
-    muSigmas = [ NormalInverseWishart.sample( D=obsDim ) for _ in range( K ) ]
-    mus = [ mu for mu, sigma in muSigmas ]
-    sigmas = [ sigma for mu, sigma in muSigmas ]
 
     start = time.time()
     mp.updateParams( initialDist, transDist, mus, sigmas, ys )
     end = time.time()
     print( 'Preprocess: ', end - start )
 
+    kS = int( np.random.random() * T / 10 ) + 2
+    knownStates = np.random.choice( T, kS )
+    knownStates = np.vstack( ( knownStates, np.random.choice( K, knownStates.shape[ 0 ] ) ) ).reshape( ( 2, -1 ) ).T
+
+    # Sort and remove duplicates
+    knownStates = np.array( sorted( knownStates, key=lambda x: x[ 0 ] ) )
+    knownStates = knownStates[ 1: ][ ~( np.diff( knownStates[ :, 0 ] ) == 0 ) ]
 
     start = time.time()
-    alphas = mp.forwardFilter()
-    betas = mp.backwardFilter()
+    alphas = mp.forwardFilter( knownLatentStates=knownStates )
+    betas = mp.backwardFilter( knownLatentStates=knownStates )
     end = time.time()
     print( 'Both filters: ', end - start )
 
@@ -84,11 +152,27 @@ def testGaussianForwardBackward():
         comp = np.logaddexp.reduce( a + b )
         assert np.isclose( comp, marginal ), comp - marginal
 
+    for t in range( T - 1 ):
+        joint = mp.childParentJoint( t, alphas, betas )
+
+        parentProb = np.logaddexp.reduce( joint, axis=1 )
+        childProb = np.logaddexp.reduce( joint, axis=0 )
+
+        trueParent = alphas[ t ] + betas[ t ]
+        trueChild = alphas[ t + 1 ] + betas[ t + 1 ]
+
+        assert np.allclose( parentProb, trueParent )
+        assert np.allclose( childProb, trueChild )
+
     print( 'Passed the gaussian forward backward marginal test!\n\n' )
+
+    assert 0
 
 ######################################################################
 
 def testSLDSForwardBackward():
+
+    assert 0
 
     T = 100
     D_latent = 20
@@ -97,15 +181,13 @@ def testSLDSForwardBackward():
 
     mp = SLDSForwardBackward()
 
-    onesK = np.ones( D_latent )
-
-    ( p, ) = Dirichlet.sample( params=onesK )
     ys = np.random.random( ( D, T, D_latent ) )
-    ( initialDist, ) = Dirichlet.sample( params=onesK )
-    transDist = Dirichlet.sample( params=onesK, size=D_latent )
+
+    initialDist = Dirichlet.generate( D=K )
+    transDist = TransitionDirichletPrior.generate( D_in=K, D_out=K )
+    mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
 
     u = np.random.random( ( T, D_latent ) )
-    mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
 
     ASigmas = [ MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_latent ) for _ in range( D_latent ) ]
     As = [ A for A, sigma in ASigmas ]
@@ -135,23 +217,26 @@ def testSLDSForwardBackward():
 
 def testKalmanFilter():
 
-    T = 1000
+    T = 100
     D_latent = 7
     D_obs = 3
     D = 4
 
     mp = KalmanFilter()
 
+    A, sigma = MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_latent )
+    C, R = MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_obs )
+    mu0, sigma0 = NormalInverseWishart.generate( D=D_latent )
+
     u = np.random.random( ( T, D_latent ) )
-    A, sigma = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_latent )
+    nBad = int( np.random.random() * T )
+    badMask = np.random.choice( T, nBad )
+    u[ badMask ] = np.nan
 
-    C, R = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_obs )
-    ys = [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ]
-
-    mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
+    ys = np.array( [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ] )
 
     start = time.time()
-    mp.updateParams( A, sigma, C, R, mu0, sigma0, u, ys )
+    mp.updateParams( A=A, sigma=sigma, C=C, R=R, mu0=mu0, sigma0=sigma0, u=u, ys=ys )
     end = time.time()
     print( 'Preprocess: ', end - start )
 
@@ -166,7 +251,7 @@ def testKalmanFilter():
 
     marginal = Normal.log_partition( natParams=( -0.5*Ja, ha ) ) - log_Za
 
-    last=None
+    last = None
     for a, b in zip( alphas, betas ):
         Ja, ha, log_Za = a
         Jb, hb, log_Zb = b
@@ -239,8 +324,9 @@ def testSwitchingKalmanFilter():
 def marginalizationTest():
 
     testCategoricalForwardBackward()
+    testCategoricalForwardBackwardWithKnownStates()
     testGaussianForwardBackward()
     testSLDSForwardBackward()
     testKalmanFilter()
     testSwitchingKalmanFilter()
-
+    assert 0

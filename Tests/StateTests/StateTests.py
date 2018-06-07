@@ -42,35 +42,36 @@ def testLDSBasic():
 
     with np.errstate( all='raise' ), scipy.special.errstate( all='raise' ):
 
-        T = 100
-        D_latent = 7
-        D_obs = 3
-        D = 4
+        T = 40
+        D_latent = 3
+        D_obs = 2
+        meas = 4
+        size = 5
+
+        A, sigma = MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_latent )
+        C, R = MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_obs )
+        mu0, sigma0 = NormalInverseWishart.generate( D=D_latent )
+
+        state = LDSState( A=A, sigma=sigma, C=C, R=R, mu0=mu0, sigma0=sigma0 )
 
         u = np.random.random( ( T, D_latent ) )
-        A, sigma = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_latent )
+        ys = LDSState.generate( measurements=meas, T=T, D_latent=D_latent, D_obs=D_obs, size=size, stabilize=True )
 
-        C, R = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_obs )
-        ys = [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ]
-
-        mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
-
-        state = LDSState( A, sigma, C, R, mu0, sigma0 )
-
-        xNoCond  , ysNoCond  = state.isample( u=u, T=T ) # This can get unstable for long sequence lengths
+        xNoCond  , ysNoCond  = state.isample( u=u, T=T, measurements=meas, size=size, stabilize=True )
         xForward , yForward  = state.isample( u=u, ys=ys )
         xBackward, yBackward = state.isample( u=u, ys=ys, forwardFilter=False )
 
-        state.ilog_likelihood( ( xNoCond, ysNoCond[ 0 ][ None ] ), u=u )
-        state.ilog_likelihood( ( xForward, yForward[ 0 ][ None ] ), u=u, forwardFilter=False )
-        state.ilog_likelihood( ( xBackward, yBackward[ 0 ][ None ] ), u=u )
+        state.ilog_likelihood( ( xNoCond, ysNoCond ), u=u )
+        state.ilog_likelihood( ( xForward, yForward ), u=u, forwardFilter=False )
+        state.ilog_likelihood( ( xBackward, yBackward ), u=u )
 
-        state.ilog_likelihood( ( xNoCond, ysNoCond[ 0 ][ None ] ), u=u, conditionOnY=True )
-        state.ilog_likelihood( ( xForward, yForward[ 0 ][ None ] ), u=u, forwardFilter=False, conditionOnY=True )
-        state.ilog_likelihood( ( xBackward, yBackward[ 0 ][ None ] ), u=u, conditionOnY=True )
+        state.ilog_likelihood( ( xNoCond, ysNoCond ), u=u, conditionOnY=True )
+        state.ilog_likelihood( ( xForward, yForward ), u=u, forwardFilter=False, conditionOnY=True )
+        state.ilog_likelihood( ( xBackward, yBackward ), u=u, conditionOnY=True )
 
         print( 'Done with basic LDS state test' )
 
 def stateTests():
     testHMMBasic()
     testLDSBasic()
+    assert 0

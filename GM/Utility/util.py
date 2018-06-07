@@ -7,8 +7,12 @@ from functools import partial
 
 __all__ = [ 'multigammalnDerivative', 'invPsd', 'is_outlier', 'fullyRavel', 'randomStep', 'deepCopy', 'stabilize' ]
 
+##########################################################################
+
 def multigammalnDerivative( d, x ):
     return digamma( x + ( 1 - np.arange( 1, d + 1 ) ) / 2 ).sum()
+
+##########################################################################
 
 def invPsd( A, AChol=None, returnChol=False ):
     # https://github.com/mattjj/pybasicbayes/blob/9c00244b2d6fd767549de6ab5d0436cec4e06818/pybasicbayes/util/general.py
@@ -19,11 +23,15 @@ def invPsd( A, AChol=None, returnChol=False ):
         return Ainv, L
     return Ainv
 
+##########################################################################
+
 def stabilize( A ):
     w, v = np.linalg.eig( A )
-    badIndices = ( w < 0 ) | ( w > 1 )
-    w[ badIndices ] = np.random.random( badIndices.sum() )
+    badIndices = ( w < 0.1 ) | ( w > 0.9 )
+    w[ badIndices ] = np.random.random( badIndices.sum() ) * 0.9 + 0.05
     return v @ np.diag( w ) @ np.linalg.inv( v )
+
+##########################################################################
 
 def is_outlier(points, thresh=3.5):
     """
@@ -63,6 +71,8 @@ def is_outlier(points, thresh=3.5):
 
     return modified_z_score > thresh
 
+##########################################################################
+
 def fullyRavel( x ):
 
 
@@ -76,6 +86,8 @@ def fullyRavel( x ):
         return y
     return recurse( y )
 
+##########################################################################
+
 def randomStep( x, stepSize=1.0 ):
 
     y = copy.deepcopy( x )
@@ -88,6 +100,8 @@ def randomStep( x, stepSize=1.0 ):
     recurse( y )
 
     return y
+
+##########################################################################
 
 def deepCopy( x ):
     return copy.deepcopy( x )

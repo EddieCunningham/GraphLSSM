@@ -171,7 +171,7 @@ class StateBase( ExponentialFam ):
 
     ######################################################################
 
-    def fullSample( self, measurements=1, T=None, size=1 ):
+    def fullSample( self, measurements=1, T=None, size=1, **kwargs ):
         # Sample x and y
 
         assert T is not None
@@ -207,7 +207,7 @@ class StateBase( ExponentialFam ):
 
         if( ys is not None ):
             return self.conditionedSample( ys=ys, forwardFilter=forwardFilter, **kwargs )
-        return self.fullSample( measurements=measurements, T=T, size=size )
+        return self.fullSample( measurements=measurements, T=T, size=size, **kwargs )
 
     ######################################################################
 

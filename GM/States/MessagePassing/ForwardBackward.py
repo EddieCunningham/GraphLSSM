@@ -24,7 +24,6 @@ class CategoricalForwardBackward( MessagePasser ):
     def D_obs( self ):
         return self._emissionSize
 
-
     def genFilterProbs( self ):
         return np.empty( ( self.T, self.K ) )
 
@@ -47,7 +46,8 @@ class CategoricalForwardBackward( MessagePasser ):
 
         # L refers to P( y | x ) where y is the passed in data point.
         # This is different to _L which is a matrix over all possible
-        # ys and all possible xs
+        # ys and all possible xs.
+        # Here compute prod_{ m in measurements }P( y_m | x )
         self.L = self._L.T[ ys ].sum( axis=0 )
 
     def updateParams( self, initialDist, transDist, emissionDist, ys=None ):
@@ -77,39 +77,121 @@ class CategoricalForwardBackward( MessagePasser ):
     ######################################################################
 
     def transitionProb( self, t, t1, forward=False ):
-        return self.pi
+
+        ans = self.pi
+
+        if( self.chainCuts is not None ):
+            t1Index = self.chainCuts[ :, 0 ] == t1
+
+            if( np.any( t1Index ) ):
+
+                # Here, only 1 col of transitions is possible
+                assert self.chainCuts[ t1Index ].size == 2
+                ans = np.empty_like( self.pi )
+                ans[ : ] = np.NINF
+                x1 = self.chainCuts[ t1Index, 1 ]
+                ans[ :, x1 ] = 0.0
+
+        return ans if forward == True else ans.T
 
     ######################################################################
 
     def emissionProb( self, t, forward=False ):
-        return self.L[ t ]
+        return self.L[ t ] if forward == True else np.broadcast_to( self.L[ t ], ( self.K, self.K ) )
 
     ######################################################################
 
-    def multiplyTerms( self, terms, out=None ):
-        # Using functools.reduce instead of np.add.reduce so that numpy
-        # can broadcast and add emission vector to transition matrix
-        if( out is not None ):
-            reduce( lambda x, y: np.add( x, y, out=out ), terms )
-        else:
-            return reduce( lambda x, y: np.add( x, y ), terms )
+    def forwardStep( self, t, alpha ):
+        # Write P( y_1:t-1, x_t-1 ) in terms of [ x_t, x_t-1 ]
+        _alpha = np.broadcast_to( alpha, ( self.K, self.K ) )
+        return super( CategoricalForwardBackward, self ).forwardStep( t, _alpha )
+
+    def backwardStep( self, t, beta ):
+        # Write P( y_t+2:T | x_t+1 ) in terms of [ x_t+1, x_t ]
+        _beta = np.broadcast_to( beta, ( self.K, self.K ) )
+        return super( CategoricalForwardBackward, self ).backwardStep( t, _beta )
 
     ######################################################################
 
-    def integrate( self, integrand, forward=True, out=None ):
+    def multiplyTerms( self, terms ):
+        return np.add.reduce( terms  )
+
+    ######################################################################
+
+    def integrate( self, integrand, forward=True ):
         # Add the values in log space
-        if( out is not None ):
-            np.logaddexp.reduce( integrand, axis=0, out=out )
-        else:
-            return np.logaddexp.reduce( integrand, axis=0 )
+        return np.logaddexp.reduce( integrand, axis=1 )
 
     ######################################################################
 
     def forwardBaseCase( self ):
-        return self.pi0 + self.emissionProb( 0 )
+
+        ans = self.pi0
+
+        if( self.chainCuts is not None ):
+            if( self.chainCuts[ 0, 0 ] == 0 ):
+                ans = np.empty_like( self.pi0 )
+                ans[ : ] = np.NINF
+                x = self.chainCuts[ 0, 1 ]
+                ans[ x ] = 0.0
+
+        return ans + self.emissionProb( 0, forward=True )
 
     def backwardBaseCase( self ):
         return np.zeros( self.K )
+
+    ######################################################################
+
+    def forwardFilter( self, knownLatentStates=None ):
+
+        if( knownLatentStates is not None ):
+
+            assert np.abs( knownLatentStates - knownLatentStates.astype( int ) ).sum() == 0.0
+            knownLatentStates = knownLatentStates.astype( int )
+
+            if( knownLatentStates.size == 0 ):
+                self.chainCuts = None
+            else:
+
+                # Assert that knownLatentStates is sorted
+                assert np.any( np.diff( knownLatentStates[ :, 0 ] ) <= 0 ) == False
+
+                # Mark that we are cutting the markov chain at these indices
+                self.chainCuts = knownLatentStates
+        else:
+            self.chainCuts = None
+
+        return super( CategoricalForwardBackward, self ).forwardFilter()
+
+    ######################################################################
+
+    def backwardFilter( self, knownLatentStates=None ):
+        if( knownLatentStates is not None ):
+
+            assert np.abs( knownLatentStates - knownLatentStates.astype( int ) ).sum() == 0.0
+            knownLatentStates = knownLatentStates.astype( int )
+
+            # Assert that knownLatentStates is sorted
+            assert np.any( np.diff( knownLatentStates[ :, 0 ] ) <= 0 ) == False
+
+            # Mark that we are cutting the markov chain at these indices
+            self.chainCuts = knownLatentStates
+        else:
+            self.chainCuts = None
+
+        return super( CategoricalForwardBackward, self ).backwardFilter()
+
+    ######################################################################
+
+    def childParentJoint( self, t, alphas, betas ):
+        # P( x_t+1, x_t, Y ) = P( y_t+1 | x_t+1 ) * P( y_t+2:T | x_t+1 ) * P( x_t+1 | x_t ) * P( x_t, y_1:t )
+
+        emission = self.emissionProb( t + 1, forward=False )
+        transition = self.transitionProb( t, t + 1, forward=False )
+        alpha = np.broadcast_to( alphas[ t ], ( self.K, self.K ) ).T
+        beta = np.broadcast_to( betas[ t + 1 ], ( self.K, self.K ) )
+
+        return self.multiplyTerms( ( emission, transition, alpha, beta ) )
 
 #########################################################################################
 
@@ -132,29 +214,33 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
         self.L = np.zeros( ( self.T, self.K ) )
 
         for k in range( self.K ):
-            mu = self.mus[ k ]
-            sigma = self.sigmas[ k ]
 
-            self.L[ :, k ] = Normal.log_likelihood( ys, params=( mu, sigma ) ).sum( axis=0 )
+            n1, n2 = self.natMuSigmas[ k ]
+
+            self.L[ :, k ] = Normal.log_likelihood( ys, natParams=( n1, n2 ) ).sum( axis=0 )
 
     def updateParams( self, initialDist, transDist, mus, sigmas, ys=None ):
 
         self.parameterCheck( initialDist, transDist, mus, sigmas, ys )
-        self._K = transDist.shape[ 0 ]
 
-        self.mus = mus
-        self.sigmas = sigmas
+        nInit, = Categorical.standardToNat( initialDist )
+        nTrans, = Transition.standardToNat( transDist )
+        nEmiss = [ Normal.standardToNat( mu, sigma ) for mu, sigma in zip( mus, sigmas ) ]
 
-        self.pi0 = np.log( initialDist )
-        self.pi  = np.log( transDist )
+        self.updateNatParams( nInit, nTrans, nEmiss, ys=ys )
+
+    def updateNatParams( self, log_initialDist, log_transDist, natMuSigmas, ys=None ):
+
+        self._K = log_transDist.shape[ 0 ]
+
+        self.pi0 = log_initialDist
+        self.pi  = log_transDist
+        self.natMuSigmas = natMuSigmas
 
         if( ys is not None ):
             self.preprocessData( ys )
         else:
             self._T = None
-
-    def updateNatParams( self, initialDist, transDist, mus, sigmas, ys=None ):
-        assert 0, 'Redo this class'
 
 #########################################################################################
 
