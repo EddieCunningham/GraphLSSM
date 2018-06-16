@@ -11,18 +11,18 @@ __all__ = [ 'modelTests' ]
 def HMMModelTest():
 
     with np.errstate( under='ignore', divide='raise', over='raise', invalid='raise' ):
+
+        # np.random.seed( 2 )
+
         T = 10
-        # K = 20
-        # obsDim = 40
-        # D = 4
+        D_latent = 5
+        D_obs = 4
+        meas = 2
+        size = 3
 
-        K = 3
-        obsDim = 2
-        D = 10
-
-        alpha_0 = np.random.random( K ) + 1
-        alpha = np.random.random( ( K, K ) ) + 1
-        L = np.random.random( ( K, obsDim ) ) + 1
+        alpha_0 = np.random.random( D_latent ) + 1
+        alpha = np.random.random( ( D_latent, D_latent ) ) + 1
+        L = np.random.random( ( D_latent, D_obs ) ) + 1
 
         params = {
             'alpha_0': alpha_0,
@@ -32,15 +32,31 @@ def HMMModelTest():
 
         hmm = HMMModel( **params )
 
-        ys = HMMModel.generate( T=T, latentSize=K, obsSize=obsDim, size=D )
-        print( ys )
-        assert 0
+        _, ys = HMMModel.generate( T=T, latentSize=D_latent, obsSize=D_obs, measurements=meas, size=size )
 
-        hmm.fit( ys=ys, method='gibbs', verbose=False )
-        hmm.predict( T=10 )
+        hmm.fit( ys=ys, method='gibbs', nIters=500, burnIn=200, skip=2, verbose=True )
+        marginal = hmm.state.ilog_marginal( ys )
+        print( '\nParams' )
+        for p in hmm.state.params:
+            print( np.round( p, decimals=3 ) )
+            print()
+        print( 'MARGNIAL', marginal )
 
-        hmm.fit( ys=ys, method='cavi', verbose=False )
-        hmm.predict( T=10 )
+        hmm.fit( ys=ys, method='EM', nIters=1000, monitorMarginal=10, verbose=False )
+        marginal = hmm.state.ilog_marginal( ys )
+        print( '\nParams' )
+        for p in hmm.state.params:
+            print( np.round( p, decimals=3 ) )
+            print()
+        print( 'MARGNIAL', marginal )
+
+        hmm.fit( ys=ys, method='cavi', maxIters=1000, verbose=False )
+        elbo = hmm.state.iELBO( ys )
+        print( '\nPrior mean field params' )
+        for p in hmm.state.prior.mfParams:
+            print( np.round( p, decimals=3 ) )
+            print()
+        print( 'ELBO', elbo )
 
 ######################################################################
 

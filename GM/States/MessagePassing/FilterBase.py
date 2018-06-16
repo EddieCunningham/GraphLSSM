@@ -36,10 +36,6 @@ class MessagePasser( ABC ):
         pass
 
     @abstractmethod
-    def genWorkspace( self ):
-        pass
-
-    @abstractmethod
     def updateParams( self, ys ):
         pass
 
@@ -65,6 +61,11 @@ class MessagePasser( ABC ):
 
     @abstractmethod
     def backwardBaseCase( self ):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def log_marginalFromAlphaBeta( cls, alpha, beta ):
         pass
 
     ######################################################################
@@ -106,8 +107,6 @@ class MessagePasser( ABC ):
 
     def forwardFilter( self ):
 
-        workspace = self.genWorkspace()
-
         alphas = self.genFilterProbs()
         alphas[ 0 ] = self.forwardBaseCase()
 
@@ -119,8 +118,6 @@ class MessagePasser( ABC ):
     ######################################################################
 
     def backwardFilter( self ):
-
-        workspace = self.genWorkspace()
 
         betas = self.genFilterProbs()
         betas[ -1 ] = self.backwardBaseCase()

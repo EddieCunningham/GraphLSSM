@@ -136,8 +136,8 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         return A1 + A2 + A3 + A4 + A5
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None ):
-        # Derivative w.r.t. natural params
+    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+        # Derivative w.r.t. natural params. Also the expected sufficient stat
         assert ( params is None ) ^ ( natParams is None )
         n1, n2, n3, n4, n5 = natParams if natParams is not None else cls.standardToNat( *params )
 
@@ -154,7 +154,7 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         d4 = -0.5 * np.linalg.slogdet( P )[ 1 ] + 0.5 * multigammalnDerivative( d=n, x=k ) + n / 2 * np.log( 2 )
         d5 = -n / 2 * np.log( 2 * np.pi )
 
-        return d1, d2, d3, d4, d5
+        return ( d1, d2, d3, d4, d5 ) if split == False else ( ( d1, d2, d3 ), ( d4, d5 ) )
 
     def _testLogPartitionGradient( self ):
 

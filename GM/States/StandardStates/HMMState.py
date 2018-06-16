@@ -13,20 +13,11 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
     priorClass = None
 
-    def __init__( self, initialDist=None, transDist=None, emissionDist=None, prior=None, hypers=None ):
+    def __init__( self, initialDist=None, transDist=None, emissionDist=None, prior=None, hypers=None, paramCheck=True ):
         definePrior()
+        # If we're doing variational inference, turn the parameter check off
+        self.paramCheck = paramCheck
         super( HMMState, self ).__init__( initialDist, transDist, emissionDist, prior=prior, hypers=hypers )
-
-    @property
-    def params( self ):
-        return self._params
-
-    @params.setter
-    def params( self, val ):
-        self.standardChanged = True
-        initialDist, transDist, emissionDist = val
-        self.updateParams( initialDist, transDist, emissionDist )
-        self._params = val
 
     ######################################################################
 
@@ -74,6 +65,18 @@ class HMMState( CategoricalForwardBackward, StateBase ):
             assert 0, 'Only pass in a single example'
 
     @classmethod
+    def nMeasurements( cls, x ):
+        cls.checkShape( x )
+
+        if( cls.dataN( x ) == 1 ):
+            xs, ys = x
+            if( ys.ndim == xs.ndim ):
+                return 1
+            return ys.shape[ 0 ]
+        else:
+            assert 0, 'Only pass in a single example'
+
+    @classmethod
     def unpackSingleSample( cls, x, conditionOnY=False, checkY=False ):
         if( conditionOnY == False ):
             xs, ys = x
@@ -90,11 +93,12 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
     def isampleShapes( cls, conditionOnY=False ):
         if( conditionOnY == False ):
-            return ( ( None, self.T ), ( None, self.T, None ) )
+            return ( ( None, self.T ), ( None, None, self.T ) )
         return ( None, self.T )
 
     @classmethod
     def checkShape( cls, x, conditionOnY=False, checkY=False ):
+
         if( conditionOnY == False ):
             xs, ys = x
             if( isinstance( xs, tuple ) ):
@@ -106,8 +110,8 @@ class HMMState( CategoricalForwardBackward, StateBase ):
                 assert isinstance( xs, np.ndarray )
                 assert isinstance( ys, np.ndarray )
                 assert xs.ndim == 1
-                assert ys.ndim == 1
-                assert xs[ 0 ].shape == ys[ 1 ].shape
+                assert ys.ndim == 2
+                assert xs.shape[ 0 ] == ys.shape[ 1 ]
         else:
             if( isinstance( x, tuple ) ):
                 for _x in x:
@@ -142,23 +146,39 @@ class HMMState( CategoricalForwardBackward, StateBase ):
     @classmethod
     def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
+
+        if( cls.dataN( x ) > 1 ):
+            t = [ 0, 0, 0 ]
+            for j, ( _x, _ys ) in enumerate( zip( *x ) ):
+                s = cls.sufficientStats( ( _x, _ys ), constParams=constParams )
+                for i in range( 3 ):
+                    t[ i ] += s[ i ]
+            return tuple( t )
+
+        assert cls.dataN( x ) == 1
         ( x, ys ) = x
         assert constParams is not None
-        K, L = constParams
-        t1, = Categorical.sufficientStats( [ x[ 0 ] ] , constParams=K )
-        t2, = Transition.sufficientStats( ( x[ :-1 ], x[ 1: ] ), constParams=( K, K ) )
-        t3, = Transition.sufficientStats( ( x, ys.squeeze() ), constParams=( K, L ) )
+        D_latent, D_obs = constParams
+        t1, = Categorical.sufficientStats( [ x[ 0 ] ] , constParams=D_latent )
+        t2, = Transition.sufficientStats( ( x[ :-1 ], x[ 1: ] ), constParams=( D_latent, D_latent ) )
+        t3, = Transition.sufficientStats( ( x, ys ), constParams=( D_latent, D_obs ) )
         return t1, t2, t3
 
     @classmethod
     def log_partition( cls, x=None, params=None, natParams=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( natParams is None )
-        initialDist, transDist, emissionDist = params if params is not None else cls.natToStandard( *natParams )
-        A1 = Categorical.log_partition( params=( initialDist, ), split=split )
-        A2 = Transition.log_partition( params=( transDist, ), split=split )
-        A3 = Transition.log_partition( params=( emissionDist, ), split=split )
-        return A1 + A2 + A3
+        if( split ):
+            return ( 0, 0, 0 )
+        return 0
+
+    @classmethod
+    def log_partitionGradient( cls, params=None, natParams=None , split=False):
+        return ( 0, 0, 0 ) if split == False else ( ( 0, 0, 0 ), ( 0, ) )
+
+    def _testLogPartitionGradient( self ):
+        # Don't need to test this
+        pass
 
     ######################################################################
 
@@ -195,7 +215,6 @@ class HMMState( CategoricalForwardBackward, StateBase ):
     def forwardArgs( self, t, beta, prevX ):
         # P( x_t+1 | x_t, y_t+1:T ) = P( y_t+1 | x_t+1 ) * P( x_t+1 | x_t ) * P( y_t+2:T | x_t+1 ) / P( y_t+1:T | x_t )
         #                           ∝ P( y_t+1 | x_t+1 ) * P( x_t+1 | x_t ) * P( y_t+2:T | x_t+1 )
-
         if( beta is None ):
             return ( self.pi[ prevX ], ) if t > 0 else ( self.pi0, )
 
@@ -209,24 +228,79 @@ class HMMState( CategoricalForwardBackward, StateBase ):
     def backwardArgs( self, t, alpha, prevX ):
         # P( x_t | x_t+1, y_1:t ) = P( x_t+1 | x_t ) * P( x_t, y_1:t ) / sum_{ z_t }[ P( x_t+1 | z_t ) * P( z_t, y_1:t ) ]
         #                         ∝ P( x_t+1 | x_t ) * P( x_t, y_1:t )
-
         unNormalized = alpha + self.pi[ prevX ] if t < self.T - 1 else alpha
         normalized = unNormalized - np.logaddexp.reduce( unNormalized )
         return ( normalized, )
 
     ######################################################################
 
-    def conditionedExpectedSufficientStats( self, alphas, betas ):
+    def isample( self, ys=None, knownLatentStates=None, measurements=1, T=None, forwardFilter=True, size=1 ):
+        if( ys is not None ):
+            preprocessKwargs = {}
+            filterKwargs = { 'knownLatentStates': knownLatentStates }
+            return self.conditionedSample( ys=ys, forwardFilter=forwardFilter, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
+        return self.fullSample( measurements=measurements, T=T, size=size )
 
-        t = np.zeros_like( self.pi )
+    def ilog_likelihood( self, x, forwardFilter=True, conditionOnY=False, expFam=False,  preprocessKwargs={}, filterKwargs={}, knownLatentStates=None, seperateLikelihoods=False ):
+        filterKwargs.update( { 'knownLatentStates': knownLatentStates } )
+        return super( HMMState, self ).ilog_likelihood( x=x, forwardFilter=forwardFilter, conditionOnY=conditionOnY, expFam=expFam, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs, seperateLikelihoods=seperateLikelihoods )
 
-        for t in range( self.T - 1 ):
-            L = self.emissionProb( t + 1 )
-            pi = self.transitionProb( t, t + 1 )
-            jointPi = self.multiplyTerms( [ L, pi, alphas[ t ], betas[ t + 1 ] ] )
-            t += jointPi
+    ######################################################################
 
-        return t
+    def conditionedExpectedSufficientStats( self, ys, alphas, betas, forMStep=False ):
+
+        totalMarginal = 0
+
+        smoothedSumsForY = np.zeros( ( self.D_latent, self.D_obs ) )
+        smoothedSumsForY[ : ] = np.NINF
+
+        jointSum = np.zeros( ( self.D_latent, self.D_latent ) )
+        jointSum[ : ] = np.NINF
+
+        smoothSum = np.zeros( self.D_latent )
+        smoothSum[ : ] = np.NINF
+
+        smoothSumNotLast = np.zeros( self.D_latent )
+        smoothSumNotLast[ : ] = np.NINF
+
+        smoothSum0 = np.zeros( self.D_latent )
+        smoothSum0[ : ] = np.NINF
+
+        totalObs = 0
+
+        for i, ( _ys, _alphas, _betas ) in enumerate( zip( ys, alphas, betas ) ):
+
+            # Compute P( Y )
+            marginal = np.logaddexp.reduce( _alphas[ 0 ] + _betas[ 0 ] )
+            totalMarginal += marginal
+
+            # P( X | Y )
+            smoothed = _alphas + _betas - marginal
+
+            # sum_{ t in T }E[ P( x_t | Y ) ]
+            smoothSum0 = np.logaddexp( smoothSum0, smoothed[ 0 ] )
+            smoothSumNotLast = np.logaddexp( smoothSumNotLast, np.logaddexp.reduce( smoothed[ :-1 ], axis=0 ) )
+            smoothSum = np.logaddexp( smoothSum, np.logaddexp.reduce( smoothed, axis=0 ) )
+
+            # sum_{ t=1:T-1 }E[ P( x_t, x_t+1 | Y ) ]
+            T = smoothed.shape[ 0 ]
+            joint = np.logaddexp.reduce( [ self.childParentJoint( t, _alphas, _betas, ys=_ys ) - marginal for t in range( T - 1 ) ] )
+            jointSum = np.logaddexp( jointSum, joint )
+
+            # sum_{ t=1:T }E[ P( x_t, y_t | Y ) ]
+            for _ys_ in _ys:
+                for i in range( self.D_latent ):
+                    for j in range( self.D_obs ):
+                        relevantVals = smoothed[ :, i ][ _ys_ == j ]
+                        if( relevantVals.size > 0 ):
+                            smoothedSumsForY[ i, j ] = np.logaddexp( smoothedSumsForY[ i, j ], np.logaddexp.reduce( relevantVals, axis=0 ) )
+
+            totalObs += len( _ys )
+
+        if( forMStep ):
+            return smoothSum0, jointSum, smoothSumNotLast, smoothedSumsForY, smoothSum, totalObs
+
+        return np.exp( smoothSum0 ), np.exp( jointSum ), np.exp( smoothedSumsForY )
 
     ######################################################################
 
@@ -238,3 +312,17 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
         dummy = cls( initialDist, transDist, emissionDist )
         return dummy.isample( measurements=measurements, T=T, size=size )
+
+    ######################################################################
+
+    def MStep( self, ys, alphas, betas ):
+
+        N = self.dataN( ys, conditionOnY=True, checkY=True )
+
+        smoothSum0, jointSum, smoothSumNotLast, smoothedSumsForY, smoothSum, totalObs = self.conditionedExpectedSufficientStats( ys, alphas, betas, forMStep=True )
+
+        pi0 = smoothSum0 - np.log( N )
+        pi = jointSum - smoothSumNotLast[ :, None ]
+        L =  smoothedSumsForY - smoothSum[ :, None ] - np.log( totalObs ) + np.log( len( ys ) )
+
+        return pi0, pi, L

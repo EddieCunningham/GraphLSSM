@@ -36,7 +36,8 @@ def testCategoricalForwardBackward():
     marginal = np.logaddexp.reduce( alphas[ -1 ] )
 
     for a, b in zip( alphas, betas ):
-        comp = np.logaddexp.reduce( a + b )
+        # comp = np.logaddexp.reduce( a + b )
+        comp = mp.log_marginalFromAlphaBeta( a, b )
         assert np.isclose( comp, marginal ), comp - marginal
 
     for t in range( T - 1 ):
@@ -92,7 +93,8 @@ def testCategoricalForwardBackwardWithKnownStates():
     marginal = np.logaddexp.reduce( alphas[ -1 ] )
     for a, b in zip( alphas, betas ):
         # print( a + b )
-        comp = np.logaddexp.reduce( a + b )
+        # comp = np.logaddexp.reduce( a + b )
+        comp = mp.log_marginalFromAlphaBeta( a, b )
         assert np.isclose( comp, marginal ), comp - marginal
 
     for t in range( T - 1 ):
@@ -149,7 +151,8 @@ def testGaussianForwardBackward():
     marginal = np.logaddexp.reduce( alphas[ -1 ] )
 
     for a, b in zip( alphas, betas ):
-        comp = np.logaddexp.reduce( a + b )
+        # comp = np.logaddexp.reduce( a + b )
+        comp = mp.log_marginalFromAlphaBeta( a, b )
         assert np.isclose( comp, marginal ), comp - marginal
 
     for t in range( T - 1 ):
@@ -166,35 +169,30 @@ def testGaussianForwardBackward():
 
     print( 'Passed the gaussian forward backward marginal test!\n\n' )
 
-    assert 0
-
 ######################################################################
 
 def testSLDSForwardBackward():
 
-    assert 0
-
     T = 100
     D_latent = 20
     D_obs = 8
-    D = 4
 
     mp = SLDSForwardBackward()
 
-    ys = np.random.random( ( D, T, D_latent ) )
+    xs = np.random.random( ( T, D_latent ) )
 
-    initialDist = Dirichlet.generate( D=K )
-    transDist = TransitionDirichletPrior.generate( D_in=K, D_out=K )
-    mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
+    initialDist = Dirichlet.generate( D=D_latent )
+    transDist = TransitionDirichletPrior.generate( D_in=D_latent, D_out=D_latent )
+    mu0, sigma0 = NormalInverseWishart.generate( D=D_latent )
 
     u = np.random.random( ( T, D_latent ) )
 
-    ASigmas = [ MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_latent ) for _ in range( D_latent ) ]
+    ASigmas = [ MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_latent ) for _ in range( D_latent ) ]
     As = [ A for A, sigma in ASigmas ]
     sigmas = [ sigma for A, sigma in ASigmas ]
 
     start = time.time()
-    mp.updateParams( initialDist, transDist, mu0, sigma0, u, As, sigmas, ys )
+    mp.updateParams( initialDist, transDist, mu0, sigma0, u, As, sigmas, xs )
     end = time.time()
     print( 'Preprocess: ', end - start )
 
@@ -205,11 +203,24 @@ def testSLDSForwardBackward():
     end = time.time()
     print( 'Both filters: ', end - start )
 
+    marginal = np.logaddexp.reduce( alphas[ -1 ] )
 
-    forwardMarginal = mp.marginalForward( alphas[ -1 ] )
-    backwardMarginal = mp.marginalBackward( betas[ 0 ] )
+    for a, b in zip( alphas, betas ):
+        # comp = np.logaddexp.reduce( a + b )
+        comp = mp.log_marginalFromAlphaBeta( a, b )
+        assert np.isclose( comp, marginal ), comp - marginal
 
-    assert np.isclose( forwardMarginal, backwardMarginal )
+    for t in range( T - 1 ):
+        joint = mp.childParentJoint( t, alphas, betas )
+
+        parentProb = np.logaddexp.reduce( joint, axis=1 )
+        childProb = np.logaddexp.reduce( joint, axis=0 )
+
+        trueParent = alphas[ t ] + betas[ t ]
+        trueChild = alphas[ t + 1 ] + betas[ t + 1 ]
+
+        assert np.allclose( parentProb, trueParent )
+        assert np.allclose( childProb, trueChild )
 
     print( 'Passed the SLDS forward backward marginal test!\n\n' )
 
@@ -251,17 +262,32 @@ def testKalmanFilter():
 
     marginal = Normal.log_partition( natParams=( -0.5*Ja, ha ) ) - log_Za
 
-    last = None
     for a, b in zip( alphas, betas ):
         Ja, ha, log_Za = a
         Jb, hb, log_Zb = b
 
-        comp = Normal.log_partition( natParams=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
+        # _marginal = Normal.log_partition( natParams=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
+        _marginal = mp.log_marginalFromAlphaBeta( a, b )
 
-        if( last is None ):
-            last = comp
+        assert np.isclose( _marginal, marginal ), _marginal - marginal
 
-        assert np.isclose( comp, marginal ), comp - marginal
+    for t in range( T - 1 ):
+
+        joint = mp.childParentJoint( t, alphas, betas )
+
+        _JsParent, _hsParent, _logZsParent = Normal.marginalizeX1( *joint )
+        _JsChild, _hsChild, _logZsChild = Normal.marginalizeX2( *joint )
+
+        JsParent, hsParent, logZsParent = np.add( alphas[ t ], betas[ t ] )
+        JsChild, hsChild, logZsChild = np.add( alphas[ t + 1 ], betas[ t + 1 ] )
+
+        assert np.allclose( _JsParent, JsParent )
+        assert np.allclose( _hsParent, hsParent )
+        assert np.allclose( _logZsParent, logZsParent )
+
+        assert np.allclose( _JsChild, JsChild )
+        assert np.allclose( _hsChild, hsChild )
+        assert np.allclose( _logZsChild, logZsChild )
 
     print( 'Passed the kalman filter marginal test!\n\n' )
 
@@ -277,18 +303,13 @@ def testSwitchingKalmanFilter():
 
     mp = SwitchingKalmanFilter()
 
+    As, sigmas = list( zip( *[ MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_latent ) for _ in range( K ) ] ) )
+    C, R = MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_obs )
+    mu0, sigma0 = NormalInverseWishart.generate( D=D_latent )
+
+    z = Categorical.generate( D=K, size=T )
     u = np.random.random( ( T, D_latent ) )
-    ASigmas = [ MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_latent ) for _ in range( K ) ]
-    As = [ A for A, sigma in ASigmas ]
-    sigmas = [ sigma for A, sigma in ASigmas ]
-
-    C, R = MatrixNormalInverseWishart.sample( D_in=D_latent, D_out=D_obs )
-    ys = [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ]
-
-    ( p, ) = Dirichlet.sample( params=np.ones( K ) )
-    z = Categorical.sample( params=p, size=T )
-
-    mu0, sigma0 = NormalInverseWishart.sample( D=D_latent )
+    ys = np.array( [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ] )
 
     start = time.time()
     mp.updateParams( z, As, sigmas, C, R, mu0, sigma0, u, ys )
@@ -306,16 +327,32 @@ def testSwitchingKalmanFilter():
 
     marginal = Normal.log_partition( natParams=( -0.5*Ja, ha ) ) - log_Za
 
-    last=None
     for a, b in zip( alphas, betas ):
         Ja, ha, log_Za = a
         Jb, hb, log_Zb = b
 
-        comp = Normal.log_partition( natParams=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
-        if( last is None ):
-            last = comp
+        # comp = Normal.log_partition( natParams=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
+        comp = mp.log_marginalFromAlphaBeta( a, b )
 
         assert np.isclose( comp, marginal ), comp - marginal
+
+    for t in range( T - 1 ):
+
+        joint = mp.childParentJoint( t, alphas, betas )
+
+        _JsParent, _hsParent, _logZsParent = Normal.marginalizeX1( *joint )
+        _JsChild, _hsChild, _logZsChild = Normal.marginalizeX2( *joint )
+
+        JsParent, hsParent, logZsParent = np.add( alphas[ t ], betas[ t ] )
+        JsChild, hsChild, logZsChild = np.add( alphas[ t + 1 ], betas[ t + 1 ] )
+
+        assert np.allclose( _JsParent, JsParent )
+        assert np.allclose( _hsParent, hsParent )
+        assert np.allclose( _logZsParent, logZsParent )
+
+        assert np.allclose( _JsChild, JsChild )
+        assert np.allclose( _hsChild, hsChild )
+        assert np.allclose( _logZsChild, logZsChild )
 
     print( 'Passed the switching kalman filter marginal test!\n\n' )
 
@@ -329,4 +366,3 @@ def marginalizationTest():
     testSLDSForwardBackward()
     testKalmanFilter()
     testSwitchingKalmanFilter()
-    assert 0

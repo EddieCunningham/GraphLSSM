@@ -90,13 +90,13 @@ class Dirichlet( ExponentialFam ):
         return A1 + A2
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None ):
-        # Derivative w.r.t. natural params
+    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+        # Derivative w.r.t. natural params. Also the expected sufficient stat
         assert ( params is None ) ^ ( natParams is None )
         n, = natParams if natParams is not None else cls.standardToNat( *params )
-
+        assert np.all( n > 0 )
         d = digamma( ( n + 1 ) ) - digamma( ( n + 1 ).sum() )
-        return d
+        return ( d, ) if split == False else ( ( d, ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
 
@@ -128,11 +128,6 @@ class Dirichlet( ExponentialFam ):
         # Sample from P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
 
-        # if( params is not None ):
-        #     if( not isinstance( params, tuple ) and \
-        #         not isinstance( params, list ) ):
-        #         params = ( params, )
-
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
         ans = dirichlet.rvs( alpha=alpha, size=size )
         cls.checkShape( ans )
@@ -153,3 +148,11 @@ class Dirichlet( ExponentialFam ):
             return sum( [ dirichlet.logpdf( _x, alpha=alpha ) for _x in x ] )
         assert isinstance( x, np.ndarray ) and x.ndim == 1
         return dirichlet.logpdf( x, alpha=alpha )
+
+    ##########################################################################
+
+    @classmethod
+    def mode( cls, params=None, natParams=None ):
+        assert ( params is None ) ^ ( natParams is None )
+        ( n, ) = natParams if natParams is not None else cls.standardToNat( *params )
+        return ( n / n.sum(), )

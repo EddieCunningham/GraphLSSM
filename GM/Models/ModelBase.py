@@ -1,6 +1,8 @@
 import numpy as np
 from abc import ABC, abstractmethod
 from tqdm import tqdm
+from GenModels.GM.Utility import deepCopy
+
 
 __all__ = [ '_InferenceModel' ]
 
@@ -28,21 +30,31 @@ class _ModelBase( ABC ):
 
 ##########################################################################
 
+class _EMMixin():
+
+    def expectationMaximization( self, ys, nIters=100, monitorMarginal=10, verbose=False, preprocessKwargs={}, filterKwargs={} ):
+
+        lastMarginal = 999
+
+        for i in verboseRange( nIters, verbose ):
+            alphas, betas = self.state.EStep( ys=ys, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
+            self.state.natParams = self.state.MStep( ys, alphas, betas )
+
+            marginal = self.state.lastNormalizer
+            if( np.isclose( marginal, lastMarginal ) ):
+                break
+
+            lastMarginal = marginal
+
+##########################################################################
+
 class _GibbsMixin():
 
     def resample_step( self, ys ):
-        x = self.state.isample( ys=ys )
-        self.state.params = self.state.iposteriorSample( x )
 
-        _y = self.predict( T=10 )
-
-        ll = self.state.ilog_joint( x )
-        print( x )
-        print( _y )
-        print()
-        print()
-        print()
-        print()
+        x = self.state.isample( ys=ys, size=1 )
+        x = self.state.unpackSingleSample( x )
+        self.state.params = self.state.prior.unpackSingleSample( self.state.iposteriorSample( x ) )
 
     def gibbs( self, ys, nIters=1000, burnIn=1000, skip=10, verbose=False ):
         for i in verboseRange( skip * ( nIters ) + burnIn, verbose ):
@@ -52,42 +64,41 @@ class _GibbsMixin():
 
 class _CoordinateAscentVIMixin():
 
-    def ELBO( self, ys ):
-
-        expectedStats = self.state.iexpectedSufficientStats( ys=ys )
-        expectedNatParams = self.state.iexpectedNatParams()
-
-        p_z = self.state.log_joint( ( expectedStats, ys ), natParams=expectedNatParams )
-
-        q_z1 = self.state.log_params( priorNatParams=expectedNatParams )
-        q_z2 = self.state.ilog_likelihood( x=expectedNatParams )
-
-        return p_z - q_z1 - q_z2
-
-    ######################################################################
-
     def cavi( self, ys, maxIters=1000, verbose=False ):
 
-        lastElbo = 0
+        lastElbo = 9999
 
         for i in verboseRange( maxIters, verbose ):
-            expectedNatParams = self.state.iexpectedNatParams()
-            self.state.natParams = self.state.variationalPosteriorPriorNatParams( ys=ys, priorNatParams=expectedNatParams )
 
-            elbo = self.ELBO( ys=ys )
-            print( 'ELBO', elbo )
+            if( i > 0 ):
+                self.state.prior.mfNatParams = priorMFNatParams
+
+            self.state.mfNatParams = self.state.iexpectedNatParams( useMeanField=True )
+            priorMFNatParams, normalizer = self.state.variationalPosteriorPriorNatParams( ys=ys,
+                                                                                          natParams=self.state.mfNatParams,
+                                                                                          priorNatParams=self.state.prior.natParams,
+                                                                                          returnNormalizer=True )
+
+            # The ELBO computation is only valid right after the variational E step
+            elbo = self.state.ELBO( normalizer=normalizer,
+                                    priorMFNatParams=self.state.prior.mfNatParams,
+                                    priorNatParams=self.state.prior.natParams )
 
             if( np.isclose( lastElbo, elbo ) ):
                 break
 
+            lastElbo = elbo
+
 ##########################################################################
 
-class _InferenceModel( _ModelBase, _GibbsMixin, _CoordinateAscentVIMixin ):
+class _InferenceModel( _ModelBase, _EMMixin, _GibbsMixin, _CoordinateAscentVIMixin ):
 
     def fit( self, ys, method='gibbs', **kwargs ):
         if( method == 'gibbs' ):
             return self.gibbs( ys, **kwargs )
         elif( method == 'cavi' ):
             return self.cavi( ys, **kwargs )
+        elif( method == 'EM' ):
+            return self.expectationMaximization( ys, **kwargs )
         else:
             assert 0, 'Invalid method type'

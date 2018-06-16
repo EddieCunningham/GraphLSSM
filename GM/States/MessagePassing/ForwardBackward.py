@@ -1,7 +1,7 @@
 from GenModels.GM.States.MessagePassing.FilterBase import MessagePasser
 import numpy as np
 from functools import reduce
-from GenModels.GM.Distributions import Normal, Categorical, Transition
+from GenModels.GM.Distributions import Normal, Categorical, Transition, Regression
 
 __all__ = [ 'CategoricalForwardBackward',
             'GaussianForwardBackward',
@@ -27,9 +27,6 @@ class CategoricalForwardBackward( MessagePasser ):
     def genFilterProbs( self ):
         return np.empty( ( self.T, self.K ) )
 
-    def genWorkspace( self ):
-        return np.empty( ( self.K, self.K ) )
-
     ######################################################################
 
     def parameterCheck( self, initialDist, transDist, emissionDist, ys=None ):
@@ -52,7 +49,8 @@ class CategoricalForwardBackward( MessagePasser ):
 
     def updateParams( self, initialDist, transDist, emissionDist, ys=None ):
 
-        self.parameterCheck( initialDist, transDist, emissionDist, ys=ys )
+        if( not( hasattr( self, 'paramCheck' ) and self.paramCheck == False ) ):
+            self.parameterCheck( initialDist, transDist, emissionDist, ys=ys )
 
         nInit, = Categorical.standardToNat( initialDist )
         nTrans, = Transition.standardToNat( transDist )
@@ -96,8 +94,14 @@ class CategoricalForwardBackward( MessagePasser ):
 
     ######################################################################
 
-    def emissionProb( self, t, forward=False ):
-        return self.L[ t ] if forward == True else np.broadcast_to( self.L[ t ], ( self.K, self.K ) )
+    def emissionProb( self, t, forward=False, ys=None ):
+
+        if( ys is None ):
+            emiss = self.L[ t ]
+        else:
+            emiss = self._L.T[ ys[ :, t ] ].sum( axis=0 )
+
+        return emiss if forward == True else np.broadcast_to( emiss, ( self.K, self.K ) )
 
     ######################################################################
 
@@ -183,15 +187,21 @@ class CategoricalForwardBackward( MessagePasser ):
 
     ######################################################################
 
-    def childParentJoint( self, t, alphas, betas ):
+    def childParentJoint( self, t, alphas, betas, ys=None ):
         # P( x_t+1, x_t, Y ) = P( y_t+1 | x_t+1 ) * P( y_t+2:T | x_t+1 ) * P( x_t+1 | x_t ) * P( x_t, y_1:t )
 
-        emission = self.emissionProb( t + 1, forward=False )
-        transition = self.transitionProb( t, t + 1, forward=False )
         alpha = np.broadcast_to( alphas[ t ], ( self.K, self.K ) ).T
+        transition = self.transitionProb( t, t + 1, forward=False )
         beta = np.broadcast_to( betas[ t + 1 ], ( self.K, self.K ) )
+        emission = self.emissionProb( t + 1, forward=False, ys=ys )
 
-        return self.multiplyTerms( ( emission, transition, alpha, beta ) )
+        return self.multiplyTerms( ( alpha, transition, beta, emission ) )
+
+    ######################################################################
+
+    @classmethod
+    def log_marginalFromAlphaBeta( cls, alpha, beta ):
+        return np.logaddexp.reduce( alpha + beta )
 
 #########################################################################################
 
@@ -215,7 +225,8 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
 
         for k in range( self.K ):
 
-            n1, n2 = self.natMuSigmas[ k ]
+            n1 = self.n1Emiss[ k ]
+            n2 = self.n2Emiss[ k ]
 
             self.L[ :, k ] = Normal.log_likelihood( ys, natParams=( n1, n2 ) ).sum( axis=0 )
 
@@ -225,80 +236,132 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
 
         nInit, = Categorical.standardToNat( initialDist )
         nTrans, = Transition.standardToNat( transDist )
-        nEmiss = [ Normal.standardToNat( mu, sigma ) for mu, sigma in zip( mus, sigmas ) ]
+        n1Emiss, n2Emiss = zip( *[ Normal.standardToNat( mu, sigma ) for mu, sigma in zip( mus, sigmas ) ] )
 
-        self.updateNatParams( nInit, nTrans, nEmiss, ys=ys )
+        self.updateNatParams( nInit, nTrans, n1Emiss, n2Emiss, ys=ys )
 
-    def updateNatParams( self, log_initialDist, log_transDist, natMuSigmas, ys=None ):
+    def updateNatParams( self, log_initialDist, log_transDist, n1Emiss, n2Emiss, ys=None ):
 
         self._K = log_transDist.shape[ 0 ]
 
         self.pi0 = log_initialDist
         self.pi  = log_transDist
-        self.natMuSigmas = natMuSigmas
+        self.n1Emiss = n1Emiss
+        self.n2Emiss = n2Emiss
 
         if( ys is not None ):
             self.preprocessData( ys )
         else:
             self._T = None
+
+    ######################################################################
+
+    def emissionProb( self, t, forward=False, ys=None ):
+
+        if( ys is None ):
+            emiss = self.L[ t ]
+        else:
+            emiss = np.zeros( self.K )
+
+            for k in range( self.K ):
+
+                n1 = self.n1Emiss[ k ]
+                n2 = self.n2Emiss[ k ]
+
+                emiss += Normal.log_likelihood( ys[ :, t ], natParams=( n1, n2 ) ).sum( axis=0 )
+
+        return emiss if forward == True else np.broadcast_to( emiss, ( self.K, self.K ) )
 
 #########################################################################################
 
 class SLDSForwardBackward( CategoricalForwardBackward ):
 
-    def parameterCheck( self, initialDist, transDist, mu0, sigma0, u, As, sigmas, ys=None ):
+    def parameterCheck( self, initialDist, transDist, mu0, sigma0, u, As, sigmas, xs=None ):
 
         assert initialDist.shape[ 0 ] == transDist.shape[ 0 ] and transDist.shape[ 0 ] == transDist.shape[ 1 ]
         assert np.isclose( 1.0, initialDist.sum() )
         assert np.allclose( np.ones( transDist.shape[ 0 ] ), transDist.sum( axis=1 ) )
 
-    def preprocessData( self, ys ):
-        ys = np.array( ys )
-        self._T = ys.shape[ 1 ]
+    def preprocessData( self, xs, u=None ):
+        xs = np.array( xs )
 
-        # This is ugly, but all it does is calculate the emission likelihood over all of
-        # the data sets and over all of the modes.  Not sure why I did it like this.  Probably change
-        # at some point in the future
+        # Not going to use multiple measurements here
+        assert xs.ndim == 2
 
-        sig0Inv = np.linalg.inv( self.sigma0 )
-        self.L0 = -0.5 * np.einsum( 'ni,ij,nj', ys[ :, 0 ] - self.mu0, sig0Inv, ys[ :, 0 ] - self.mu0 ) - \
-                   0.5 * np.linalg.slogdet( self.sigma0 )[ 1 ] - \
-                   self.K / 2 * np.log( 2 * np.pi )
+        self._T = xs.shape[ 0 ]
 
-        sigInvs = np.linalg.inv( self.sigmas )
-        mus = ys[ :, 1: ] - np.einsum( 'kij,ntj->knti', self.As, ys[ :, :-1 ] ) - self.u[ :-1 ]
-        self.L = -0.5 * np.einsum( 'knti,kij,kntj->tk', mus, sigInvs, mus ) - \
-                  0.5 * np.linalg.slogdet( self.sigmas )[ 1 ] - \
-                  self.K / 2 * np.log( 2 * np.pi )
+        # Compute P( x_t | x_t-1, z ) for all of the observations over each z
 
-    def updateParams( self, initialDist, transDist, mu0, sigma0, u, As, sigmas, ys=None ):
+        self.L0 = Normal.log_likelihood( xs[ 0 ], natParams=( self.n1_0, self.n2_0 ) )
 
-        self.parameterCheck( initialDist, transDist, mu0, sigma0, u, As, sigmas, ys=ys )
-        self._K = transDist.shape[ 0 ]
+        self.L = np.empty( ( self.T - 1, self.K ) )
 
-        self.pi0 = np.log( initialDist )
-        self.pi  = np.log( transDist )
+        for i, ( n1, n2, n3 ) in enumerate( zip( self.n1Trans, self.n2Trans, self.n3Trans ) ):
 
-        self.mu0 = mu0
-        self.sigma0 = sigma0
+            def ll( _x ):
+                x, x1 = np.split( _x, 2 )
+                return Regression.log_likelihood( ( x, x1 ), natParams=( n1, n2, n3 ) )
 
-        self.u = u
+            self.L[ :, i ] = np.apply_along_axis( ll, -1, np.hstack( ( xs[ :-1 ], xs[ 1: ] ) ) )
 
-        self.As = As
-        self.sigmas = sigmas
+    def updateParams( self, initialDist, transDist, mu0, sigma0, u, As, sigmas, xs=None ):
 
-        if( ys is not None ):
-            self.preprocessData( ys )
+        self.parameterCheck( initialDist, transDist, mu0, sigma0, u, As, sigmas, xs=xs )
+
+        nInit, = Categorical.standardToNat( initialDist )
+        nTrans, = Transition.standardToNat( transDist )
+        nat1_0, nat2_0 = Normal.standardToNat( mu0, sigma0 )
+        nat1Trans, nat2Trans, nat3Trans = zip( *[ Regression.standardToNat( A, sigma ) for A, sigma in zip( As, sigmas ) ] )
+
+        self.updateNatParams( nInit, nTrans, nat1_0, nat2_0, nat1Trans, nat2Trans, nat3Trans, u=u, xs=xs )
+
+    def updateNatParams( self, log_initialDist, log_transDist, nat1_0, nat2_0, nat1Trans, nat2Trans, nat3Trans, u=None, xs=None ):
+
+        self._K = log_initialDist.shape[ 0 ]
+
+        self.pi0 = log_initialDist
+        self.pi  = log_transDist
+
+        self.n1_0 = nat1_0
+        self.n2_0 = nat2_0
+
+        self.n1Trans = nat1Trans
+        self.n2Trans = nat2Trans
+        self.n3Trans = nat3Trans
+
+        if( xs is not None ):
+            self.preprocessData( xs, u=u )
         else:
             self._T = None
 
-    def updateNatParams( self, initialDist, transDist, mu0, sigma0, u, As, sigmas, ys=None ):
-        assert 0, 'Redo this class'
+    ######################################################################
+
+    def childParentJoint( self, t, alphas, betas, xs=None ):
+        alpha = np.broadcast_to( alphas[ t ], ( self.K, self.K ) ).T
+        transition = self.transitionProb( t, t + 1, forward=False )
+        beta = np.broadcast_to( betas[ t + 1 ], ( self.K, self.K ) )
+        emission = self.emissionProb( t + 1, forward=False, xs=xs )
+
+        return self.multiplyTerms( ( alpha, transition, beta, emission ) )
 
     ######################################################################
 
-    def emissionProb( self, t, forward=False ):
-        return self.L[ t - 1 ]
+    def emissionProb( self, t, forward=False, xs=None ):
+        if( xs is None ):
+            emiss = self.L[ t - 1 ]
+        else:
+
+            emiss = np.zeros( self.K )
+
+            for i, ( n1, n2, n3 ) in enumerate( zip( self.n1Trans, self.n2Trans, self.n3Trans ) ):
+
+                def ll( _x ):
+                    x, x1 = np.split( _x, 2 )
+                    return Regression.log_likelihood( ( x, x1 ), natParams=( n1, n2, n3 ) )
+
+                emiss[ i ] = np.apply_along_axis( ll, -1, np.hstack( ( xs[ :-1, t ], xs[ 1: , t ] ) ) )
+
+        return emiss if forward == True else np.broadcast_to( emiss, ( self.K, self.K ) )
 
     ######################################################################
 

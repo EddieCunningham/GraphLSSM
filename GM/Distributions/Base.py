@@ -190,6 +190,20 @@ class Distribution( ABC, _GibbsMixin, _MetropolisHastingMixin ):
         else:
             self.params = newParams
 
+    ##########################################################################
+
+    @classmethod
+    def mode( cls, params=None ):
+        raise NotImplementedError
+
+    @classmethod
+    def maxLikelihood( cls, x ):
+        raise NotImplementedError
+
+    @classmethod
+    def MAP( cls, x ):
+        raise NotImplementedError
+
 ####################################################################################################################################
 
 class Conjugate( Distribution ):
@@ -204,11 +218,17 @@ class ExponentialFam( Conjugate ):
 
         self.standardChanged = False
         self.naturalChanged = False
+        self.mfStandardChanged = False
+        self.mfNaturalChanged = False
 
         super( ExponentialFam, self ).__init__( *params, prior=prior, hypers=hypers )
 
         # Set the natural parameters
         self.natParams
+
+        # Set the mean field params and natural params
+        self.mfNatParams = self.natParams
+        self.mfParams
 
     ##########################################################################
 
@@ -222,6 +242,7 @@ class ExponentialFam( Conjugate ):
     @params.setter
     def params( self, val ):
         self.standardChanged = True
+        self.naturalChanged = False
         self._params = val
 
     @property
@@ -234,7 +255,35 @@ class ExponentialFam( Conjugate ):
     @natParams.setter
     def natParams( self, val ):
         self.naturalChanged = True
+        self.standardChanged = False
         self._natParams = val
+
+    ##########################################################################
+    ## Mean field parameters for variational inference ##
+
+    @property
+    def mfParams( self ):
+        if( self.mfNaturalChanged ):
+            self._mfParams = self.natToStandard( *self.mfNatParams )
+            self.mfNaturalChanged = False
+        return self._mfParams
+
+    @mfParams.setter
+    def mfParams( self, val ):
+        self.mfStandardChanged = True
+        self._mfParams = val
+
+    @property
+    def mfNatParams( self ):
+        if( self.mfStandardChanged ):
+            self._mfNatParams = self.standardToNat( *self.mfParams )
+            self.mfStandardChanged = False
+        return self._mfNatParams
+
+    @mfNatParams.setter
+    def mfNatParams( self, val ):
+        self.mfNaturalChanged = True
+        self._mfNatParams = val
 
     ##########################################################################
 
@@ -277,24 +326,28 @@ class ExponentialFam( Conjugate ):
         # This is for when we want to do variational inference.
         # Use the fact that in conjugate models, the conjugate prior
         # t( x ) = ( n, -logZ ) for the child
-        expectedNatParamsAndPartition = cls.prior.log_partitionGradient( params=priorParams, natParams=priorNatParams )
-        assert 0, 'Need to find how to separate nat params and partition'
-        return expectedNatParamsAndPartition[ :-1 ]
+        expectedNatParams, exptectedPartition = cls.priorClass.log_partitionGradient( params=priorParams, natParams=priorNatParams, split=True )
+        return expectedNatParams
 
-    def iexpectedNatParams( self ):
-        if( self.standardChanged ):
-            return self.expectedNatParams( priorParams=self.prior.params )
-        return self.expectedNatParams( priorNatParams=self.prior.natParams )
+    def iexpectedNatParams( self, useMeanField=False ):
+        if( useMeanField == False ):
+            if( self.standardChanged ):
+                return self.expectedNatParams( priorParams=self.prior.params )
+            return self.expectedNatParams( priorNatParams=self.prior.natParams )
+        else:
+            if( self.mfStandardChanged ):
+                return self.expectedNatParams( priorParams=self.prior.mfParams )
+            return self.expectedNatParams( priorNatParams=self.prior.mfNatParams )
 
     ##########################################################################
 
     @classmethod
-    # @abstractmethod
-    def log_partitionGradient( cls, params=None, natParams=None ):
+    @abstractmethod
+    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
         # This is the expected sufficient statistic E_{ p( x | n ) }[ T( x ) ]
         pass
 
-    # @abstractmethod
+    @abstractmethod
     def _testLogPartitionGradient( self ):
         # Use autograd here to check
         pass
@@ -353,28 +406,33 @@ class ExponentialFam( Conjugate ):
     ##########################################################################
 
     @classmethod
-    def KLDivergence( cls, x=None, params1=None, natParams1=None, params2=None, natParams2=None ):
+    def KLDivergence( cls, params1=None, natParams1=None, params2=None, natParams2=None ):
         assert ( params1 is None ) ^ ( natParams1 is None )
         assert ( params2 is None ) ^ ( natParams2 is None )
         natParams1 = natParams1 if natParams1 is not None else cls.standardToNat( *params1 )
         natParams2 = natParams2 if natParams2 is not None else cls.standardToNat( *params2 )
-        natDiff = natParams1 - natParams2
+        assert len( natParams1 ) == len( natParams2 )
+
+        natDiff = []
+        for n1, n2 in zip( natParams1, natParams2 ):
+            assert n1.shape == n2.shape
+            natDiff.append( n1 - n2 )
 
         ans = 0.0
-        for n, p in zip( natDiff, cls.log_partitionGradient( x=x, natParams=natParams1 ) ):
+        for n, p in zip( natDiff, cls.log_partitionGradient( natParams=natParams1 ) ):
             ans += ( n * p ).sum()
 
-        ans -= cls.log_partition( x=x, natParams=natParams1 )
-        ans -= cls.log_partition( x=x, natParams=natParams2 )
+        ans -= cls.log_partition( natParams=natParams1 )
+        ans += cls.log_partition( natParams=natParams2 )
         return ans
 
-    def iKLDivergence( self, x=None, otherParams=None, otherNatParams=None, other=None ):
+    def iKLDivergence( self, otherParams=None, otherNatParams=None, other=None ):
         if( other is not None ):
             assert isinstance( other, ExponentialFam )
-            return self.KLDivergence( x=x, natParams1=self.natParams, natParams2=other.natParams )
+            return self.KLDivergence( natParams1=self.natParams, natParams2=other.natParams )
 
         assert ( otherParams is None ) ^ ( otherNatParams is None )
-        return self.KLDivergence( x=x, natParams1=self.natParams, params=otherParams, natParams2=otherNatParams )
+        return self.KLDivergence( natParams1=self.natParams, params2=otherParams, natParams2=otherNatParams )
 
     ####################################################################################################################################################
 
@@ -435,22 +493,32 @@ class ExponentialFam( Conjugate ):
         return [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
 
     @classmethod
-    def variationalPosteriorPriorNatParams( cls, ys=None, constParams=None, priorParams=None, priorNatParams=None ):
+    def variationalPosteriorPriorNatParams( cls, ys=None, constParams=None, params=None, natParams=None, priorParams=None, priorNatParams=None, returnNormalizer=False ):
+        assert ( params is None ) ^ ( natParams is None )
         assert ( priorParams is None ) ^ ( priorNatParams is None )
 
         # Because this will only be used to do variational inference,
         # make sure that the observed data is passed in
         assert ys is not None
 
-        expectedStats = cls.expectedSufficientStats( ys=ys, priorParams=priorParams, natParams=priorNatParams )
+        expectedStats, normalizer = cls.expectedSufficientStats( ys=ys, params=params, natParams=natParams, returnNormalizer=True )
+        # for t in expectedStats:
+        #     print( t )
 
         # Assume that these are variational parameters
         priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
 
-        dataN = cls.dataN( ys )
+        # for p in priorNatParams:
+        #     print( np.exp( p ) )
+
+        dataN = cls.dataN( ys, conditionOnY=True, checkY=True )
         expectedStats = expectedStats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( expectedStats ) ) ] )
 
-        return [ np.add( s, p ) for s, p in zip( expectedStats, priorNatParams ) ]
+        ans = [ np.add( s, p ) for s, p in zip( expectedStats, priorNatParams ) ]
+        # for a in ans:
+        #     print( np.exp( a ) )
+        # assert 0
+        return ans if returnNormalizer == False else ( ans, normalizer )
 
     ##########################################################################
 
@@ -622,6 +690,19 @@ class ExponentialFam( Conjugate ):
         assert isinstance( ans, Iterable ) == False, log_partition
 
         return ans
+
+    ##########################################################################
+
+    @classmethod
+    def mode( cls, params=None, natParams=None ):
+        raise NotImplementedError
+
+    @classmethod
+    def MAP( cls, x=None, priorParams=None, priorNatParams=None ):
+        assert ( priorParams is None ) ^ ( priorNatParams is None )
+        cls.checkShape( x )
+        postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
+        return cls.priorClass.mode( natParams=postNatParams )
 
     ##########################################################################
 

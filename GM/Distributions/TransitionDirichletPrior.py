@@ -87,13 +87,13 @@ class TransitionDirichletPrior( ExponentialFam ):
         return sum( [ Dirichlet.log_partition( params=( a, ) ) for a in alpha ] )
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None ):
-        # Derivative w.r.t. natural params
+    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+        # Derivative w.r.t. natural params. Also the expected sufficient stat
         assert ( params is None ) ^ ( natParams is None )
         n, = natParams if natParams is not None else cls.standardToNat( *params )
 
         d = np.vstack( [ Dirichlet.log_partitionGradient( natParams=( _n, ) ) for _n in n ] )
-        return d
+        return ( d, ) if split == False else ( ( d, ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
 
@@ -126,17 +126,7 @@ class TransitionDirichletPrior( ExponentialFam ):
         # Sample from P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
 
-        # if( params is not None ):
-        #     if( not isinstance( params, tuple ) or \
-        #         not isinstance( params, list ) ):
-        #         params = ( params, )
-
         ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
-
-        # Quick fix for the moment
-        # if( isinstance( alpha, tuple ) ):
-        #     assert len( alpha ) == 1
-        #     alpha, = alpha
 
         ans = np.swapaxes( np.array( [ Dirichlet.sample( params=( a, ), size=size ) for a in alpha ] ), 0, 1 )
         cls.checkShape( ans )

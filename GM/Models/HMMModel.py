@@ -23,18 +23,17 @@ class HMMModel( _InferenceModel ):
         if( alpha_0 is not None ):
             # Use a prior
             self.prior = HMMDirichletPrior( alpha_0, alpha, L )
-            self.state = HMMState( prior=self.prior )
         else:
-            assert 0
-            self.state = HMMState( initialDist, transDist, emissionDist )
             # Use a weak prior in this case
             self.prior = HMMDirichletPrior( np.ones_like( initialDist ), np.ones_like( transDist ), np.ones_like( emissionDist ) )
 
-    def predict( self, T=3, size=1 ):
-        return self.state.isample( T=T, size=size )
+        self.state = HMMState( prior=self.prior )
+
+    def predict( self, T=3, measurements=1, knownLatentStates=None, size=1 ):
+        return self.state.isample( T=T, measurements=measurements, knownLatentStates=knownLatentStates, size=size )
 
     @classmethod
-    def generate( self, T=10, latentSize=3, obsSize=2, size=10 ):
+    def generate( self, T=10, latentSize=3, obsSize=2, measurements=1, knownLatentStates=None, size=10 ):
         # Generate a fake data
         params = {
             'alpha_0': np.ones( latentSize ),
@@ -42,4 +41,4 @@ class HMMModel( _InferenceModel ):
             'L': np.ones( ( latentSize, obsSize ) )
         }
         dummy = HMMModel( **params )
-        return np.array( list( zip( *dummy.predict( T=T, size=size ) ) )[ 1 ] ).squeeze()
+        return dummy.predict( T=T, measurements=measurements, knownLatentStates=knownLatentStates, size=size )

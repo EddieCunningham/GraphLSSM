@@ -10,16 +10,22 @@ __all__ = [ 'KalmanFilter',
 
 class MaskedData():
 
-    def __init__( self, data, mask, shape=None ):
-        assert isinstance( data, np.ndarray )
-        assert isinstance( mask, np.ndarray )
-        assert mask.dtype == bool
-        self.mask = mask
-        self.data = data
-        self.shape = shape if shape is not None else self.data.shape[ -1 ]
+    def __init__( self, data=None, mask=None, shape=None ):
+        if( data is None ):
+            assert shape is not None
+            self.data = None
+            self.mask = None
+            self.shape = shape
+        else:
+            assert isinstance( data, np.ndarray )
+            assert isinstance( mask, np.ndarray )
+            assert mask.dtype == bool
+            self.mask = mask
+            self.data = data
+            self.shape = shape if shape is not None else self.data.shape[ -1 ]
 
     def __getitem__( self, key ):
-        if( np.any( self.mask[ key ] ) ):
+        if( self.mask is None or np.any( self.mask[ key ] ) ):
             return np.zeros( self.shape )
         return self.data[ key ]
 
@@ -85,14 +91,6 @@ class KalmanFilter( MessagePasser ):
                              np.empty( self.D_latent ), \
                              np.array( 0. ) ] for _ in range( self.T ) ] )
 
-    def genWorkspace( self ):
-        return [ np.empty( ( self.D_latent, self.D_latent ) ), \
-                 np.empty( ( self.D_latent, self.D_latent ) ), \
-                 np.empty( ( self.D_latent, self.D_latent ) ), \
-                 np.empty( self.D_latent ), \
-                 np.empty( self.D_latent ), \
-                 np.array( 0. ) ]
-
     ######################################################################
 
     def parameterCheck( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None ):
@@ -134,6 +132,11 @@ class KalmanFilter( MessagePasser ):
         partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
         self.log_Zy = partition( self.Jy, self.hy )
 
+        if( u is not None ):
+            assert u.shape == ( self.T, self.D_latent )
+            uMask = np.isnan( u )
+            self.u = ( u, uMask, None )
+
     def updateParams( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None ):
 
         self.parameterCheck( A, sigma, C, R, mu0, sigma0, u=u, ys=ys )
@@ -164,7 +167,7 @@ class KalmanFilter( MessagePasser ):
         self.log_Z0 = Normal.log_partition( natParams=( -2 * self.J0, self.h0 ) )
 
         if( ys is not None ):
-            self.preprocessData( ys, u=u )
+            self.preprocessData( ys )
         else:
             self._T = None
 
@@ -203,9 +206,9 @@ class KalmanFilter( MessagePasser ):
 
         if( forward ):
             return J, h, np.array( log_Z )
-        else:
-            # Because this is before the integration step
-            return J, None, None, h, None, log_Z
+
+        # Because this is before the integration step
+        return self.alignOnUpper( J, h, log_Z )
 
     ######################################################################
 
@@ -219,30 +222,24 @@ class KalmanFilter( MessagePasser ):
 
     ######################################################################
 
-    def forwardStep( self, t, alpha, workspace=None, out=None ):
+    def forwardStep( self, t, alpha ):
         # Write P( y_1:t-1, x_t-1 ) in terms of [ x_t, x_t-1 ]
         _alpha = self.alignOnLower( *alpha )
-        super( KalmanFilter, self ).forwardStep( t, _alpha, workspace=workspace, out=out )
+        return super( KalmanFilter, self ).forwardStep( t, _alpha )
 
-    def backwardStep( self, t, beta, workspace=None, out=None ):
+    def backwardStep( self, t, beta ):
         # Write P( y_t+2:T | x_t+1 ) in terms of [ x_t+1, x_t ]
         _beta = self.alignOnUpper( *beta )
-        super( KalmanFilter, self ).backwardStep( t, _beta, workspace=workspace, out=out )
+        return super( KalmanFilter, self ).backwardStep( t, _beta )
 
     ######################################################################
 
-    def multiplyTerms( self, terms, out=None ):
-
-        if( out is not None ):
-            for i, x in enumerate( zip( *terms ) ):
-                filteredX = [ _x for _x in x if _x is not None ]
-                np.add.reduce( filteredX, out=out[ i ] )
-        else:
-            return [ np.add.reduce( [_x for _x in x if _x is not None ] ) for x in zip( *terms ) ]
+    def multiplyTerms( self, terms ):
+        return [ np.add.reduce( [_x for _x in x if _x is not None ] ) for x in zip( *terms ) ]
 
     ######################################################################
 
-    def integrate( self, integrand, forward=True, out=None ):
+    def integrate( self, integrand, forward=True ):
 
         if( forward ):
             # Integrate x_t-1
@@ -251,12 +248,7 @@ class KalmanFilter( MessagePasser ):
             # Integrate x_t+1
             J, h, log_Z = Normal.marginalizeX1( *integrand )
 
-        if( out is not None ):
-            out[ 0 ] = J
-            out[ 1 ] = h
-            out[ 2 ] = np.array( log_Z )
-        else:
-            return J, h, log_Z
+        return J, h, log_Z
 
     ######################################################################
 
@@ -273,6 +265,27 @@ class KalmanFilter( MessagePasser ):
                  np.zeros( self.D_latent ), \
                  0. ]
 
+    ######################################################################
+
+    def childParentJoint( self, t, alphas, betas ):
+        # P( x_t+1, x_t, Y ) = P( y_t+1 | x_t+1 ) * P( y_t+2:T | x_t+1 ) * P( x_t+1 | x_t ) * P( x_t, y_1:t )
+
+        Jhy = self.emissionProb( t + 1, forward=False )
+        Jht = self.transitionProb( t, t + 1 )
+        Jhf = self.alignOnLower( *alphas[ t ] )
+        Jhb = self.alignOnUpper( *betas[ t + 1 ] )
+
+        J11, J12, J22, h1, h2, logZ = self.multiplyTerms( [ Jhy, Jht, Jhf, Jhb ] )
+        return J11, J12, J22, h1, h2, logZ
+
+    ######################################################################
+
+    @classmethod
+    def log_marginalFromAlphaBeta( cls, alpha, beta ):
+        Ja, ha, log_Za = alpha
+        Jb, hb, log_Zb = beta
+        return Normal.log_partition( natParams=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
+
 #########################################################################################
 
 class SwitchingKalmanFilter( KalmanFilter ):
@@ -281,6 +294,8 @@ class SwitchingKalmanFilter( KalmanFilter ):
     @property
     def As( self ):
         return self._As
+
+    ######################################################################
 
     def parameterCheck( self, z, As, sigmas, C, R, mu0, sigma0, u=None, ys=None ):
 
@@ -309,6 +324,8 @@ class SwitchingKalmanFilter( KalmanFilter ):
         assert C.shape[ 0 ] == R.shape[ 0 ] and R.shape[ 0 ] == R.shape[ 1 ]
         assert C.shape[ 1 ] == A.shape[ 1 ]
 
+    ######################################################################
+
     def updateParams( self, z, As, sigmas, C, R, mu0, sigma0, u=None, ys=None ):
 
         self.parameterCheck( z, As, sigmas, C, R, mu0, sigma0, u=u, ys=ys )
@@ -318,6 +335,8 @@ class SwitchingKalmanFilter( KalmanFilter ):
         n1Init, n2Init = Normal.standardToNat( mu0, sigma0 )
 
         self.updateNatParams( z, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=u, ys=ys )
+
+    ######################################################################
 
     def updateNatParams( self, z, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=None, ys=None ):
 
@@ -340,10 +359,18 @@ class SwitchingKalmanFilter( KalmanFilter ):
         self.log_Z0 = Normal.log_partition( natParams=( -2 * self.J0, self.h0 ) )
 
         if( ys is not None ):
-            self.preprocessData( ys, u=u )
+            self.preprocessData( ys )
         else:
             self._T = None
-            self.u = None
+
+        if( u is not None ):
+            assert u.shape == ( self.T, self.D_latent )
+            uMask = np.isnan( u )
+            self.u = ( u, uMask, None )
+        else:
+            uMask = np.zeros( self.T, dtype=bool )
+            self.u = ( None, uMask, self.D_latent )
+
 
     ######################################################################
 

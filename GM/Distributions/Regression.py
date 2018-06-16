@@ -91,19 +91,43 @@ class Regression( ExponentialFam ):
     @classmethod
     def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
-
-        cls.dataN( x )
-
         x, y = x
+        assert isinstance( x, np.ndarray )
+        assert isinstance( y, np.ndarray )
 
         if( x.ndim == 1 ):
+            # Only 1 point was passed in
             x = x.reshape( ( 1, -1 ) )
-        if( y.ndim == 1 ):
-            y = y.reshape( ( 1, -1 ) )
+            assert y.ndim == 1 or y.ndim == 2
+            t2 = x.T.dot( x )
 
-        t1 = y.T.dot( y )
-        t2 = x.T.dot( x )
-        t3 = x.T.dot( y )
+            if( y.ndim == 1 ):
+                # 1 measurement for x
+                y = y.reshape( ( 1, -1 ) )
+                t1 = y.T.dot( y )
+                t3 = x.T.dot( y )
+            else:
+                # Multiple measurements for x
+                t2 *= y.shape[ 0 ]
+                t1 = np.einsum( 'i,mj->ij', x, y )
+                t3 = np.einsum( 'mi,mj->ij', y, y )
+        else:
+            # Multiple data points were passed in
+            t2 = x.T.dot( x )
+
+            if( y.ndim == 3 ):
+                # Multiple measurements of y per x
+                assert x.shape[ 0 ] == y.shape[ 1 ]
+                t2 *= y.shape[ 0 ]
+                t1 = np.einsum( 'mti,mtj->ij', y, y )
+                t3 = np.einsum( 'ti,mtj->ij', x, y )
+            elif( y.ndim == 2 ):
+                # One measurement of y per x
+                assert x.shape[ 0 ] == y.shape[ 0 ]
+                t1 = y.T.dot( y )
+                t3 = x.T.dot( y )
+            else:
+                assert 0, 'Invalid dim'
 
         return t1, t2, t3
 
@@ -205,3 +229,17 @@ class Regression( ExponentialFam ):
             _n2 = n3.dot( y - u )
 
         return _n1, _n2
+
+    ##########################################################################
+
+    @classmethod
+    def maxLikelihoodFromStats( cls, t1, t2, t3 ):
+        yyT, xyT, xxT = t1, t2, t3
+        A = np.linalg.solve( xxT, xyT.T )
+        sigma = t1 + A @ xxT @ A.T - 2 * xyT.T @ A.T
+        return A, sigma
+
+    @classmethod
+    def maxLikelihood( cls, x ):
+        t1, t2, t3 = cls.sufficientStats( x )
+        return cls.maxLikelihoodFromStats( t1, t2, t3 )

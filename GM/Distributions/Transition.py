@@ -57,7 +57,12 @@ class Transition( ExponentialFam ):
 
     @classmethod
     def standardToNat( cls, pi ):
-        n = np.log( pi )
+        if( np.any( np.isclose( pi, 0.0 ) ) ):
+            n = np.empty_like( pi )
+            n[ ~np.isclose( pi, 0.0 ) ] = np.log( pi[ ~np.isclose( pi, 0.0 ) ] )
+            n[ np.isclose( pi, 0.0 ) ] = np.NINF
+        else:
+            n = np.log( pi )
         return ( n, )
 
     @classmethod
@@ -118,7 +123,7 @@ class Transition( ExponentialFam ):
 
     @classmethod
     def log_partitionGradient( cls, params=None, natParams=None ):
-        return ( 0, )
+        return ( 0, ) if split == False else ( ( 0, ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
         # Don't need to test this
@@ -135,9 +140,6 @@ class Transition( ExponentialFam ):
     @classmethod
     def sample( cls, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        # if( params is not None ):
-        #     if( not isinstance( params, tuple ) ):
-        #         params = ( params, )
         assert ( params is None ) ^ ( natParams is None )
         ( pi, ) = params if params is not None else cls.natToStandard( *natParams )
         x = np.random.choice( pi.shape[ 0 ], size )
@@ -163,3 +165,25 @@ class Transition( ExponentialFam ):
         else:
             ( n, ) = natParams
             return n[ x, y ].sum()
+
+    ##########################################################################
+
+    @classmethod
+    def mode( cls, params=None, natParams=None ):
+        assert ( params is None ) ^ ( natParams is None )
+        if( params is not None ):
+            return np.argmax( params, axis=1 )
+        return ( np.argmax( natParams, axis=1 ), )
+
+    ##########################################################################
+
+    @classmethod
+    def maxLikelihoodFromStats( cls, t ):
+        counts, = t
+        p = counts - np.logaddexp.reduce( counts, axis=1 )[ :, None ]
+        return ( p, )
+
+    @classmethod
+    def maxLikelihood( cls, x ):
+        t = cls.sufficientStats( x )
+        return cls.maxLikelihoodFromStats( t )

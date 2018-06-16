@@ -106,8 +106,8 @@ class InverseWishart( ExponentialFam ):
         return A1 + A2 + A3
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None ):
-        # Derivative w.r.t. natural params
+    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+        # Derivative w.r.t. natural params. Also the expected sufficient stat
         assert ( params is None ) ^ ( natParams is None )
         n1, n2 = natParams if natParams is not None else cls.standardToNat( *params )
         n1Inv = np.linalg.inv( n1 )
@@ -117,7 +117,7 @@ class InverseWishart( ExponentialFam ):
         d1 = -k * n1Inv
         d2 = np.linalg.slogdet( -2 * n1 )[ 1 ] - multigammalnDerivative( d=p, x=k ) - p * _LOG_2
 
-        return d1, d2
+        return ( d1, d2 ) if split == False else ( ( d1, d2 ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
 
@@ -177,3 +177,5 @@ class InverseWishart( ExponentialFam ):
         assert ( params is None ) ^ ( natParams is None )
         # There is a bug in scipy's invwishart.logpdf! Don't use it!
         return cls.log_likelihoodExpFam( x, params=params, natParams=natParams )
+
+    ##########################################################################

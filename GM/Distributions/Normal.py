@@ -112,8 +112,8 @@ class Normal( ExponentialFam ):
         return A1 + A2 + log_h
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None ):
-        # Derivative w.r.t. natural params
+    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+        # Derivative w.r.t. natural params. Also the expected sufficient stat
         assert ( params is None ) ^ ( natParams is None )
         # n1, n2 = natParams if natParams is not None else cls.standardToNat( *params )
         # n1Inv = np.linalg.inv( n1 )
@@ -124,7 +124,8 @@ class Normal( ExponentialFam ):
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
         d1 = np.outer( mu, mu ) + sigma
         d2 = mu
-        return d1, d2
+
+        return ( d1, d2 ) if split == False else ( ( d1, d2 ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
 
@@ -206,3 +207,20 @@ class Normal( ExponentialFam ):
     @classmethod
     def marginalizeX2( cls, J11, J12, J22, h1, h2, log_Z ):
         return cls.marginalizeX1( J22, J12.T, J11, h2, h1, log_Z )
+
+    ##########################################################################
+
+    @classmethod
+    def mode( cls, params=None, natParams=None ):
+        mu, sigma = params if params is not None else cls.natToStandard( *natParams )
+        return ( mu, )
+
+    ##########################################################################
+
+    @classmethod
+    def maxLikelihood( cls, x ):
+        N = cls.dataN( x )
+        t1, t2 = cls.sufficientStats( x )
+        mu = t2 / n
+        sigma = t1 / n
+        return mu, sigma

@@ -39,6 +39,35 @@ class HMMDirichletPrior( ExponentialFam ):
             return 1
         return pi_0.shape[ 0 ]
 
+    @classmethod
+    def unpackSingleSample( cls, x ):
+        pi_0, pi, L = x
+        return pi_0[ 0 ], pi[ 0 ], L[ 0 ]
+
+    @classmethod
+    def sampleShapes( cls ):
+        # ( ( Sample #, d_latent ), ( Sample #, d_latent, d_latent ), ( Sample #, d_latent, d_obs ) )
+        return ( ( None, None ), ( None, None, None ), ( None, None, None ) )
+
+    def isampleShapes( cls ):
+        return ( ( None, self.alpha_0.shape[ 0 ] ), ( None, self.alpha_pi.shape[ 0 ], self.alpha_pi.shape[ 1 ] ), ( None, self.alpha_L.shape[ 0 ], self.alpha_L.shape[ 1 ] ) )
+
+    @classmethod
+    def checkShape( cls, x ):
+        assert isinstance( x, tuple )
+        pi_0, pi, L = x
+        assert isinstance( pi_0, np.ndarray ) and isinstance( pi, np.ndarray ) and isinstance( L, np.ndarray )
+        if( pi_0.ndim == 2 ):
+            assert pi.ndim == 3
+            assert L.ndim == 3
+            assert pi_0.shape[ 0 ] == pi.shape[ 0 ] and pi.shape[ 0 ] == L.shape[ 0 ]
+            assert pi_0.shape[ 1 ] == pi.shape[ 1 ] and pi.shape[ 1 ] == pi.shape[ 2 ] and pi.shape[ 2 ] == L.shape[ 1 ]
+        else:
+            assert pi_0.ndim == 1
+            assert pi.ndim == 2
+            assert L.ndim == 2
+            assert pi_0.shape[ 0 ] == pi.shape[ 0 ] and pi.shape[ 0 ] == pi.shape[ 1 ] and pi.shape[ 1 ] == L.shape[ 0 ]
+
     ##########################################################################
 
     @classmethod
@@ -86,7 +115,66 @@ class HMMDirichletPrior( ExponentialFam ):
         A3 = TransitionDirichletPrior.log_partition( params=( alpha_L, ), split=split )
         return A1 + A2 + A3
 
+    @classmethod
+    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+        # Derivative w.r.t. natural params. Also the expected sufficient stat
+        assert ( params is None ) ^ ( natParams is None )
+        n1, n2, n3 = natParams if natParams is not None else cls.standardToNat( *params )
+
+        d1 = Dirichlet.log_partitionGradient( natParams=( n1, ) )[ 0 ]
+        d2 = TransitionDirichletPrior.log_partitionGradient( natParams=( n2, ) )[ 0 ]
+        d3 = TransitionDirichletPrior.log_partitionGradient( natParams=( n3, ) )[ 0 ]
+        return ( d1, d2, d3 ) if split == False else ( ( d1, d2, d3 ), ( 0, ) )
+
+    def _testLogPartitionGradient( self ):
+
+        import autograd.numpy as anp
+        import autograd.scipy as asp
+        from autograd import jacobian
+
+        n1, n2, n3 = self.natParams
+
+        def dirPart( _n ):
+            d = anp.sum( asp.special.gammaln( ( _n + 1 ) ) ) - asp.special.gammaln( anp.sum( _n + 1 ) )
+            return d
+
+        def transDirPart( _n ):
+            d = 0.0
+            for __n in _n:
+                d = d + anp.sum( asp.special.gammaln( ( __n + 1 ) ) ) - asp.special.gammaln( anp.sum( __n + 1 ) )
+            return d
+
+        def part( _n1, _n2, _n3 ):
+            d1 = dirPart( _n1 )
+            d2 = transDirPart( _n2 )
+            d3 = transDirPart( _n3 )
+            return d1 + d2 + d3
+
+        def p1( _n1 ):
+            return part( _n1, n2, n3 )
+
+        def p2( _n2 ):
+            return part( n1, _n2, n3 )
+
+        def p3( _n3 ):
+            return part( n1, n2, _n3 )
+
+        d1, d2, d3 = self.log_partitionGradient( natParams=self.natParams )
+        _d1 = jacobian( p1 )( n1 )
+        _d2 = jacobian( p2 )( n2 )
+        _d3 = jacobian( p3 )( n3 )
+
+        assert np.allclose( _d1, d1 )
+        assert np.allclose( _d2, d2 )
+        assert np.allclose( _d3, d3 )
+
     ##########################################################################
+
+    @classmethod
+    def generate( cls, D_latent=3, D_obs=2, size=1 ):
+        params = ( np.ones( D_latent ), np.ones( ( D_latent, D_latent ) ), np.ones( D_latent, D_obs ) )
+        samples = cls.sample( params=params, size=size )
+        return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
     def sample( cls, params=None, natParams=None, size=1 ):
@@ -99,7 +187,9 @@ class HMMDirichletPrior( ExponentialFam ):
         pi = TransitionDirichletPrior.sample( params=( alpha_pi, ), size=size )
         L = TransitionDirichletPrior.sample( params=( alpha_L, ), size=size )
 
-        return pi_0.squeeze(), pi.squeeze(), L.squeeze()
+        ans = ( pi_0, pi, L )
+        cls.checkShape( ans )
+        return ans
 
     ##########################################################################
 
@@ -108,8 +198,9 @@ class HMMDirichletPrior( ExponentialFam ):
         # Compute P( x | Ѳ; α )
         assert ( params is None ) ^ ( natParams is None )
 
-        pi_0, pi, L = x
         alpha_0, alpha_pi, alpha_L = params if params is not None else cls.natToStandard( *natParams )
+
+        pi_0, pi, L = x
 
         ans = Dirichlet.log_likelihood( pi_0, params=( alpha_0, ) )
         ans += TransitionDirichletPrior.log_likelihood( pi, params=( alpha_pi, ) )

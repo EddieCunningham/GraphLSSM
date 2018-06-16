@@ -24,17 +24,25 @@ def testHMMBasic():
 
         _, ys = HMMState.generate( measurements=meas, T=T, D_latent=D_latent, D_obs=D_obs, size=size )
 
+        kS = int( np.random.random() * T / 10 ) + 2
+        knownStates = np.random.choice( T, kS )
+        knownStates = np.vstack( ( knownStates, np.random.choice( D_latent, knownStates.shape[ 0 ] ) ) ).reshape( ( 2, -1 ) ).T
+
+        # Sort and remove duplicates
+        knownStates = np.array( sorted( knownStates, key=lambda x: x[ 0 ] ) )
+        knownStates = knownStates[ 1: ][ ~( np.diff( knownStates[ :, 0 ] ) == 0 ) ]
+
         xNoCond  , ysNoCond  = state.isample( T=T, measurements=meas, size=size )
-        xForward , yForward  = state.isample( ys=ys )
+        xForward , yForward  = state.isample( ys=ys, knownLatentStates=knownStates )
         xBackward, yBackward = state.isample( ys=ys, forwardFilter=False )
 
-        print( state.ilog_likelihood( ( xNoCond, ysNoCond ) ) )
-        print( state.ilog_likelihood( ( xForward, yForward ), forwardFilter=False ) )
-        print( state.ilog_likelihood( ( xBackward, yBackward ) ) )
+        state.ilog_likelihood( ( xNoCond, ysNoCond ) )
+        state.ilog_likelihood( ( xForward, yForward ) )
+        state.ilog_likelihood( ( xBackward, yBackward ), forwardFilter=False )
 
-        print( state.ilog_likelihood( ( xNoCond, ysNoCond ), conditionOnY=True ) )
-        print( state.ilog_likelihood( ( xForward, yForward ), forwardFilter=False, conditionOnY=True ) )
-        print( state.ilog_likelihood( ( xBackward, yBackward ), conditionOnY=True ) )
+        state.ilog_likelihood( ( xNoCond, ysNoCond ), conditionOnY=True )
+        state.ilog_likelihood( ( xForward, yForward ), knownLatentStates=knownStates, conditionOnY=True )
+        state.ilog_likelihood( ( xBackward, yBackward ), forwardFilter=False, conditionOnY=True )
 
         print( 'Done with basic HMM state test' )
 
@@ -55,7 +63,11 @@ def testLDSBasic():
         state = LDSState( A=A, sigma=sigma, C=C, R=R, mu0=mu0, sigma0=sigma0 )
 
         u = np.random.random( ( T, D_latent ) )
-        ys = LDSState.generate( measurements=meas, T=T, D_latent=D_latent, D_obs=D_obs, size=size, stabilize=True )
+        nBad = int( np.random.random() * T )
+        badMask = np.random.choice( T, nBad )
+        u[ badMask ] = np.nan
+
+        _, ys = LDSState.generate( measurements=meas, T=T, D_latent=D_latent, D_obs=D_obs, size=size, stabilize=True )
 
         xNoCond  , ysNoCond  = state.isample( u=u, T=T, measurements=meas, size=size, stabilize=True )
         xForward , yForward  = state.isample( u=u, ys=ys )
@@ -74,4 +86,3 @@ def testLDSBasic():
 def stateTests():
     testHMMBasic()
     testLDSBasic()
-    assert 0

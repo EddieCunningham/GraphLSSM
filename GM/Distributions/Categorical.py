@@ -87,8 +87,8 @@ class Categorical( ExponentialFam ):
         return 0
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None ):
-        return ( 0, )
+    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+        return ( 0, ) if split == False else ( ( 0, ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
         # Don't need to test this
@@ -105,14 +105,10 @@ class Categorical( ExponentialFam ):
     @classmethod
     def sample( cls, params=None, natParams=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        # if( params is not None ):
-        #     if( not isinstance( params, tuple ) ):
-        #         params = ( params, )
+
         assert ( params is None ) ^ ( natParams is None )
         ( p, ) = params if params is not None else cls.natToStandard( *natParams )
-        # if( p.ndim > 1 ):
-        #     assert p.size == p.squeeze().size
-        #     p = p.squeeze()
+
         ans = np.random.choice( p.shape[ 0 ], size, p=p )
         cls.checkShape( ans )
         return ans
@@ -132,3 +128,25 @@ class Categorical( ExponentialFam ):
         else:
             ( n, ) = natParams
             return n[ x ].sum()
+
+    ##########################################################################
+
+    @classmethod
+    def mode( cls, params=None, natParams=None ):
+        assert ( params is None ) ^ ( natParams is None )
+        if( params is not None ):
+            return np.argmax( params )
+        return ( np.argmax( natParams ), )
+
+    ##########################################################################
+
+    @classmethod
+    def maxLikelihoodFromStats( cls, t ):
+        counts, = t
+        p = counts - np.logaddexp.reduce( counts )
+        return ( p, )
+
+    @classmethod
+    def maxLikelihood( cls, x ):
+        t = cls.sufficientStats( x )
+        return cls.maxLikelihoodFromStats( t )
