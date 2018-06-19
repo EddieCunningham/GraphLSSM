@@ -111,11 +111,14 @@ def likelihoodNoPartitionTestExpFam( dist, **kwargs ):
         print( '->', total )
         assert 0, 'Failed test'
 
+    print( 'Passed likelihood no partition test for', type( dist ), '.  Diff was', ( ans1 - ans2 ) - ( trueAns1 - trueAns2 ) )
+
 def likelihoodTestExpFam( dist, **kwargs ):
     x = dist.isample( size=10, **kwargs )
     ans1 = dist.ilog_likelihood( x, expFam=True )
     ans2 = dist.ilog_likelihood( x )
     assert np.isclose( ans1, ans2 ), ans1 - ans2
+    print( 'Passed likelihood test for', type( dist ), '.  Diff was', ans1 - ans2 )
 
 ####################################################################################
 
@@ -127,12 +130,14 @@ def jointTestExpFam( dist, **kwargs ):
     ans1 = dist.ilog_joint( x, expFam=True )
     ans2 = dist.ilog_joint( x )
     assert np.isclose( ans1, ans2 ), ans1 - ans2
+    print( 'Passed joint test for', type( dist ), '.  Diff was', ans1 - ans2 )
 
 def posteriorTestExpFam( dist, **kwargs ):
-    x = dist.isample( size=10, **kwargs )
+    x = dist.isample( size=2, **kwargs )
     ans1 = dist.ilog_posterior( x, expFam=True )
     ans2 = dist.ilog_posterior( x )
     assert np.isclose( ans1, ans2 ), ans1 - ans2
+    print( 'Passed posterior test for', type( dist ), '.  Diff was', ans1 - ans2 )
 
 ####################################################################################
 
@@ -154,7 +159,7 @@ def testsForDistWithoutPrior( dist, tensor=False, **kwargs ):
 def testForDistWithPrior( dist, tensor=False, **kwargs ):
 
     testsForDistWithoutPrior( dist, tensor=tensor, **kwargs )
-    paramTestExpFam( dist )
+    # paramTestExpFam( dist )
     jointTestExpFam( dist, **kwargs )
     posteriorTestExpFam( dist, **kwargs )
 
@@ -228,11 +233,11 @@ def standardTests():
 def stateAndModelTests():
     with np.errstate( all='raise' ):
 
-        D_latent = 2
-        D_obs = 2
+        D_latent = 5
+        D_obs = 7
 
-        T = 3
-
+        T = 15
+        M = 4
         HMMParams = {
             'alpha_0': np.random.random( D_latent ) + 1,
             'alpha_pi': np.random.random( ( D_latent, D_latent ) ) + 1,
@@ -256,6 +261,12 @@ def stateAndModelTests():
             'nu_emiss': D_obs
         }
 
+        u = np.random.random( ( T, D_latent ) )
+        nBad = int( np.random.random() * T )
+        badMask = np.random.choice( T, nBad )
+        u[ badMask ] = np.nan
+        u = None
+
         hmmPrior = HMMDirichletPrior( **HMMParams )
         hmmState = HMMState( prior=hmmPrior )
 
@@ -263,9 +274,9 @@ def stateAndModelTests():
         ldsState = LDSState( prior=ldsPrior )
 
         testsForDistWithoutPrior( hmmPrior )
-        testsForDistWithoutPrior( ldsPrior )
+        # testsForDistWithoutPrior( ldsPrior )
         testForDistWithPrior( hmmState, T=T )
-        testForDistWithPrior( ldsState, T=T ) # I think this is correct, but it will most likely fail because the sequences of x that it samples have really large numbers
+        testForDistWithPrior( ldsState, T=T, measurements=M, u=u, stabilize=True )
 
 ####################################################################################
 
@@ -331,4 +342,5 @@ def exponentialFamilyTest():
     # tensorTests()
     # tensorNormalMarginalizationTest()
     stateAndModelTests()
+    assert 0
     print( 'Passed all of the exp fam tests!' )

@@ -3,6 +3,8 @@ from GenModels.GM.ModelPriors import HMMDirichletPrior
 from GenModels.GM.States.StandardStates import HMMState
 from GenModels.GM.Models.ModelBase import _InferenceModel
 
+__all__ = [ 'HMMModel' ]
+
 class HMMModel( _InferenceModel ):
 
     # This is a wrapper around a state class along with its prior class
@@ -34,7 +36,7 @@ class HMMModel( _InferenceModel ):
 
     @classmethod
     def generate( self, T=10, latentSize=3, obsSize=2, measurements=1, knownLatentStates=None, size=10 ):
-        # Generate a fake data
+        # Generate fake data
         params = {
             'alpha_0': np.ones( latentSize ),
             'alpha': np.ones( ( latentSize, latentSize ) ),

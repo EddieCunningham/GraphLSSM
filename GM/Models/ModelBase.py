@@ -28,6 +28,31 @@ class _ModelBase( ABC ):
     def predict( self ):
         pass
 
+    # @abstractmethod
+    # def predictFromMeanField( self ):
+    #     pass
+
+##########################################################################
+
+class _GibbsMixin():
+
+    def resample_step( self, ys, **kwargs ):
+
+        x = self.state.isample( ys=ys, size=1, **kwargs )
+        x = self.state.unpackSingleSample( x )
+        print( x )
+        print()
+        print( self.state.params )
+        print()
+        print()
+        print( '===========================================' )
+        print()
+        self.state.params = self.state.prior.unpackSingleSample( self.state.iposteriorSample( x ) )
+
+    def gibbs( self, ys, nIters=1000, burnIn=1000, skip=10, verbose=False, **kwargs ):
+        for i in verboseRange( skip * ( nIters ) + burnIn, verbose ):
+            self.resample_step( ys, **kwargs )
+
 ##########################################################################
 
 class _EMMixin():
@@ -45,20 +70,6 @@ class _EMMixin():
                 break
 
             lastMarginal = marginal
-
-##########################################################################
-
-class _GibbsMixin():
-
-    def resample_step( self, ys ):
-
-        x = self.state.isample( ys=ys, size=1 )
-        x = self.state.unpackSingleSample( x )
-        self.state.params = self.state.prior.unpackSingleSample( self.state.iposteriorSample( x ) )
-
-    def gibbs( self, ys, nIters=1000, burnIn=1000, skip=10, verbose=False ):
-        for i in verboseRange( skip * ( nIters ) + burnIn, verbose ):
-            self.resample_step( ys )
 
 ##########################################################################
 

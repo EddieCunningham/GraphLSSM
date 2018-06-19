@@ -4,9 +4,13 @@ from functools import reduce
 from collections import namedtuple
 from GenModels.GM.Distributions import Normal, Regression
 from toolz import curry
+from scipy.linalg import cho_factor, cho_solve
 
 __all__ = [ 'KalmanFilter',
-            'SwitchingKalmanFilter' ]
+            'SwitchingKalmanFilter',
+            'StableKalmanFilter' ]
+
+_HALF_LOG_2_PI = 0.5 * np.log( 2 * np.pi )
 
 class MaskedData():
 
@@ -24,15 +28,22 @@ class MaskedData():
             self.data = data
             self.shape = shape if shape is not None else self.data.shape[ -1 ]
 
+        # So that we don't have to alocate a new numpy array every time
+        self._zero = np.zeros( self.shape )
+
+    @property
+    def zero( self ):
+        return self._zero
+
     def __getitem__( self, key ):
         if( self.mask is None or np.any( self.mask[ key ] ) ):
-            return np.zeros( self.shape )
+            return self.zero
         return self.data[ key ]
+
+##########################################################################
 
 class KalmanFilter( MessagePasser ):
     # Kalman filter with only 1 set of parameters
-
-    ######################################################################
 
     @property
     def A( self ):
@@ -147,6 +158,14 @@ class KalmanFilter( MessagePasser ):
 
         self.updateNatParams( n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=u, ys=ys )
 
+        self.fromNatural = False
+        self._A = A
+        self._sigma = sigma
+        self._C = C
+        self._R = R
+        self._mu0 = mu0
+        self._sigma0 = sigma0
+
     def updateNatParams( self, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=None, ys=None ):
         # This doesn't exactly use natural parameters, but uses J = -2 * n1 and h = n2
 
@@ -178,6 +197,8 @@ class KalmanFilter( MessagePasser ):
         else:
             uMask = np.zeros( self.T, dtype=bool )
             self.u = ( None, uMask, self.D_latent )
+
+        self.fromNatural = True
 
     ######################################################################
 
@@ -388,3 +409,103 @@ class SwitchingKalmanFilter( KalmanFilter ):
         log_Z = 0.5 * u.dot( h1 ) + self.log_Zs[ k ]
 
         return J11, J12, J22, h1, h2, log_Z
+
+#########################################################################################
+
+class StableKalmanFilter( KalmanFilter ):
+
+    # https://homes.cs.washington.edu/~ebfox/publication-files/PhDthesis_ebfox.pdf
+    # Pretty optimized implementation of algorithms 19 and 20
+    # Doesn't work with variational message passing!!!!!
+
+    @property
+    def AInv( self ):
+        return self._AInv
+
+    def updateParams( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None ):
+        super( StableKalmanFilter, self ).updateParams( A, sigma, C, R, mu0, sigma0, u=u, ys=ys )
+        self._AInv = np.linalg.inv( A )
+
+    ######################################################################
+
+    def forwardStep( self, t, alpha ):
+
+        J, h, logZ = alpha
+        u = self.u[ t - 1 ]
+
+        M = self.AInv.T @ J @ self.AInv
+        H = np.linalg.solve( M.T + self.J11.T, M.T ).T
+        L = -H
+        L[ np.diag_indices( L.shape[ 0 ] ) ] += 1
+
+        _J = L @ M @ L.T
+        _J += H @ self.J11 @ H.T
+        _J += self.Jy
+
+        _h = h + J @ self.AInv.dot( u )
+        _h = L @ self.AInv.T @ ( _h )
+        _h += self.hy[ t ]
+
+        # Transition and last
+        _logZ = 0.5 * u.dot( self.J11.dot( u ) ) + self.log_Z + logZ
+
+        JInt = J + self.J22
+        hInt = self.J12.T.dot( u ) + h
+        JChol = cho_factor( JInt, lower=True )
+        JInvh = cho_solve( JChol, hInt )
+
+        # Marginalization
+        _logZ += -0.5 * ( hInt ).dot( JInvh ) + \
+                 np.log( np.diag( JChol[ 0 ] ) ).sum() - \
+                 h.shape[ 0 ] * _HALF_LOG_2_PI
+
+        # Emission
+        _logZ += self.log_Zy[ t ]
+
+        return _J, _h, _logZ
+
+    ######################################################################
+
+    def backwardStep( self, t, beta ):
+
+        J, h, logZ = beta
+        u = self.u[ t ]
+
+        J = J + self.Jy
+        h = h + self.hy[ t + 1 ]
+
+        H = np.linalg.solve( J.T + self.J11.T, J.T ).T
+        L = -H
+        L[ np.diag_indices( L.shape[ 0 ] ) ] += 1
+
+        _J = L @ J @ L.T
+        _J += H @ self.J11 @ H.T
+        _J = self.A.T @ ( _J ) @ self.A
+
+        _h = h - J @ u
+        _h = self.A.T @ L @ ( _h )
+
+        # Transition, emission and last
+        _logZ = 0.5 * u.dot( self.J11.dot( u ) ) + self.log_Z + self.log_Zy[ t + 1 ] + logZ
+
+        JInt = J + self.J11
+        hInt = self.J11.dot( u ) + h
+        JChol = cho_factor( JInt, lower=True )
+        JInvh = cho_solve( JChol, hInt )
+
+        # Marginalization
+        _logZ += -0.5 * ( hInt ).dot( JInvh ) + \
+                 np.log( np.diag( JChol[ 0 ] ) ).sum() - \
+                 h.shape[ 0 ] * _HALF_LOG_2_PI
+
+        return _J, _h, _logZ
+
+    ######################################################################
+
+    def forwardFilter( self ):
+        assert self.fromNatural == False, 'Can\'t do variational kalman filtering with this algorithm!!'
+        return super( StableKalmanFilter, self ).forwardFilter()
+
+    def backwardFilter( self ):
+        assert self.fromNatural == False, 'Can\'t do variational kalman filtering with this algorithm!!'
+        return super( StableKalmanFilter, self ).backwardFilter()

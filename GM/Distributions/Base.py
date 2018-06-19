@@ -365,6 +365,24 @@ class ExponentialFam( Conjugate ):
     ##########################################################################
 
     @classmethod
+    def entropy( cls, params=None, natParams=None ):
+        # H[ p ] = -E_{ p( x | n ) }[ logP( x | n ) ]
+        assert ( params is None ) ^ ( natParams is None )
+        natParams = natParams if natParams is not None else cls.standardToNat( *params )
+
+        expectedStats = cls.expectedSufficientStats( natParams=natParams )
+        log_partition = cls.log_partition( natParams=natParams )
+
+        return -sum( [ ( s * n ).sum() for s, n in zip( expectedStats, natParams ) ] ) + log_partition
+
+    def ientropy( self ):
+        if( self.standardChanged ):
+            return self.entropy( params=self.params )
+        return self.entropy( natParams=self.natParams )
+
+    ##########################################################################
+
+    @classmethod
     def score( cls, x, params=None, natParams=None, constParams=None ):
         # v( n, x ) = d/dn{ logP( x | n ) }
         cls.checkShape( x )
@@ -622,9 +640,10 @@ class ExponentialFam( Conjugate ):
         params = params if params is not None else cls.natToStandard( *natParams )
         cls.priorClass.checkShape( params )
         stat = cls.priorClass.sufficientStats( params, constParams=constParams )
-        part = cls.priorClass.log_partition( params, natParams=postNatParams )
-
+        part = cls.priorClass.log_partition( params, natParams=postNatParams, split=False )
         return cls.log_pdf( postNatParams, stat, part )
+
+        return cls.priorClass.log_pdf( postNatParams, stat, part )
 
     @classmethod
     def log_posterior( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None ):

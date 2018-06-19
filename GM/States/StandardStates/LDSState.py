@@ -4,12 +4,6 @@ from GenModels.GM.Distributions import Normal, Regression, InverseWishart, Matri
 import numpy as np
 from GenModels.GM.Utility import stabilize as stab
 
-# IMPORTANT NOTE
-# There is a really weird heisenbug somewhere in either here or Regression.py.
-# Sometimes (seemingly randomly) the A, sigma, C or R parameters change
-# for different function calls and mess things up.  I'm not sure if I fixed
-# it, but I haven't been able to find the root cause.
-
 __all__ = [ 'LDSState' ]
 
 def definePrior():
@@ -149,7 +143,8 @@ class LDSState( KalmanFilter, StateBase ):
         u = constParams
 
         xIn  = x[ :-1 ]
-        xOut = x[ 1: ] - u[ : ]
+        xOut = x[ 1: ] - u[ :-1 ]
+
         t1, t2, t3 = Regression.sufficientStats( x=( xIn, xOut ), constParams=constParams )
         t4, t5, t6 = Regression.sufficientStats( x=( x, ys ), constParams=constParams )
         t7, t8 = Normal.sufficientStats( x=x[ 0 ], constParams=constParams )
@@ -163,10 +158,11 @@ class LDSState( KalmanFilter, StateBase ):
         if( N > 1 ):
             transFactor = 0
             emissionFactor = 0
-            initFactor = N
+            initFactor = 0
             for _x, _y in zip( *x ):
                 M = cls.nMeasurements( ( _x, _y ) )
                 T = cls.sequenceLength( ( _x, _y ) )
+                initFactor += 1
                 transFactor += ( T - 1 )
                 emissionFactor += T * M
         else:
@@ -175,13 +171,11 @@ class LDSState( KalmanFilter, StateBase ):
             transFactor = T - 1
             emissionFactor = T * M
             initFactor = 1
+
         return transFactor, emissionFactor, initFactor
 
     ##########################################################################
 
-    # Need to take take into account sequence length when computing the posterior parameters.
-    # TODO: GENERALIZE THE EXPONENTIAL DISTRIBUTION BASE CLASS TO DISTRIBUTIONS THAT ARE
-    # MADE WITH COMPONENTS, LIKE THIS CLASS
     @classmethod
     def posteriorPriorNatParams( cls, x, constParams=None, priorParams=None, priorNatParams=None ):
         assert ( priorParams is None ) ^ ( priorNatParams is None )
@@ -192,7 +186,29 @@ class LDSState( KalmanFilter, StateBase ):
         transFactor, emissionFactor, initFactor = cls.partitionFactors( x )
         stats = [ t1, t2, t3, t4, t5, t6, t7, t8, transFactor, transFactor, emissionFactor, emissionFactor, initFactor, initFactor, initFactor ]
 
+        for s, p in zip( stats, priorNatParams ):
+            if( isinstance( s, np.ndarray ) ):
+                assert isinstance( p, np.ndarray )
+                assert s.shape == p.shape
+            else:
+                assert not isinstance( s, np.ndarray ) and not isinstance( p, np.ndarray )
         return [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
+
+    ##########################################################################
+
+    @classmethod
+    def log_posteriorExpFam( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None ):
+        assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+
+        cls.checkShape( x )
+        postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
+
+        params = params if params is not None else cls.natToStandard( *natParams )
+        cls.priorClass.checkShape( params )
+        stat = cls.priorClass.sufficientStats( params, constParams=constParams )
+        part = cls.priorClass.log_partition( params, natParams=postNatParams, split=True )
+
+        return cls.priorClass.log_pdf( postNatParams, stat, part )
 
     ##########################################################################
 
@@ -359,7 +375,13 @@ class LDSState( KalmanFilter, StateBase ):
 
     ######################################################################
 
-    def expectedStatsBlock( self, t, alphas, betas ):
+    def EStep( self, ys=None, u=None, preprocessKwargs={}, filterKwargs={} ):
+        preprocessKwargs.update( { 'u': u } )
+        return super( LDSState, self ).EStep( ys=ys, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
+
+    ######################################################################
+
+    def expectedTransitionStatsBlock( self, t, alphas, betas ):
         # E[ x_t * x_t^T ], E[ x_t+1 * x_t^T ] and E[ x_t+1 * x_t+1^T ]
 
         # Find the natural parameters for P( x_t+1, x_t | Y )
@@ -382,11 +404,11 @@ class LDSState( KalmanFilter, StateBase ):
     def conditionedExpectedSufficientStats( self, ys, alphas, betas ):
 
         assert 0, 'Add in other stats'
-        t1, t2, t3 = self.expectedStatsBlock( 0, alphas, betas )
+        t1, t2, t3 = self.expectedTransitionStatsBlock( 0, alphas, betas )
 
         for t in range( 1, self.T - 1 ):
 
-            Ext1_xt1, Ext1_xt, Ext_xt = self.expectedStatsBlock( t, alphas, betas )
+            Ext1_xt1, Ext1_xt, Ext_xt = self.expectedTransitionStatsBlock( t, alphas, betas )
             t1 += Ext1_xt1
             t2 += Ext1_xt
             t3 += Ext_xt

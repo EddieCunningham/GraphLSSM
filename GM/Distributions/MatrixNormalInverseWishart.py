@@ -4,7 +4,7 @@ from scipy.special import multigammaln
 from GenModels.GM.Distributions.TensorNormal import TensorNormal
 from GenModels.GM.Distributions.InverseWishart import InverseWishart
 from GenModels.GM.Distributions.Regression import Regression
-from GenModels.GM.Utility import multigammalnDerivative
+from GenModels.GM.Utility import multigammalnDerivative, cheatPrecisionHelper
 
 class MatrixNormalInverseWishart( ExponentialFam ):
     # This class is written with the intention of making it a prior for
@@ -95,6 +95,11 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         psi = n1 - M @ n2 @ M.T
         nu = n4 - 1 - n - p
         Q = n5 - p
+
+        # # Numerical padding ( https://github.com/mattjj/pybasicbayes/blob/master/pybasicbayes/distributions/regression.py#L96 )
+        # # Having precision issues right now so going to keep this in for the moment and hope it helps
+        # V = cheatPrecisionHelper( V, p )
+        # psi = cheatPrecisionHelper( psi, n )
         return M, V, psi, nu, Q
 
     ##########################################################################

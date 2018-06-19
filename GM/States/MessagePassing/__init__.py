@@ -1,3 +1,3 @@
 from GenModels.GM.States.MessagePassing.FilterBase import MessagePasser
 from GenModels.GM.States.MessagePassing.ForwardBackward import CategoricalForwardBackward, GaussianForwardBackward, SLDSForwardBackward
-from GenModels.GM.States.MessagePassing.KalmanFilter import KalmanFilter, SwitchingKalmanFilter
+from GenModels.GM.States.MessagePassing.KalmanFilter import KalmanFilter, SwitchingKalmanFilter, StableKalmanFilter

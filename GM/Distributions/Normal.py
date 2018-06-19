@@ -192,6 +192,8 @@ class Normal( ExponentialFam ):
     def marginalizeX1( cls, J11, J12, J22, h1, h2, log_Z ):
         K = h1.shape[ 0 ]
 
+        # J11 = cheatPrecisionHelper( J11, h1.shape[ 0 ] )
+
         J11Chol = cho_factor( J11, lower=True )
         J11Invh1 = cho_solve( J11Chol, h1 )
 
@@ -202,6 +204,13 @@ class Normal( ExponentialFam ):
                 0.5 * h1.dot( J11Invh1 ) + \
                 np.log( np.diag( J11Chol[ 0 ] ) ).sum() - \
                 K * _HALF_LOG_2_PI
+
+        # More numerical precision stuff.
+        # This is definitely the main source of numerical inaccuracy in the kalman filter.
+        # Might use Emily Fox's solution ( https://homes.cs.washington.edu/~ebfox/publication-files/PhDthesis_ebfox.pdf algorithm 3 )
+        # TODO: Use the cholesky decomposition of the covariance everywhere.
+        # J = cheatPrecisionHelper( J, h.shape[ 0 ] )
+
         return J, h, log_Z
 
     @classmethod

@@ -5,7 +5,14 @@ import autograd
 from scipy.special import digamma
 from functools import partial
 
-__all__ = [ 'multigammalnDerivative', 'invPsd', 'is_outlier', 'fullyRavel', 'randomStep', 'deepCopy', 'stabilize' ]
+__all__ = [ 'multigammalnDerivative',
+            'invPsd',
+            'is_outlier',
+            'fullyRavel',
+            'randomStep',
+            'deepCopy',
+            'stabilize',
+            'cheatPrecisionHelper' ]
 
 ##########################################################################
 
@@ -105,3 +112,13 @@ def randomStep( x, stepSize=1.0 ):
 
 def deepCopy( x ):
     return copy.deepcopy( x )
+
+##########################################################################
+
+def cheatPrecisionHelper( x, N ):
+    # A quick fix for numerical precision issues.  In the future, don't
+    # use this and use a more stable algorithm.
+    # Assumes that x is psd matrix
+    x = ( x + x.T ) / 2.0
+    x[ np.diag_indices( N ) ] += np.ones( N ) * 1e-8
+    return x

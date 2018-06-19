@@ -1,7 +1,7 @@
 import numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from GenModels.GM.Distributions.Normal import Normal
-from GenModels.GM.Utility import invPsd
+from GenModels.GM.Utility import invPsd, cheatPrecisionHelper
 
 __all__ = [ 'Regression' ]
 
@@ -66,11 +66,17 @@ class Regression( ExponentialFam ):
 
     @classmethod
     def standardToNat( cls, A, sigma ):
+        n, p = A.shape
+
         sigInv = invPsd( sigma )
 
         n1 = -0.5 * sigInv
         n2 = -0.5 * A.T @ sigInv @ A
         n3 = A.T @ sigInv
+
+        # # Numerical padding
+        # n1 = cheatPrecisionHelper( n1, n )
+        # n2 = cheatPrecisionHelper( n2, p )
 
         return n1, n2, n3
 
@@ -78,6 +84,8 @@ class Regression( ExponentialFam ):
     def natToStandard( cls, n1, n2, n3 ):
         sigma = -0.5 * np.linalg.inv( n1 )
         A = sigma @ n3.T
+
+        # sigma = cheatPrecisionHelper( sigma, sigma.shape[ 0 ] )
         return A, sigma
 
     ##########################################################################
@@ -128,6 +136,10 @@ class Regression( ExponentialFam ):
                 t3 = x.T.dot( y )
             else:
                 assert 0, 'Invalid dim'
+
+        # # For the sake of numerical precision
+        # t1 = ( t1 + t1.T ) / 2.0
+        # t2 = ( t2 + t2.T ) / 2.0
 
         return t1, t2, t3
 

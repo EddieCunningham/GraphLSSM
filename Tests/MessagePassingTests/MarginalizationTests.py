@@ -2,6 +2,7 @@ import numpy as np
 from GenModels.GM.States.MessagePassing import *
 from GenModels.GM.Distributions import *
 import time
+import scipy
 
 __all__ = [ 'marginalizationTest' ]
 
@@ -228,7 +229,7 @@ def testSLDSForwardBackward():
 
 def testKalmanFilter():
 
-    T = 100
+    T = 1000
     D_latent = 7
     D_obs = 3
     D = 4
@@ -240,9 +241,9 @@ def testKalmanFilter():
     mu0, sigma0 = NormalInverseWishart.generate( D=D_latent )
 
     u = np.random.random( ( T, D_latent ) )
-    nBad = int( np.random.random() * T )
-    badMask = np.random.choice( T, nBad )
-    u[ badMask ] = np.nan
+    # nBad = int( np.random.random() * T )
+    # badMask = np.random.choice( T, nBad )
+    # u[ badMask ] = np.nan
 
     ys = np.array( [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ] )
 
@@ -358,11 +359,80 @@ def testSwitchingKalmanFilter():
 
 ######################################################################
 
+
+def testStableKalmanFilter():
+
+    # np.random.seed( 3 )
+
+    with np.errstate( all='raise' ), scipy.special.errstate( all='raise' ):
+        T = 1000
+        D_latent = 7
+        D_obs = 3
+        D = 4
+
+        mp = StableKalmanFilter()
+        mpTrue = KalmanFilter()
+
+        A, sigma = MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_latent )
+        C, R = MatrixNormalInverseWishart.generate( D_in=D_latent, D_out=D_obs )
+        mu0, sigma0 = NormalInverseWishart.generate( D=D_latent )
+
+        u = np.random.random( ( T, D_latent ) )
+
+        ys = np.array( [ Regression.sample( params=( C, R ), size=T )[ 1 ] for _ in range( D ) ] )
+
+        mpTrue.updateParams( A=A, sigma=sigma, C=C, R=R, mu0=mu0, sigma0=sigma0, u=u, ys=ys )
+
+        start = time.time()
+        mp.updateParams( A=A, sigma=sigma, C=C, R=R, mu0=mu0, sigma0=sigma0, u=u, ys=ys )
+        end = time.time()
+        print( 'Preprocess: ', end - start )
+
+        start = time.time()
+        alphas = mp.forwardFilter()
+        betas = mp.backwardFilter()
+        end = time.time()
+        print( 'Both filters: ', end - start )
+
+        alphasTrue, betasTrue = ( mpTrue.forwardFilter(), mpTrue.backwardFilter() )
+
+        # for i, ( a, b ) in enumerate( zip( alphas, betas ) ):
+        #     Ja, ha, log_Za = a
+        #     if( i == 1 ):
+        #         print( 'Ja', Ja )
+
+
+        Ja, ha, log_Za = alphas[ -1 ]
+        Jb, hb, log_Zb = betas[ -1 ]
+
+        for i, ( a, b, _a, _b ) in enumerate( zip( alphas, betas, alphasTrue, betasTrue ) ):
+            Ja, ha, log_Za = a
+            Jb, hb, log_Zb = b
+
+            _Ja, _ha, _log_Za = _a
+            _Jb, _hb, _log_Zb = _b
+
+            assert np.allclose( Ja, _Ja, rtol=1e-5, atol=1e-6 ), '%s\n%s'%( ( Ja - _Ja ), np.max( ( Ja - _Ja ) ) )
+            assert np.allclose( Jb, _Jb, rtol=1e-5, atol=1e-6 ), '%s\n%s'%( ( Jb - _Jb ), np.max( ( Jb - _Jb ) ) )
+            assert np.allclose( ha, _ha, rtol=1e-5, atol=1e-6 ), '%s\n%s'%( ( ha - _ha ), np.max( ( ha - _ha ) ) )
+            assert np.allclose( hb, _hb, rtol=1e-5, atol=1e-6 ), '%s\n%s'%( ( hb - _hb ), np.max( ( hb - _hb ) ) )
+            assert np.allclose( log_Za, _log_Za, rtol=1e-5, atol=1e-6 ), '%s\n%s'%( ( log_Za - _log_Za ), np.max( ( log_Za - _log_Za ) ) )
+            assert np.allclose( log_Zb, _log_Zb, rtol=1e-5, atol=1e-6 ), '%s\n%s'%( ( log_Zb - _log_Zb ), np.max( ( log_Zb - _log_Zb ) ) )
+
+
+        print( 'Passed the stable kalman filter marginal test!\n\n' )
+
+
+######################################################################
+
+
 def marginalizationTest():
 
-    testCategoricalForwardBackward()
-    testCategoricalForwardBackwardWithKnownStates()
-    testGaussianForwardBackward()
-    testSLDSForwardBackward()
+    # testCategoricalForwardBackward()
+    # testCategoricalForwardBackwardWithKnownStates()
+    # testGaussianForwardBackward()
+    # testSLDSForwardBackward()
     testKalmanFilter()
-    testSwitchingKalmanFilter()
+    # testSwitchingKalmanFilter()
+
+    testStableKalmanFilter()

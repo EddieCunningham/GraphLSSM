@@ -178,14 +178,7 @@ class LDSMNIWPrior( ExponentialFam ):
             return t
 
         t1, t2, t3, t4, t5, t6, t7, t8 = LDSState.standardToNat( *x )
-
-        A, sigma, C, R, mu0, sigma0 = x
-        # Using these instead because LDSState.log_partition requires data ( should probably find way around that )
-        # This is a global factor!!! Should definitely make a seperate class for this
-        t9, t10 = Regression.log_partition( params=( A, sigma ), split=True )
-        t11, t12 = Regression.log_partition( params=( C, R ), split=True )
-        t13, t14, t15 = Normal.log_partition( params=( mu0, sigma0 ), split=True )
-
+        t9, t10, t11, t12, t13, t14, t15 = LDSState.log_partition( params=x, split=True )
         return t1, t2, t3, t4, t5, t6, t7, t8, -t9, -t10, -t11, -t12, -t13, -t14, -t15
 
     @classmethod
@@ -309,6 +302,8 @@ class LDSMNIWPrior( ExponentialFam ):
 
     @classmethod
     def generate( cls, D_latent=3, D_obs=2, size=1 ):
+
+        # Not sure why I used a tuple here
         params = (
             ( 'M_trans', np.zeros( ( D_latent, D_latent ) ) ),
             ( 'V_trans', np.eye( D_latent ) ),
@@ -360,8 +355,62 @@ class LDSMNIWPrior( ExponentialFam ):
         A, sigma, C, R, mu0, sigma0 = x
         M_trans, V_trans, psi_trans, nu_trans, Q1, M_emiss, V_emiss, psi_emiss, nu_emiss, Q2, mu_0, kappa_0, psi_0, nu_0, Q0 = params if params is not None else cls.natToStandard( *natParams )
 
-        ans = MatrixNormalInverseWishart.log_likelihood( ( A, sigma ), params=( M_trans, V_trans, psi_trans, nu_trans, Q1 ) )
-        ans += MatrixNormalInverseWishart.log_likelihood( ( C, R ), params=( M_emiss, V_emiss, psi_emiss, nu_emiss, Q2 ) )
-        ans += NormalInverseWishart.log_likelihood( ( mu0, sigma0 ), params=( mu_0, kappa_0, psi_0, nu_0, Q0 ) )
+        ans1 = MatrixNormalInverseWishart.log_likelihood( ( A, sigma ), params=( M_trans, V_trans, psi_trans, nu_trans, Q1 ) )
+        ans2 = MatrixNormalInverseWishart.log_likelihood( ( C, R ), params=( M_emiss, V_emiss, psi_emiss, nu_emiss, Q2 ) )
+        ans3 = NormalInverseWishart.log_likelihood( ( mu0, sigma0 ), params=( mu_0, kappa_0, psi_0, nu_0, Q0 ) )
+
+        # print( '\nans1', ans1 )
+        # print( 'ans2', ans2 )
+        # print( 'ans3', ans3 )
+
+        ans = ans1 + ans2 + ans3
+        # print( 'ans', ans )
+
+        return ans
+
+    ##########################################################################
+
+    @classmethod
+    def log_pdf( cls, natParams, sufficientStats, log_partition=None ):
+
+        from collections import Iterable
+
+        ans1 = 0.0
+        for i, ( natParam, stat ) in enumerate( zip( natParams[ :3 ], sufficientStats[ :3 ] ) ):
+            ans1 += ( natParam * stat ).sum()
+        for i, ( natParam, stat ) in enumerate( zip( natParams[ 8:10 ], sufficientStats[ 8:10 ] ) ):
+            ans1 += ( natParam * stat ).sum()
+        ans1 -= sum( log_partition[ :5 ] )
+
+        ans2 = 0.0
+        for i, ( natParam, stat ) in enumerate( zip( natParams[ 3:6 ], sufficientStats[ 3:6 ] ) ):
+            ans2 += ( natParam * stat ).sum()
+        for i, ( natParam, stat ) in enumerate( zip( natParams[ 10:12 ], sufficientStats[ 10:12 ] ) ):
+            ans2 += ( natParam * stat ).sum()
+        ans2 -= sum( log_partition[ 5:10 ] )
+
+        ans3 = 0.0
+        for i, ( natParam, stat ) in enumerate( zip( natParams[ 6:8 ], sufficientStats[ 6:8 ] ) ):
+            ans3 += ( natParam * stat ).sum()
+        for i, ( natParam, stat ) in enumerate( zip( natParams[ 12:15 ], sufficientStats[ 12:15 ] ) ):
+            ans3 += ( natParam * stat ).sum()
+        ans3 -= sum( log_partition[ 10: ] )
+
+        # print( '\nIN LOGPDF' )
+        # print( 'ans1', ans1 )
+        # print( 'ans2', ans2 )
+        # print( 'ans3', ans3 )
+
+        ans = ans1 + ans2 + ans3
+
+        # print( 'ans', ans )
+
+        # if( log_partition is not None ):
+        #     if( isinstance( log_partition, tuple ) ):
+        #         ans -= sum( log_partition )
+        #     else:
+        #         ans -= log_partition
+
+        assert isinstance( ans, Iterable ) == False, log_partition
 
         return ans

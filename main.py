@@ -1,10 +1,10 @@
 from GenModels.Tests import *
 
-distributionTest()
-stateTests()
-exponentialFamilyTest()
+# distributionTest()
+# exponentialFamilyTest()
 marginalizationTest()
-# # graphMarginalizationTest()
-priorTests()
+# stateTests()
+# # # graphMarginalizationTest()
+# priorTests()
 
-modelTests()
+# modelTests()
