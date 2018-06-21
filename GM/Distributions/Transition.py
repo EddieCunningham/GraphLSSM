@@ -83,8 +83,18 @@ class Transition( ExponentialFam ):
         # Compute T( x )
         x, y = x
 
-        assert isinstance( x, np.ndarray )
-        assert isinstance( y, np.ndarray )
+        if( isinstance( x, np.ndarray ) == False ):
+            assert isinstance( x, int )
+            if( isinstance( y, np.ndarray ) ):
+                assert y.ndim == 1
+            else:
+                assert isinstance( y, int )
+                y = np.array( [ y ] )
+
+            x = np.array( [ x ] )
+        else:
+            assert isinstance( y, np.ndarray )
+
         D_in, D_out = constParams
         assert D_in is not None and D_out is not None
 
@@ -100,6 +110,7 @@ class Transition( ExponentialFam ):
             return ( t, )
 
         elif( y.ndim > 1 and x.ndim > 1 ):
+            assert 0, 'I dont think this will work'
             assert y.shape[ 0 ] == x.shape[ 0 ]
             # Mutiple x, y pairs
             t, _, _ = np.histogram2d( x[ 0 ], y[ 0 ], bins=( range( D_in + 1 ), range( D_out + 1 ) ) )
@@ -109,6 +120,14 @@ class Transition( ExponentialFam ):
             return ( t, )
         else:
             # A single x, y pair
+            if( isinstance( y, np.ndarray ) and y.ndim == 1 and ( isinstance( x, int ) or x.size == 1 ) ):
+                x = np.array( [ x for _ in y ] )
+
+            if( isinstance( x, int ) or x.size == 1 ):
+                x = np.array( [ x ] )
+            if( isinstance( y, int ) or y.size == 1 ):
+                y = np.array( [ y ] )
+
             t, _, _ = np.histogram2d( x, y, bins=( range( D_in + 1 ), range( D_out + 1 ) ) )
             return ( t, )
 

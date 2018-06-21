@@ -42,8 +42,12 @@ class _GibbsMixin():
         x = self.state.unpackSingleSample( x )
         print( x )
         print()
-        print( self.state.params )
         print()
+        print( '------------------------------' )
+        print()
+        for p in self.state.params:
+            print( p )
+            print()
         print()
         print( '===========================================' )
         print()

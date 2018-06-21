@@ -111,6 +111,10 @@ class StateBase( ExponentialFam ):
         pass
 
     @abstractmethod
+    def genEmissions( self, measurements ):
+        pass
+
+    @abstractmethod
     def sampleStep( self, *args ):
         pass
 
@@ -140,7 +144,7 @@ class StateBase( ExponentialFam ):
         lastVal = None
         for t in range( self.T ):
             args = self.forwardArgs( t, None, lastVal )
-            lastVal = workFunc( t, *args )
+            lastVal = workFunc( lastVal, t, *args )
 
         self._normalizerValid = False
 
@@ -151,7 +155,7 @@ class StateBase( ExponentialFam ):
         lastVal = None
         for t in reversed( range( self.T ) ):
             args = self.backwardArgs( t, alphas[ t ], lastVal )
-            lastVal = workFunc( t, *args )
+            lastVal = workFunc( lastVal, t, *args )
 
         # Reset the normalizer flag
         self._normalizerValid = False
@@ -163,7 +167,7 @@ class StateBase( ExponentialFam ):
         lastVal = None
         for t in range( self.T ):
             args = self.forwardArgs( t, betas[ t ], lastVal )
-            lastVal = workFunc( t, *args )
+            lastVal = workFunc( lastVal, t, *args )
 
         # Reset the normalizer flag
         self._normalizerValid = False
@@ -171,13 +175,41 @@ class StateBase( ExponentialFam ):
     ######################################################################
 
     @abstractmethod
-    def sampleEmissions( self, x ):
+    def sampleSingleEmission( self, x ):
+        pass
+
+    @abstractmethod
+    def sampleEmissions( self, x, measurements=1 ):
         # Sample from P( y | x, ϴ )
         pass
 
     @abstractmethod
     def emissionLikelihood( self, x, ys ):
         # Compute P( y | x, ϴ )
+        pass
+
+    ######################################################################
+    # These methods are for incrementally computing stats instead of all
+    # at the end
+
+    @classmethod
+    @abstractmethod
+    def genStats( cls ):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def initialStats( cls, x, constParams=None ):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def transitionStats( cls, x, constParams=None ):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def emissionStats( cls, x, constParams=None ):
         pass
 
     ######################################################################
@@ -208,15 +240,15 @@ class StateBase( ExponentialFam ):
     ######################################################################
 
     @classmethod
-    def sample( cls, ys=None, params=None, natParams=None, measurements=1, T=None, forwardFilter=True, size=1, **kwargs ):
+    def sample( cls, ys=None, params=None, natParams=None, measurements=1, T=None, forwardFilter=True, size=1, returnStats=False, **kwargs ):
         assert ( params is None ) ^ ( natParams is None )
         params = params if params is not None else cls.natToStandard( *natParams )
         dummy = cls( *params )
-        return dummy.isample( ys=ys, measurements=measurements, T=T, forwardFilter=forwardFilter, size=size, **kwargs )
+        return dummy.isample( ys=ys, measurements=measurements, T=T, forwardFilter=forwardFilter, size=size, returnStats=returnStats, **kwargs )
 
     ######################################################################
 
-    def conditionedSample( self, ys=None, forwardFilter=True, preprocessKwargs={}, filterKwargs={} ):
+    def conditionedSample( self, ys=None, forwardFilter=True, preprocessKwargs={}, filterKwargs={}, returnStats=False ):
         # Sample x given y
 
         size = self.dataN( ys, conditionOnY=True, checkY=True )
@@ -232,28 +264,66 @@ class StateBase( ExponentialFam ):
 
             self.preprocessData( ys=y, **preprocessKwargs )
 
-            x = self.genStates()
+            x = self.genStates() if returnStats == False else self.genStats()
 
-            def workFunc( t, *args ):
+            def workFuncForStateSample( lastX, t, *args ):
                 nonlocal x
                 x[ t ] = self.sampleStep( *args )
                 return x[ t ]
 
-            if( forwardFilter ):
-                self.forwardFilterBackwardRecurse( workFunc, **filterKwargs )
+            def workFuncForStats( lastX, t, *args ):
+                nonlocal x
+                _x = self.sampleStep( *args )
+                _y = y[ :, t ]
+
+                # Compute the initial distribution, transition and emission sufficient statistics
+                if( lastX is None ):
+                    stats = self.initialStats( _x, constParams=self.constParams )
+                    for i, stat in enumerate( stats ):
+                        x[ 0 ][ i ][ : ] = stat
+                else:
+                    # Change this way of passing t to constParams eventually
+                    stats = self.transitionStats( ( lastX, _x ), constParams=( self.constParams, t ) )
+                    for i, stat in enumerate( stats ):
+                        x[ 1 ][ i ][ : ] += stat
+
+                stats = self.emissionStats( ( _x, _y ), constParams=self.constParams )
+                for i, stat in enumerate( stats ):
+                    x[ 2 ][ i ][ : ] += stat
+
+                return _x
+
+            # Use the correct work function and filter function for the given arguments
+            workFunc = workFuncForStateSample if returnStats == False else workFuncForStats
+            filterFunc = self.forwardFilterBackwardRecurse if forwardFilter else self.backwardFilterForwardRecurse
+            filterFunc( workFunc, **filterKwargs )
+
+            if( returnStats == False ):
+                ans.append( ( x, y ) )
             else:
-                self.backwardFilterForwardRecurse( workFunc, **filterKwargs )
+                # Accumulate the statistics
+                M, T = y.shape[ 0:2 ]
 
-            ans.append( ( x, y ) )
+                if( len( ans ) == 0 ):
+                    ans = [ [], [] ]
+                    for i, stat in enumerate( x ):
+                        ans[ 0 ].append( stat )
+                        ans[ 1 ] = [ 1, M, T ]
+                else:
+                    for i, stat in enumerate( x ):
+                        ans[ 0 ][ i ] += stat
+                        ans[ 1 ] = np.add( ans[ 1 ], [ 1, M, T ] )
 
-        ans = tuple( list( zip( *ans ) ) )
+        # Make sure that the sampled states are in the expected form
+        if( returnStats == False ):
+            ans = tuple( list( zip( *ans ) ) )
+            self.checkShape( ans )
 
-        self.checkShape( ans )
         return ans
 
     ######################################################################
 
-    def fullSample( self, measurements=2, T=None, size=1 ):
+    def fullSample( self, measurements=2, T=None, size=1, returnStats=False ):
         # Sample x and y
 
         assert T is not None
@@ -262,34 +332,76 @@ class StateBase( ExponentialFam ):
         ans = []
 
         for _ in range( size ):
-            x = self.genStates()
 
-            def workFunc( t, *args ):
+            if( returnStats == False ):
+                x = self.genStates()
+                y = self.genEmissions( measurements )
+            else:
+                x = self.genStats()
+
+            def workFuncForStateSample( lastX, t, *args ):
                 nonlocal x
                 x[ t ] = self.sampleStep( *args )
+                # The first two axes should be ( measurements, time )
+                y[ :, t, ... ] = self.sampleSingleEmission( x[ t ], measurements=measurements )
                 return x[ t ]
+
+            def workFuncForStats( lastX, t, *args ):
+                nonlocal x
+                _x = self.sampleStep( *args )
+                _y = self.sampleSingleEmission( _x, measurements=measurements )
+
+                # Compute the initial distribution, transition and emission sufficient statistics
+                if( lastX is None ):
+                    stats = self.initialStats( _x, constParams=self.constParams )
+                    for i, stat in enumerate( stats ):
+                        x[ 0 ][ i ][ : ] = stat
+                else:
+                    # Change this way of passing t to constParams eventually
+                    stats = self.transitionStats( ( lastX, _x ), constParams=( self.constParams, t ) )
+                    for i, stat in enumerate( stats ):
+                        x[ 1 ][ i ][ : ] += stat
+
+                stats = self.emissionStats( ( _x, _y ), constParams=self.constParams )
+                for i, stat in enumerate( stats ):
+                    x[ 2 ][ i ][ : ] += stat
+
+                return _x
+
+            workFunc = workFuncForStateSample if returnStats == False else workFuncForStats
 
             # This is if we want to sample from P( x, y | ϴ )
             self.noFilterForwardRecurse( workFunc )
 
-            # We can have multiple measurements from the same latent state
-            ys = np.array( [ self.sampleEmissions( x ) for _ in range( measurements ) ] )
-            ys = np.swapaxes( ys, 0, 1 )
+            if( returnStats == False ):
+                ans.append( ( x, y ) )
+            else:
+                # Accumulate the statistics
+                M, T = ( measurements, T )
 
-            ans.append( ( x, ys[ 0 ] ) )
+                if( len( ans ) == 0 ):
+                    ans = [ [], [] ]
+                    for i, stat in enumerate( x ):
+                        ans[ 0 ].append( stat )
+                        ans[ 1 ] = [ 1, M, T ]
+                else:
+                    for i, stat in enumerate( x ):
+                        ans[ 0 ][ i ] += stat
+                        ans[ 1 ] = np.add( ans[ 1 ], [ 1, M, T ] )
 
-        ans = tuple( list( zip( *ans ) ) )
+        if( returnStats == False ):
+            ans = tuple( list( zip( *ans ) ) )
+            self.checkShape( ans )
 
-        self.checkShape( ans )
         return ans
 
     ######################################################################
 
-    def isample( self, ys=None, measurements=1, T=None, forwardFilter=True, size=1 ):
-        # Probably override this for each child class
+    def isample( self, ys=None, measurements=1, T=None, forwardFilter=True, size=1, retutnStats=False ):
+        # If returnStats is true, then return t( x, y ) instead of ( x, y )
         if( ys is not None ):
-            return self.conditionedSample( ys=ys, forwardFilter=forwardFilter )
-        return self.fullSample( measurements=measurements, T=T, size=size )
+            return self.conditionedSample( ys=ys, forwardFilter=forwardFilter, returnStats=returnStats )
+        return self.fullSample( measurements=measurements, T=T, size=size, returnStats=returnStats )
 
     ######################################################################
 
@@ -323,7 +435,7 @@ class StateBase( ExponentialFam ):
 
             self.preprocessData( ys=ys, **preprocessKwargs )
 
-            def workFunc( t, *args ):
+            def workFunc( lastX, t, *args ):
                 nonlocal ans, x
                 term = self.likelihoodStep( x[ t ], *args )
                 ans[ i ] += term

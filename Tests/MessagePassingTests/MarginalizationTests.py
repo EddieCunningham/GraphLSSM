@@ -422,17 +422,14 @@ def testStableKalmanFilter():
 
         print( 'Passed the stable kalman filter marginal test!\n\n' )
 
-
 ######################################################################
-
 
 def marginalizationTest():
 
-    # testCategoricalForwardBackward()
-    # testCategoricalForwardBackwardWithKnownStates()
-    # testGaussianForwardBackward()
-    # testSLDSForwardBackward()
+    testCategoricalForwardBackward()
+    testCategoricalForwardBackwardWithKnownStates()
+    testGaussianForwardBackward()
+    testSLDSForwardBackward()
     testKalmanFilter()
-    # testSwitchingKalmanFilter()
-
+    testSwitchingKalmanFilter()
     testStableKalmanFilter()

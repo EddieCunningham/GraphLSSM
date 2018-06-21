@@ -60,12 +60,11 @@ def HMMModelTest():
 
 def LDSModelTest():
     with np.errstate( all='raise' ), scipy.special.errstate( all='raise' ):
-        T = 10
-        D_latent = 7
-        D_obs = 3
-        D = 4
-        meas = 4
-        size = 5
+        T = 100
+        D_latent = 4
+        D_obs = 2
+        meas = 1
+        size = 4
 
         lds = LDSModel( **LDSModel._genericParams( D_latent, D_obs ) )
 

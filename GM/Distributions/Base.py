@@ -498,15 +498,17 @@ class ExponentialFam( Conjugate ):
     ##########################################################################
 
     @classmethod
-    def posteriorPriorNatParams( cls, x, constParams=None, priorParams=None, priorNatParams=None ):
+    def posteriorPriorNatParams( cls, x=None, constParams=None, priorParams=None, priorNatParams=None, stats=None ):
         assert ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( x is None ) ^ ( stats is None )
 
-        cls.checkShape( x )
-        stats = cls.sufficientStats( x, constParams=constParams )
         priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
 
-        dataN = cls.dataN( x )
-        stats = stats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( stats ) ) ] )
+        if( x is not None ):
+            cls.checkShape( x )
+            stats = cls.sufficientStats( x, constParams=constParams )
+            dataN = cls.dataN( x )
+            stats = stats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( stats ) ) ] )
 
         return [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
 
@@ -541,18 +543,20 @@ class ExponentialFam( Conjugate ):
     ##########################################################################
 
     @classmethod
-    def posteriorSample( cls, x, constParams=None, priorParams=None, priorNatParams=None, size=1 ):
+    def posteriorSample( cls, x=None, constParams=None, priorParams=None, priorNatParams=None, size=1, stats=None ):
         # Sample from P( Ѳ | x; α )
         assert ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( x is None ) ^ ( stats is None )
 
         cls.checkShape( x )
-        postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
+        postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams, stats=stats )
         return cls.priorClass.sample( natParams=postNatParams, size=size )
 
-    def iposteriorSample( self, x, size=1 ):
+    def iposteriorSample( self, x=None, stats=None, size=1 ):
+        assert ( x is None ) ^ ( stats is None )
         if( self.prior.standardChanged ):
-            return self.posteriorSample( x, constParams=self.constParams, priorParams=self.prior.params, size=size )
-        return self.posteriorSample( x, constParams=self.constParams, priorNatParams=self.prior.natParams, size=size )
+            return self.posteriorSample( x=x, constParams=self.constParams, priorParams=self.prior.params, size=size )
+        return self.posteriorSample( x=x, constParams=self.constParams, priorNatParams=self.prior.natParams, size=size )
 
     ####################################################################################################################################################
 

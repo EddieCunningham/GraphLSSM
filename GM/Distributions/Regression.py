@@ -117,8 +117,8 @@ class Regression( ExponentialFam ):
             else:
                 # Multiple measurements for x
                 t2 *= y.shape[ 0 ]
-                t1 = np.einsum( 'i,mj->ij', x, y )
-                t3 = np.einsum( 'mi,mj->ij', y, y )
+                t1 = np.einsum( 'mi,mj->ij', y, y )
+                t3 = np.einsum( 'i,mj->ij', x.ravel(), y )
         else:
             # Multiple data points were passed in
             t2 = x.T.dot( x )

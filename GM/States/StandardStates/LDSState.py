@@ -10,7 +10,7 @@ def definePrior():
     from GenModels.GM.ModelPriors.LDSMNIWPrior import LDSMNIWPrior
     LDSState.priorClass = LDSMNIWPrior
 
-class LDSState( KalmanFilter, StateBase ):
+class LDSState( StableKalmanFilter, StateBase ):
 
     priorClass = None
 
@@ -128,6 +128,27 @@ class LDSState( KalmanFilter, StateBase ):
     ##########################################################################
 
     @classmethod
+    def initialStats( cls, x, constParams=None ):
+        # Assumes that only a single element is passed in
+        assert x.ndim == 1
+        return Normal.sufficientStats( x=x, constParams=constParams )
+
+    @classmethod
+    def transitionStats( cls, x, constParams=None ):
+        u, t = constParams
+        lastX, x = x
+        assert lastX.ndim == 1 and lastX.shape == x.shape
+        xIn = lastX
+        xOut = x - u[ t ]
+        return Regression.sufficientStats( x=( xIn, xOut ) )
+
+    @classmethod
+    def emissionStats( cls, x, constParams=None ):
+        _x, y = x
+        assert _x.ndim == 1
+        return Regression.sufficientStats( x=( _x, y ) )
+
+    @classmethod
     def sufficientStats( cls, x, constParams=None ):
         # Compute T( x ).  This is for when we're treating this class as P( x, y | Ѳ )
 
@@ -177,21 +198,24 @@ class LDSState( KalmanFilter, StateBase ):
     ##########################################################################
 
     @classmethod
-    def posteriorPriorNatParams( cls, x, constParams=None, priorParams=None, priorNatParams=None ):
+    def posteriorPriorNatParams( cls, x=None, constParams=None, priorParams=None, priorNatParams=None, stats=None ):
         assert ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( x is None ) ^ ( stats is None )
 
-        t1, t2, t3, t4, t5, t6, t7, t8 = cls.sufficientStats( x, constParams=constParams )
         priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
 
-        transFactor, emissionFactor, initFactor = cls.partitionFactors( x )
-        stats = [ t1, t2, t3, t4, t5, t6, t7, t8, transFactor, transFactor, emissionFactor, emissionFactor, initFactor, initFactor, initFactor ]
+        if( x is not None ):
+            t1, t2, t3, t4, t5, t6, t7, t8 = cls.sufficientStats( x, constParams=constParams )
+            transFactor, emissionFactor, initFactor = cls.partitionFactors( x )
+            stats = [ t1, t2, t3, t4, t5, t6, t7, t8, transFactor, transFactor, emissionFactor, emissionFactor, initFactor, initFactor, initFactor ]
 
-        for s, p in zip( stats, priorNatParams ):
-            if( isinstance( s, np.ndarray ) ):
-                assert isinstance( p, np.ndarray )
-                assert s.shape == p.shape
-            else:
-                assert not isinstance( s, np.ndarray ) and not isinstance( p, np.ndarray )
+            for s, p in zip( stats, priorNatParams ):
+                if( isinstance( s, np.ndarray ) ):
+                    assert isinstance( p, np.ndarray )
+                    assert s.shape == p.shape
+                else:
+                    assert not isinstance( s, np.ndarray ) and not isinstance( p, np.ndarray )
+
         return [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
 
     ##########################################################################
@@ -274,14 +298,31 @@ class LDSState( KalmanFilter, StateBase ):
     def genStates( self ):
         return np.empty( ( self.T, self.D_latent ) )
 
+    def genEmissions( self, measurements ):
+        return np.empty( ( measurements, self.T, self.D_obs ) )
+
+    def genStats( self ):
+        return ( ( np.zeros( ( self.D_latent, self.D_latent ) ),
+                   np.zeros( self.D_latent ) ),
+
+                 ( np.zeros( ( self.D_latent, self.D_latent ) ),
+                   np.zeros( ( self.D_latent, self.D_latent ) ),
+                   np.zeros( ( self.D_latent, self.D_latent ) ) ),
+
+                 ( np.zeros( ( self.D_obs, self.D_obs ) ),
+                   np.zeros( ( self.D_latent, self.D_latent ) ),
+                   np.zeros( ( self.D_latent, self.D_obs ) ) ) )
+
     ######################################################################
+
+    def sampleSingleEmission( self, x, measurements=1 ):
+        assert x.size == x.squeeze().shape[ 0 ]
+        return Normal.sample( natParams=( -0.5 * self.J1Emiss, self._hy.dot( x.squeeze() ) ), size=measurements )
 
     def sampleEmissions( self, x ):
         # Sample from P( y | x, ϴ )
         assert x.ndim == 2
-        def sampleStep( _x ):
-            return Normal.sample( natParams=( -0.5 * self.J1Emiss, self._hy.dot( _x ) ) )[ 0 ]
-        return np.apply_along_axis( sampleStep, -1, x )[ None ]
+        return np.apply_along_axis( self.sampleSingleEmission, -1, x )[ None ]
 
     def emissionLikelihood( self, x, ys ):
         # Compute P( y | x, ϴ )
@@ -317,7 +358,7 @@ class LDSState( KalmanFilter, StateBase ):
     ######################################################################
 
     def sampleStep( self, J, h ):
-        return Normal.sample( params=Normal.natToStandard( J, h, fromPrecision=True ) )
+        return Normal.unpackSingleSample( Normal.sample( params=Normal.natToStandard( J, h, fromPrecision=True ) ) )
 
     def likelihoodStep( self, x, J, h ):
         return Normal.log_likelihood( x, params=Normal.natToStandard( J, h, fromPrecision=True ) )
@@ -360,12 +401,12 @@ class LDSState( KalmanFilter, StateBase ):
 
     ######################################################################
 
-    def isample( self, u=None, ys=None, measurements=1, T=None, forwardFilter=True, size=1, stabilize=False ):
+    def isample( self, u=None, ys=None, measurements=1, T=None, forwardFilter=True, size=1, stabilize=False, returnStats=False ):
         if( ys is not None ):
             preprocessKwargs = { 'u': u }
             filterKwargs = {}
-            return self.conditionedSample( ys=ys, forwardFilter=forwardFilter, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
-        return self.fullSample( measurements=measurements, T=T, size=size, stabilize=stabilize )
+            return self.conditionedSample( ys=ys, forwardFilter=forwardFilter, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs, returnStats=returnStats )
+        return self.fullSample( measurements=measurements, T=T, size=size, stabilize=stabilize, returnStats=returnStats )
 
     ######################################################################
 
@@ -417,7 +458,7 @@ class LDSState( KalmanFilter, StateBase ):
 
     ######################################################################
 
-    def fullSample( self, measurements=1, T=None, size=1, stabilize=False ):
+    def fullSample( self, stabilize=False, **kwargs ):
 
         if( stabilize == True ):
 
@@ -435,7 +476,7 @@ class LDSState( KalmanFilter, StateBase ):
             self.J22 = -2 * n2
             self.log_Z = 0.5 * np.linalg.slogdet( np.linalg.inv( self.J11 ) )[ 1 ]
 
-        ans = super( LDSState, self ).fullSample( measurements=measurements, T=T, size=size )
+        ans = super( LDSState, self ).fullSample( **kwargs )
 
         if( stabilize == True ):
 

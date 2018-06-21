@@ -342,5 +342,4 @@ def exponentialFamilyTest():
     # tensorTests()
     # tensorNormalMarginalizationTest()
     stateAndModelTests()
-    assert 0
     print( 'Passed all of the exp fam tests!' )

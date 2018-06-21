@@ -144,6 +144,24 @@ class HMMState( CategoricalForwardBackward, StateBase ):
     ##########################################################################
 
     @classmethod
+    def initialStats( cls, x, constParams=None ):
+        # Assumes that only a single element is passed in
+        D_latent, D_obs = constParams
+        return Categorical.sufficientStats( x=[ x ], constParams=D_latent )
+
+    @classmethod
+    def transitionStats( cls, x, constParams=None ):
+        ( D_latent, D_obs ), t = constParams
+        lastX, x = x
+        return Transition.sufficientStats( ( lastX, x ), constParams=( D_latent, D_latent ) )
+
+    @classmethod
+    def emissionStats( cls, x, constParams=None ):
+        D_latent, D_obs = constParams
+        x, y = x
+        return Transition.sufficientStats( ( x, y ), constParams=( D_latent, D_obs ) )
+
+    @classmethod
     def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
 
@@ -185,18 +203,24 @@ class HMMState( CategoricalForwardBackward, StateBase ):
     def genStates( self ):
         return np.empty( self.T, dtype=int )
 
+    def genEmissions( self, measurements=1 ):
+        return np.empty( ( measurements, self.T ), dtype=int )
+
+    def genStats( self ):
+        return ( ( np.zeros( self.D_latent ) , ),
+                 ( np.zeros( ( self.D_latent, self.D_latent ) ) , ),
+                 ( np.zeros( ( self.D_latent, self.D_obs ) ) , ) )
+
     ######################################################################
+
+    def sampleSingleEmission( self, x, measurements=1 ):
+        p = self.emissionDist[ x ]
+        return Categorical.sample( params=( p, ), size=measurements )
 
     def sampleEmissions( self, x ):
         # Sample from P( y | x, ϴ )
         assert x.ndim == 1
-
-        def sampleStep( _x ):
-            _x = _x[ 0 ]
-            p = self.emissionDist[ _x ]
-            return Categorical.sample( params=( p, ) )
-
-        return np.apply_along_axis( sampleStep, -1, x.reshape( ( -1, 1 ) ) ).ravel()[ None ]
+        return np.apply_along_axis( self.sampleSingleEmission, -1, x.reshape( ( -1, 1 ) ) ).ravel()[ None ]
 
     def emissionLikelihood( self, x, ys ):
         # Compute P( y | x, ϴ )
@@ -234,12 +258,12 @@ class HMMState( CategoricalForwardBackward, StateBase ):
 
     ######################################################################
 
-    def isample( self, ys=None, knownLatentStates=None, measurements=1, T=None, forwardFilter=True, size=1 ):
+    def isample( self, ys=None, knownLatentStates=None, measurements=1, T=None, forwardFilter=True, size=1, returnStats=False ):
         if( ys is not None ):
             preprocessKwargs = {}
             filterKwargs = { 'knownLatentStates': knownLatentStates }
-            return self.conditionedSample( ys=ys, forwardFilter=forwardFilter, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
-        return self.fullSample( measurements=measurements, T=T, size=size )
+            return self.conditionedSample( ys=ys, forwardFilter=forwardFilter, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs, returnStats=returnStats )
+        return self.fullSample( measurements=measurements, T=T, size=size, returnStats=returnStats )
 
     def ilog_likelihood( self, x, forwardFilter=True, conditionOnY=False, expFam=False,  preprocessKwargs={}, filterKwargs={}, knownLatentStates=None, seperateLikelihoods=False ):
         filterKwargs.update( { 'knownLatentStates': knownLatentStates } )

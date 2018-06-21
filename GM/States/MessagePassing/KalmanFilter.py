@@ -392,7 +392,6 @@ class SwitchingKalmanFilter( KalmanFilter ):
             uMask = np.zeros( self.T, dtype=bool )
             self.u = ( None, uMask, self.D_latent )
 
-
     ######################################################################
 
     def transitionProb( self, t, t1, forward=False ):
@@ -415,7 +414,7 @@ class SwitchingKalmanFilter( KalmanFilter ):
 class StableKalmanFilter( KalmanFilter ):
 
     # https://homes.cs.washington.edu/~ebfox/publication-files/PhDthesis_ebfox.pdf
-    # Pretty optimized implementation of algorithms 19 and 20
+    # Algorithms 19 and 20
     # Doesn't work with variational message passing!!!!!
 
     @property
@@ -443,7 +442,7 @@ class StableKalmanFilter( KalmanFilter ):
         _J += self.Jy
 
         _h = h + J @ self.AInv.dot( u )
-        _h = L @ self.AInv.T @ ( _h )
+        _h = L @ self.AInv.T @ _h
         _h += self.hy[ t ]
 
         # Transition and last
@@ -455,9 +454,9 @@ class StableKalmanFilter( KalmanFilter ):
         JInvh = cho_solve( JChol, hInt )
 
         # Marginalization
-        _logZ += -0.5 * ( hInt ).dot( JInvh ) + \
+        _logZ += -0.5 * hInt.dot( JInvh ) + \
                  np.log( np.diag( JChol[ 0 ] ) ).sum() - \
-                 h.shape[ 0 ] * _HALF_LOG_2_PI
+                 self.D_latent * _HALF_LOG_2_PI
 
         # Emission
         _logZ += self.log_Zy[ t ]
@@ -480,10 +479,10 @@ class StableKalmanFilter( KalmanFilter ):
 
         _J = L @ J @ L.T
         _J += H @ self.J11 @ H.T
-        _J = self.A.T @ ( _J ) @ self.A
+        _J = self.A.T @ _J @ self.A
 
         _h = h - J @ u
-        _h = self.A.T @ L @ ( _h )
+        _h = self.A.T @ L @ _h
 
         # Transition, emission and last
         _logZ = 0.5 * u.dot( self.J11.dot( u ) ) + self.log_Z + self.log_Zy[ t + 1 ] + logZ
@@ -494,18 +493,38 @@ class StableKalmanFilter( KalmanFilter ):
         JInvh = cho_solve( JChol, hInt )
 
         # Marginalization
-        _logZ += -0.5 * ( hInt ).dot( JInvh ) + \
+        _logZ += -0.5 * hInt.dot( JInvh ) + \
                  np.log( np.diag( JChol[ 0 ] ) ).sum() - \
-                 h.shape[ 0 ] * _HALF_LOG_2_PI
+                 self.D_latent * _HALF_LOG_2_PI
 
         return _J, _h, _logZ
 
     ######################################################################
 
     def forwardFilter( self ):
-        assert self.fromNatural == False, 'Can\'t do variational kalman filtering with this algorithm!!'
-        return super( StableKalmanFilter, self ).forwardFilter()
+
+        alphas = self.genFilterProbs()
+        alphas[ 0 ] = self.forwardBaseCase()
+
+        # Only use this version for non-variational kalman filtering
+        fStep = self.forwardStep if self.fromNatural == False else super( StableKalmanFilter, self ).forwardStep
+
+        for t in range( 1, self.T ):
+            alphas[ t ] = fStep( t, alphas[ t - 1 ] )
+
+        return alphas
+
+    ######################################################################
 
     def backwardFilter( self ):
-        assert self.fromNatural == False, 'Can\'t do variational kalman filtering with this algorithm!!'
-        return super( StableKalmanFilter, self ).backwardFilter()
+
+        betas = self.genFilterProbs()
+        betas[ -1 ] = self.backwardBaseCase()
+
+        # Only use this version for non-variational kalman filtering
+        bStep = self.backwardStep if self.fromNatural == False else super( StableKalmanFilter, self ).backwardStep
+
+        for t in reversed( range( self.T - 1 ) ):
+            betas[ t ] = bStep( t, betas[ t + 1 ] )
+
+        return betas

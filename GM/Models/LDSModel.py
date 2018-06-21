@@ -14,17 +14,17 @@ class LDSModel( _InferenceModel ):
                         M_emiss=None, V_emiss=None, psi_emiss=None, nu_emiss=None,
                         mu_0=None, kappa_0=None, psi_0=None, nu_0=None ):
 
-        if( M_trans is None or \
-            V_trans is None or \
-            psi_trans is None or \
-            nu_trans is None or \
-            M_emiss is None or \
-            V_emiss is None or \
-            psi_emiss is None or \
-            nu_emiss is None or \
-            mu_0 is None or \
-            kappa_0 is None or \
-            psi_0 is None or \
+        if( M_trans is None or
+            V_trans is None or
+            psi_trans is None or
+            nu_trans is None or
+            M_emiss is None or
+            V_emiss is None or
+            psi_emiss is None or
+            nu_emiss is None or
+            mu_0 is None or
+            kappa_0 is None or
+            psi_0 is None or
             nu_0 is None ):
 
             assert M_trans is None and V_trans is None and psi_trans is None and nu_trans is None and M_emiss is None and V_emiss is None and psi_emiss is None and nu_emiss is None and mu_0 is None and kappa_0 is None and psi_0 is None and nu_0 is None
