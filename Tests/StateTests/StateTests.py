@@ -64,10 +64,10 @@ def testLDSBasic():
 
         state = LDSState( A=A, sigma=sigma, C=C, R=R, mu0=mu0, sigma0=sigma0 )
 
-        u = np.random.random( ( T, D_latent ) )
+        u = np.random.random( ( size, T, D_latent ) )
         nBad = int( np.random.random() * T )
         badMask = np.random.choice( T, nBad )
-        u[ badMask ] = np.nan
+        u[ :, badMask ] = np.nan
 
         _, ys = LDSState.generate( measurements=meas, T=T, D_latent=D_latent, D_obs=D_obs, size=size, stabilize=True )
 

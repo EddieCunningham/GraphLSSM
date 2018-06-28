@@ -1,6 +1,7 @@
 import numpy as np
 from GenModels.GM.Distributions import ExponentialFam
 from abc import ABC, abstractmethod
+import itertools
 
 class StateBase( ExponentialFam ):
 
@@ -62,6 +63,12 @@ class StateBase( ExponentialFam ):
 
     @mfNatParams.setter
     def mfNatParams( self, val ):
+        print( '-----------------' )
+        print( self )
+        for v in val:
+            print( v )
+            print()
+        print( '-----------------' )
         self.mfNaturalChanged = True
         self.updateNatParams( *val )
         self._mfNatParams = val
@@ -248,6 +255,23 @@ class StateBase( ExponentialFam ):
 
     ######################################################################
 
+    def accumulateStats( self, accumulated, stats, M, T ):
+        # Accumulated will have the form [ [ all stats ], [ size, measurements, time, measurements*time ] ]
+        # stats will have the shape ( [ initialStats ], [ transitionStats ], [ emissionStats ] )
+        chainedStats = list( itertools.chain( *stats ) )
+
+        if( len( accumulated[ 0 ] ) == 0 ):
+            accumulated[ 0 ] = chainedStats
+            accumulated[ 1 ] = [ 1, M, T, T * M ]
+        else:
+            for i, stat in enumerate( chainedStats ):
+                accumulated[ 0 ][ i ][ : ] += stat
+            accumulated[ 1 ][ 0 ] += 1
+            accumulated[ 1 ][ 1 ] += M
+            accumulated[ 1 ][ 2 ] += T
+            accumulated[ 1 ][ 3 ] += T * M
+        return accumulated
+
     def conditionedSample( self, ys=None, forwardFilter=True, preprocessKwargs={}, filterKwargs={}, returnStats=False ):
         # Sample x given y
 
@@ -259,10 +283,10 @@ class StateBase( ExponentialFam ):
             it = iter( ys )
             # it = iter( [ ys ] )
 
-        ans = []
+        ans = [] if returnStats == False else [ [], [] ]
         for y in it:
 
-            self.preprocessData( ys=y, **preprocessKwargs )
+            self.preprocessData( ys=y, computeMarginal=False, **preprocessKwargs )
 
             x = self.genStates() if returnStats == False else self.genStats()
 
@@ -303,16 +327,7 @@ class StateBase( ExponentialFam ):
             else:
                 # Accumulate the statistics
                 M, T = y.shape[ 0:2 ]
-
-                if( len( ans ) == 0 ):
-                    ans = [ [], [] ]
-                    for i, stat in enumerate( x ):
-                        ans[ 0 ].append( stat )
-                        ans[ 1 ] = [ 1, M, T ]
-                else:
-                    for i, stat in enumerate( x ):
-                        ans[ 0 ][ i ] += stat
-                        ans[ 1 ] = np.add( ans[ 1 ], [ 1, M, T ] )
+                ans = self.accumulateStats( ans, x, M, T )
 
         # Make sure that the sampled states are in the expected form
         if( returnStats == False ):
@@ -329,8 +344,7 @@ class StateBase( ExponentialFam ):
         assert T is not None
         self.T = T
 
-        ans = []
-
+        ans = [] if returnStats == False else [ [], [] ]
         for _ in range( size ):
 
             if( returnStats == False ):
@@ -376,18 +390,10 @@ class StateBase( ExponentialFam ):
             if( returnStats == False ):
                 ans.append( ( x, y ) )
             else:
-                # Accumulate the statistics
+                # Accumulate the statistics.
+                # Each x has the shape of ( [ initialStats, ], [ transitionStats, ], [ emissionStats, ] )
                 M, T = ( measurements, T )
-
-                if( len( ans ) == 0 ):
-                    ans = [ [], [] ]
-                    for i, stat in enumerate( x ):
-                        ans[ 0 ].append( stat )
-                        ans[ 1 ] = [ 1, M, T ]
-                else:
-                    for i, stat in enumerate( x ):
-                        ans[ 0 ][ i ] += stat
-                        ans[ 1 ] = np.add( ans[ 1 ], [ 1, M, T ] )
+                ans = self.accumulateStats( ans, x, M, T )
 
         if( returnStats == False ):
             ans = tuple( list( zip( *ans ) ) )

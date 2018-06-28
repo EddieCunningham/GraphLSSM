@@ -6,6 +6,8 @@ from GenModels.GM.Distributions.InverseWishart import InverseWishart
 from GenModels.GM.Distributions.Regression import Regression
 from GenModels.GM.Utility import multigammalnDerivative, cheatPrecisionHelper
 
+from scipy.stats import matrix_normal
+
 class MatrixNormalInverseWishart( ExponentialFam ):
     # This class is written with the intention of making it a prior for
     # a normal distribution with an unknown mean and covariance
@@ -240,7 +242,10 @@ class MatrixNormalInverseWishart( ExponentialFam ):
             ans = ( np.array( A ), np.array( sigma ) )
         else:
             sigma = InverseWishart.sample( params=( psi, nu ) )
-            A = TensorNormal.sample( params=( M, ( InverseWishart.unpackSingleSample( sigma ), V ) ), size=1 )
+            A = matrix_normal.rvs( mean=M, rowcov=InverseWishart.unpackSingleSample( sigma ), colcov=V )[ None ]
+            # A = TensorNormal.sample( params=( M, ( InverseWishart.unpackSingleSample( sigma ), V ) ), size=1 )
+            # print( A )
+            # assert 0
             ans = ( A, sigma )
 
         cls.checkShape( ans )

@@ -4,6 +4,7 @@ import copy
 import autograd
 from scipy.special import digamma
 from functools import partial
+from tqdm import tqdm
 
 __all__ = [ 'multigammalnDerivative',
             'invPsd',
@@ -12,7 +13,62 @@ __all__ = [ 'multigammalnDerivative',
             'randomStep',
             'deepCopy',
             'stabilize',
-            'cheatPrecisionHelper' ]
+            'cheatPrecisionHelper',
+            'verboseRange',
+            'rightSolve',
+            'MaskedData',
+            'toBlocks' ]
+
+##########################################################################
+
+def toBlocks( mat, d ):
+    J11 = mat[ np.ix_( [ 0, d - 1 ], [ 0, d - 1 ] ) ]
+    J12 = mat[ np.ix_( [ 0, d - 1 ], [ d, mat.shape[ 0 ] - 1 ] ) ]
+    J22 = mat[ np.ix_( [ d, mat.shape[ 0 ] - 1 ], [ d, mat.shape[ 0 ] - 1 ] ) ]
+    return J11, J12, J22
+
+##########################################################################
+
+class MaskedData():
+
+    def __init__( self, data=None, mask=None, shape=None ):
+        if( data is None ):
+            assert shape is not None
+            self.data = None
+            self.mask = None
+            self.shape = shape
+        else:
+            assert isinstance( data, np.ndarray )
+            assert isinstance( mask, np.ndarray )
+            assert mask.dtype == bool
+            self.mask = mask
+            self.data = data
+            self.shape = shape if shape is not None else self.data.shape[ -1 ]
+
+        # So that we don't have to alocate a new numpy array every time
+        self._zero = np.zeros( self.shape )
+
+    @property
+    def zero( self ):
+        return self._zero
+
+    def __getitem__( self, key ):
+        if( self.mask is None or np.any( self.mask[ key ] ) ):
+            return self.zero
+        return self.data[ key ]
+
+##########################################################################
+
+def rightSolve( A, B ):
+    # Solve XA = B
+    return np.linalg.solve( A.T, B.T ).T
+
+##########################################################################
+
+def verboseRange( numbIters, verbose ):
+    if( verbose ):
+        return tqdm( range( numbIters ) )
+    return range( numbIters )
 
 ##########################################################################
 

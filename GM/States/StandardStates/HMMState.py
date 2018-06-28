@@ -262,8 +262,16 @@ class HMMState( CategoricalForwardBackward, StateBase ):
         if( ys is not None ):
             preprocessKwargs = {}
             filterKwargs = { 'knownLatentStates': knownLatentStates }
-            return self.conditionedSample( ys=ys, forwardFilter=forwardFilter, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs, returnStats=returnStats )
-        return self.fullSample( measurements=measurements, T=T, size=size, returnStats=returnStats )
+            ans = self.conditionedSample( ys=ys, forwardFilter=forwardFilter, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs, returnStats=returnStats )
+        else:
+            ans =  self.fullSample( measurements=measurements, T=T, size=size, returnStats=returnStats )
+
+        if( returnStats ):
+            # Re-order the stats
+            t1, t2, t3 = ans[ 0 ]
+            N, M, T, TM = ans[ 1 ]
+            ans = [ t1, t2, t3 ]
+        return ans
 
     def ilog_likelihood( self, x, forwardFilter=True, conditionOnY=False, expFam=False,  preprocessKwargs={}, filterKwargs={}, knownLatentStates=None, seperateLikelihoods=False ):
         filterKwargs.update( { 'knownLatentStates': knownLatentStates } )

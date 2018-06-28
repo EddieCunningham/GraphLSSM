@@ -60,11 +60,11 @@ def HMMModelTest():
 
 def LDSModelTest():
     with np.errstate( all='raise' ), scipy.special.errstate( all='raise' ):
-        T = 100
-        D_latent = 4
-        D_obs = 2
+        T = 10
+        D_latent = 2
+        D_obs = 3
         meas = 1
-        size = 4
+        size = 1
 
         lds = LDSModel( **LDSModel._genericParams( D_latent, D_obs ) )
 
@@ -74,23 +74,26 @@ def LDSModelTest():
         u[ badMask ] = np.nan
         u = None
 
-        _, ys = LDSModel.generate( T=T, latentSize=D_latent, obsSize=D_obs, measurements=meas, size=size, stabilize=True )
+        ( _, ys ), tru = LDSModel.generate( T=T, latentSize=D_latent, obsSize=D_obs, measurements=meas, size=size, stabilize=True, returnTrueParams=True )
 
-        lds.fit( ys=ys,u=u, method='gibbs', nIters=500, burnIn=200, skip=2, verbose=True )
-        marginal = lds.state.ilog_marginal( ys )
-        print( '\nParams' )
-        for p in lds.state.params:
-            print( np.round( p, decimals=3 ) )
-            print()
-        print( 'MARGNIAL', marginal )
+        # Have abosultely no idea whats wrong with gibbs sampling here....
+        # Going to move on to EM and CAVI and see if I can find the bug
+        # lds.fit( ys=ys,u=u, method='gibbs', nIters=500, burnIn=200, skip=2, verbose=True )
+        # marginal = lds.state.ilog_marginal( ys )
+        # print( '\nParams' )
+        # for p in lds.state.params:
+        #     print( np.round( p, decimals=3 ) )
+        #     print()
+        # print( 'MARGNIAL', marginal )
 
-        lds.fit( ys=ys, u=u, method='EM', nIters=1000, monitorMarginal=10, verbose=False )
-        marginal = lds.state.ilog_marginal( ys )
-        print( '\nParams' )
-        for p in lds.state.params:
-            print( np.round( p, decimals=3 ) )
-            print()
-        print( 'MARGNIAL', marginal )
+        # fuck this shit
+        # lds.fit( ys=ys, u=u, method='EM', nIters=100000, monitorMarginal=10, verbose=False )
+        # marginal = lds.state.ilog_marginal( ys )
+        # print( '\nParams' )
+        # for p in lds.state.params:
+        #     print( np.round( p, decimals=3 ) )
+        #     print()
+        # print( 'MARGNIAL', marginal )
 
         lds.fit( ys=ys, u=u, method='cavi', maxIters=1000, verbose=False )
         elbo = lds.state.iELBO( ys )

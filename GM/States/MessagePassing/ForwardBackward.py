@@ -37,7 +37,7 @@ class CategoricalForwardBackward( MessagePasser ):
         assert np.allclose( np.ones( transDist.shape[ 0 ] ), transDist.sum( axis=1 ) )
         assert np.allclose( np.ones( transDist.shape[ 0 ] ), emissionDist.sum( axis=1 ) )
 
-    def preprocessData( self, ys ):
+    def preprocessData( self, ys, computeMarginal=True ):
         ys = np.array( ys )
         self._T = ys.shape[ 1 ]
 
@@ -47,7 +47,7 @@ class CategoricalForwardBackward( MessagePasser ):
         # Here compute prod_{ m in measurements }P( y_m | x )
         self.L = self._L.T[ ys ].sum( axis=0 )
 
-    def updateParams( self, initialDist, transDist, emissionDist, ys=None ):
+    def updateParams( self, initialDist, transDist, emissionDist, ys=None, computeMarginal=True ):
 
         if( not( hasattr( self, 'paramCheck' ) and self.paramCheck == False ) ):
             self.parameterCheck( initialDist, transDist, emissionDist, ys=ys )
@@ -58,7 +58,7 @@ class CategoricalForwardBackward( MessagePasser ):
 
         self.updateNatParams( nInit, nTrans, nEmiss, ys=ys )
 
-    def updateNatParams( self, log_initialDist, log_transDist, log_emissionDist, ys=None ):
+    def updateNatParams( self, log_initialDist, log_transDist, log_emissionDist, ys=None, computeMarginal=True ):
 
         self._K = log_transDist.shape[ 0 ]
 
@@ -216,7 +216,7 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
         assert np.isclose( 1.0, initialDist.sum() )
         assert np.allclose( np.ones( transDist.shape[ 0 ] ), transDist.sum( axis=1 ) )
 
-    def preprocessData( self, ys ):
+    def preprocessData( self, ys, computeMarginal=True ):
         ys = np.array( ys )
         self._T = ys.shape[ 1 ]
 
@@ -230,7 +230,7 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
 
             self.L[ :, k ] = Normal.log_likelihood( ys, natParams=( n1, n2 ) ).sum( axis=0 )
 
-    def updateParams( self, initialDist, transDist, mus, sigmas, ys=None ):
+    def updateParams( self, initialDist, transDist, mus, sigmas, ys=None, computeMarginal=True ):
 
         self.parameterCheck( initialDist, transDist, mus, sigmas, ys )
 
@@ -240,7 +240,7 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
 
         self.updateNatParams( nInit, nTrans, n1Emiss, n2Emiss, ys=ys )
 
-    def updateNatParams( self, log_initialDist, log_transDist, n1Emiss, n2Emiss, ys=None ):
+    def updateNatParams( self, log_initialDist, log_transDist, n1Emiss, n2Emiss, ys=None, computeMarginal=True ):
 
         self._K = log_transDist.shape[ 0 ]
 
@@ -282,7 +282,7 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
         assert np.isclose( 1.0, initialDist.sum() )
         assert np.allclose( np.ones( transDist.shape[ 0 ] ), transDist.sum( axis=1 ) )
 
-    def preprocessData( self, xs, u=None ):
+    def preprocessData( self, xs, u=None, computeMarginal=True ):
         xs = np.array( xs )
 
         # Not going to use multiple measurements here
@@ -304,7 +304,7 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
 
             self.L[ :, i ] = np.apply_along_axis( ll, -1, np.hstack( ( xs[ :-1 ], xs[ 1: ] ) ) )
 
-    def updateParams( self, initialDist, transDist, mu0, sigma0, u, As, sigmas, xs=None ):
+    def updateParams( self, initialDist, transDist, mu0, sigma0, u, As, sigmas, xs=None, computeMarginal=True ):
 
         self.parameterCheck( initialDist, transDist, mu0, sigma0, u, As, sigmas, xs=xs )
 
@@ -315,7 +315,7 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
 
         self.updateNatParams( nInit, nTrans, nat1_0, nat2_0, nat1Trans, nat2Trans, nat3Trans, u=u, xs=xs )
 
-    def updateNatParams( self, log_initialDist, log_transDist, nat1_0, nat2_0, nat1Trans, nat2Trans, nat3Trans, u=None, xs=None ):
+    def updateNatParams( self, log_initialDist, log_transDist, nat1_0, nat2_0, nat1Trans, nat2Trans, nat3Trans, u=None, xs=None, computeMarginal=True ):
 
         self._K = log_initialDist.shape[ 0 ]
 

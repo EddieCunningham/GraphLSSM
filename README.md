@@ -105,11 +105,10 @@ Future long term goals:
 		- Generalization of Categorical distribution (intended for graphical Forward Backward Filtering)
 	- Gibbs sampling
 	- Metropolis Hastings
-- TODO
 	- Maximum likelihood
-	- MAP estimate
 	- Expectation maximization
-	- Stochastic Variational Inference
+	- Variational Inference
+- TODO
 	- Cholesky implementation of Normal distribution (and everything else that uses covariance matrices)
 	- Tensor versions of other distributions
 	- Optimized implementations of classes

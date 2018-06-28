@@ -115,12 +115,7 @@ class Normal( ExponentialFam ):
     def log_partitionGradient( cls, params=None, natParams=None, split=False ):
         # Derivative w.r.t. natural params. Also the expected sufficient stat
         assert ( params is None ) ^ ( natParams is None )
-        # n1, n2 = natParams if natParams is not None else cls.standardToNat( *params )
-        # n1Inv = np.linalg.inv( n1 )
 
-        # d1 = 0.25 * n1Inv @ np.outer( n2, n2 ) @ n1Inv - 0.5 * n1Inv
-        # d2 = -0.5 * n1Inv.dot( n2 )
-        # return d1, d2
         mu, sigma = params if params is not None else cls.natToStandard( *natParams )
         d1 = np.outer( mu, mu ) + sigma
         d2 = mu
@@ -189,7 +184,7 @@ class Normal( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def marginalizeX1( cls, J11, J12, J22, h1, h2, log_Z ):
+    def marginalizeX1( cls, J11, J12, J22, h1, h2, log_Z, computeMarginal=True ):
         K = h1.shape[ 0 ]
 
         # J11 = cheatPrecisionHelper( J11, h1.shape[ 0 ] )
@@ -200,10 +195,13 @@ class Normal( ExponentialFam ):
         J = J22 - J12.T @ cho_solve( J11Chol, J12 )
         h = h2 - J12.T.dot( J11Invh1 )
 
-        log_Z = log_Z - \
-                0.5 * h1.dot( J11Invh1 ) + \
-                np.log( np.diag( J11Chol[ 0 ] ) ).sum() - \
-                K * _HALF_LOG_2_PI
+        if( computeMarginal ):
+            log_Z = log_Z - \
+                    0.5 * h1.dot( J11Invh1 ) + \
+                    np.log( np.diag( J11Chol[ 0 ] ) ).sum() - \
+                    K * _HALF_LOG_2_PI
+        else:
+            log_Z = 0
 
         # More numerical precision stuff.
         # This is definitely the main source of numerical inaccuracy in the kalman filter.
@@ -214,8 +212,8 @@ class Normal( ExponentialFam ):
         return J, h, log_Z
 
     @classmethod
-    def marginalizeX2( cls, J11, J12, J22, h1, h2, log_Z ):
-        return cls.marginalizeX1( J22, J12.T, J11, h2, h1, log_Z )
+    def marginalizeX2( cls, J11, J12, J22, h1, h2, log_Z, computeMarginal=True ):
+        return cls.marginalizeX1( J22, J12.T, J11, h2, h1, log_Z, computeMarginal=computeMarginal )
 
     ##########################################################################
 

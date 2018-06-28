@@ -1,15 +1,8 @@
 import numpy as np
 from abc import ABC, abstractmethod
-from tqdm import tqdm
-from GenModels.GM.Utility import deepCopy
-
+from GenModels.GM.Utility import deepCopy, verboseRange
 
 __all__ = [ '_InferenceModel' ]
-
-def verboseRange( numbIters, verbose ):
-    if( verbose ):
-        return tqdm( range( numbIters ) )
-    return range( numbIters )
 
 ##########################################################################
 
@@ -38,20 +31,20 @@ class _GibbsMixin():
 
     def resample_step( self, ys, **kwargs ):
 
+        # This way is way faster.  Probably going to use the stats way when I re-implement in cython though
         x = self.state.isample( ys=ys, size=1, **kwargs )
         x = self.state.unpackSingleSample( x )
-        print( x )
-        print()
-        print()
-        print( '------------------------------' )
-        print()
+        self.state.params = self.state.prior.unpackSingleSample( self.state.iposteriorSample( x ) )
+
         for p in self.state.params:
             print( p )
             print()
-        print()
-        print( '===========================================' )
-        print()
-        self.state.params = self.state.prior.unpackSingleSample( self.state.iposteriorSample( x ) )
+            print()
+            print()
+        print( '======================' )
+
+        # stats = self.state.isample( ys=ys, size=1, returnStats=True, **kwargs )
+        # self.state.params = self.state.prior.unpackSingleSample( self.state.iposteriorSample( stats=stats ) )
 
     def gibbs( self, ys, nIters=1000, burnIn=1000, skip=10, verbose=False, **kwargs ):
         for i in verboseRange( skip * ( nIters ) + burnIn, verbose ):

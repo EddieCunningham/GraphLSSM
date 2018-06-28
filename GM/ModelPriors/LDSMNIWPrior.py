@@ -370,47 +370,47 @@ class LDSMNIWPrior( ExponentialFam ):
 
     ##########################################################################
 
-    @classmethod
-    def log_pdf( cls, natParams, sufficientStats, log_partition=None ):
+    # @classmethod
+    # def log_pdf( cls, natParams, sufficientStats, log_partition=None ):
 
-        from collections import Iterable
+    #     from collections import Iterable
 
-        ans1 = 0.0
-        for i, ( natParam, stat ) in enumerate( zip( natParams[ :3 ], sufficientStats[ :3 ] ) ):
-            ans1 += ( natParam * stat ).sum()
-        for i, ( natParam, stat ) in enumerate( zip( natParams[ 8:10 ], sufficientStats[ 8:10 ] ) ):
-            ans1 += ( natParam * stat ).sum()
-        ans1 -= sum( log_partition[ :5 ] )
+    #     ans1 = 0.0
+    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ :3 ], sufficientStats[ :3 ] ) ):
+    #         ans1 += ( natParam * stat ).sum()
+    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ 8:10 ], sufficientStats[ 8:10 ] ) ):
+    #         ans1 += ( natParam * stat ).sum()
+    #     ans1 -= sum( log_partition[ :5 ] )
 
-        ans2 = 0.0
-        for i, ( natParam, stat ) in enumerate( zip( natParams[ 3:6 ], sufficientStats[ 3:6 ] ) ):
-            ans2 += ( natParam * stat ).sum()
-        for i, ( natParam, stat ) in enumerate( zip( natParams[ 10:12 ], sufficientStats[ 10:12 ] ) ):
-            ans2 += ( natParam * stat ).sum()
-        ans2 -= sum( log_partition[ 5:10 ] )
+    #     ans2 = 0.0
+    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ 3:6 ], sufficientStats[ 3:6 ] ) ):
+    #         ans2 += ( natParam * stat ).sum()
+    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ 10:12 ], sufficientStats[ 10:12 ] ) ):
+    #         ans2 += ( natParam * stat ).sum()
+    #     ans2 -= sum( log_partition[ 5:10 ] )
 
-        ans3 = 0.0
-        for i, ( natParam, stat ) in enumerate( zip( natParams[ 6:8 ], sufficientStats[ 6:8 ] ) ):
-            ans3 += ( natParam * stat ).sum()
-        for i, ( natParam, stat ) in enumerate( zip( natParams[ 12:15 ], sufficientStats[ 12:15 ] ) ):
-            ans3 += ( natParam * stat ).sum()
-        ans3 -= sum( log_partition[ 10: ] )
+    #     ans3 = 0.0
+    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ 6:8 ], sufficientStats[ 6:8 ] ) ):
+    #         ans3 += ( natParam * stat ).sum()
+    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ 12:15 ], sufficientStats[ 12:15 ] ) ):
+    #         ans3 += ( natParam * stat ).sum()
+    #     ans3 -= sum( log_partition[ 10: ] )
 
-        # print( '\nIN LOGPDF' )
-        # print( 'ans1', ans1 )
-        # print( 'ans2', ans2 )
-        # print( 'ans3', ans3 )
+    #     # print( '\nIN LOGPDF' )
+    #     # print( 'ans1', ans1 )
+    #     # print( 'ans2', ans2 )
+    #     # print( 'ans3', ans3 )
 
-        ans = ans1 + ans2 + ans3
+    #     ans = ans1 + ans2 + ans3
 
-        # print( 'ans', ans )
+    #     # print( 'ans', ans )
 
-        # if( log_partition is not None ):
-        #     if( isinstance( log_partition, tuple ) ):
-        #         ans -= sum( log_partition )
-        #     else:
-        #         ans -= log_partition
+    #     # if( log_partition is not None ):
+    #     #     if( isinstance( log_partition, tuple ) ):
+    #     #         ans -= sum( log_partition )
+    #     #     else:
+    #     #         ans -= log_partition
 
-        assert isinstance( ans, Iterable ) == False, log_partition
+    #     assert isinstance( ans, Iterable ) == False, log_partition
 
-        return ans
+    #     return ans

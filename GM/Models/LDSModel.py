@@ -2,6 +2,7 @@ import numpy as np
 from GenModels.GM.ModelPriors import LDSMNIWPrior
 from GenModels.GM.States.StandardStates import LDSState
 from GenModels.GM.Models.ModelBase import _InferenceModel
+from GenModels.GM.Utility import verboseRange
 
 __all__ = [ 'LDSModel' ]
 
@@ -74,7 +75,51 @@ class LDSModel( _InferenceModel ):
         return self.state.isample( T=T, measurements=measurements, size=size, stabilize=stabilize )
 
     @classmethod
-    def generate( self, T=10, latentSize=3, obsSize=2, measurements=1, size=10, stabilize=False ):
+    def generate( self, T=10, latentSize=3, obsSize=2, measurements=1, size=10, stabilize=False, returnTrueParams=False ):
         # Generate fake data
         dummy = LDSModel( **LDSModel._genericParams( latentSize, obsSize ) )
-        return dummy.predict( T=T, measurements=measurements, size=size, stabilize=stabilize )
+        state = dummy.predict( T=T, measurements=measurements, size=size, stabilize=stabilize )
+        if( returnTrueParams ):
+            return state, dummy.state.params
+        return state
+
+    def expectationMaximization( self, ys, u=None, nIters=100, monitorMarginal=10, verbose=False, preprocessKwargs={}, filterKwargs={} ):
+
+        lastMarginal = 999
+
+        for i in verboseRange( nIters, verbose ):
+            alphas, betas = self.state.EStep( ys=ys, u=u, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
+            self.state.params = self.state.MStep( ys, u, alphas, betas )
+
+            marginal = self.state.lastNormalizer
+            if( np.isclose( marginal, lastMarginal ) ):
+                break
+
+            print( marginal, marginal - lastMarginal )
+            lastMarginal = marginal
+
+    def cavi( self, ys, u=None, maxIters=1000, verbose=False ):
+
+        lastElbo = 9999
+
+        for i in verboseRange( maxIters, verbose ):
+
+            if( i > 0 ):
+                self.state.prior.mfNatParams = priorMFNatParams
+
+            self.state.mfNatParams = self.state.iexpectedNatParams( useMeanField=True )
+            priorMFNatParams, normalizer = self.state.variationalPosteriorPriorNatParams( ys=ys,
+                                                                                          u=u,
+                                                                                          natParams=self.state.mfNatParams,
+                                                                                          priorNatParams=self.state.prior.natParams,
+                                                                                          returnNormalizer=True )
+
+            # The ELBO computation is only valid right after the variational E step
+            elbo = self.state.ELBO( normalizer=normalizer,
+                                    priorMFNatParams=self.state.prior.mfNatParams,
+                                    priorNatParams=self.state.prior.natParams )
+
+            if( np.isclose( lastElbo, elbo ) ):
+                break
+
+            lastElbo = elbo

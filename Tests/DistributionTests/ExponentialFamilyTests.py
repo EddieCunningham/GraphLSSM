@@ -132,10 +132,16 @@ def jointTestExpFam( dist, **kwargs ):
     assert np.isclose( ans1, ans2 ), ans1 - ans2
     print( 'Passed joint test for', type( dist ), '.  Diff was', ans1 - ans2 )
 
-def posteriorTestExpFam( dist, **kwargs ):
-    x = dist.isample( size=2, **kwargs )
-    ans1 = dist.ilog_posterior( x, expFam=True )
-    ans2 = dist.ilog_posterior( x )
+def posteriorTestExpFam( dist, fromStats=False, **kwargs ):
+    if( fromStats == False ):
+        x = dist.isample( size=2, **kwargs )
+        ans1 = dist.ilog_posterior( x, expFam=True )
+        ans2 = dist.ilog_posterior( x )
+    else:
+        stats = dist.isample( size=2, returnStats=True, **kwargs )
+        ans1 = dist.ilog_posterior( stats=stats, expFam=True )
+        ans2 = dist.ilog_posterior( stats=stats )
+
     assert np.isclose( ans1, ans2 ), ans1 - ans2
     print( 'Passed posterior test for', type( dist ), '.  Diff was', ans1 - ans2 )
 
@@ -156,12 +162,12 @@ def testsForDistWithoutPrior( dist, tensor=False, **kwargs ):
     # statMGFTest( dist, **kwargs )
     # klDivergenceTest( dist, **kwargs )
 
-def testForDistWithPrior( dist, tensor=False, **kwargs ):
+def testForDistWithPrior( dist, tensor=False, fromStats=False, **kwargs ):
 
     testsForDistWithoutPrior( dist, tensor=tensor, **kwargs )
     # paramTestExpFam( dist )
     jointTestExpFam( dist, **kwargs )
-    posteriorTestExpFam( dist, **kwargs )
+    posteriorTestExpFam( dist, fromStats=fromStats, **kwargs )
 
 ####################################################################################
 
@@ -274,9 +280,11 @@ def stateAndModelTests():
         ldsState = LDSState( prior=ldsPrior )
 
         testsForDistWithoutPrior( hmmPrior )
-        # testsForDistWithoutPrior( ldsPrior )
+        testsForDistWithoutPrior( ldsPrior )
         testForDistWithPrior( hmmState, T=T )
+        testForDistWithPrior( hmmState, T=T, fromStats=True )
         testForDistWithPrior( ldsState, T=T, measurements=M, u=u, stabilize=True )
+        testForDistWithPrior( ldsState, T=T, measurements=M, u=u, stabilize=True, fromStats=True )
 
 ####################################################################################
 

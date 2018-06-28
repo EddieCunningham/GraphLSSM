@@ -3,6 +3,8 @@ from GenModels.GM.States.MessagePassing.KalmanFilter import *
 from GenModels.GM.Distributions import Normal, Regression, InverseWishart, MatrixNormalInverseWishart, NormalInverseWishart
 import numpy as np
 from GenModels.GM.Utility import stabilize as stab
+from GenModels.GM.Utility import rightSolve, MaskedData, toBlocks
+import itertools
 
 __all__ = [ 'LDSState' ]
 
@@ -216,16 +218,30 @@ class LDSState( StableKalmanFilter, StateBase ):
                 else:
                     assert not isinstance( s, np.ndarray ) and not isinstance( p, np.ndarray )
 
-        return [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
+        # for s in stats:
+        #     print( s )
+        #     print()
+        #     print()
+
+        pnp = [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
+
+        # pp = cls.priorClass.natToStandard( *pnp )
+        # for p in pp:
+        #     print()
+        #     print( p )
+        # assert 0
+        return pnp
 
     ##########################################################################
 
     @classmethod
-    def log_posteriorExpFam( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None ):
+    def log_posteriorExpFam( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None, stats=None ):
         assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( x is None ) ^ ( stats is None )
 
-        cls.checkShape( x )
-        postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
+        if( x is not None ):
+            cls.checkShape( x )
+        postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams, stats=stats )
 
         params = params if params is not None else cls.natToStandard( *natParams )
         cls.priorClass.checkShape( params )
@@ -287,9 +303,9 @@ class LDSState( StableKalmanFilter, StateBase ):
 
     ##########################################################################
 
-    def preprocessData( self, u=None, ys=None ):
+    def preprocessData( self, u=None, ys=None, computeMarginal=True ):
         if( ys is not None ):
-            super( LDSState, self ).preprocessData( ys, u=u )
+            super( LDSState, self ).preprocessData( ys, u=u, computeMarginal=computeMarginal )
         elif( u is not None ):
             self.u = u
 
@@ -401,18 +417,135 @@ class LDSState( StableKalmanFilter, StateBase ):
 
     ######################################################################
 
-    def isample( self, u=None, ys=None, measurements=1, T=None, forwardFilter=True, size=1, stabilize=False, returnStats=False ):
+    def conditionedSample( self, ys=None, u=None, forwardFilter=True, preprocessKwargs={}, filterKwargs={}, returnStats=False ):
+        # Sample x given y
+
+        if( u is not None and u.ndim == 3 ):
+            # Multiple u's
+            assert len( ys ) == len( u )
+            it = zip( ys, u )
+        else:
+            assert u is None or u.ndim == 2
+            it = zip( ys, itertools.repeat( u, len( ys ) ) )
+
+        ans = [] if returnStats == False else [ [], [] ]
+        for y, u in it:
+
+            self.preprocessData( ys=y, u=u, computeMarginal=False, **preprocessKwargs )
+
+            x = self.genStates() if returnStats == False else self.genStats()
+
+            def workFuncForStateSample( lastX, t, *args ):
+                nonlocal x
+                x[ t ] = self.sampleStep( *args )
+                return x[ t ]
+
+            def workFuncForStats( lastX, t, *args ):
+                nonlocal x
+                _x = self.sampleStep( *args )
+                _y = y[ :, t ]
+
+                # Compute the initial distribution, transition and emission sufficient statistics
+                if( lastX is None ):
+                    stats = self.initialStats( _x, constParams=self.constParams )
+                    for i, stat in enumerate( stats ):
+                        x[ 0 ][ i ][ : ] = stat
+                else:
+                    # Change this way of passing t to constParams eventually
+                    stats = self.transitionStats( ( lastX, _x ), constParams=( self.constParams, t ) )
+                    for i, stat in enumerate( stats ):
+                        x[ 1 ][ i ][ : ] += stat
+
+                stats = self.emissionStats( ( _x, _y ), constParams=self.constParams )
+                for i, stat in enumerate( stats ):
+                    x[ 2 ][ i ][ : ] += stat
+
+                return _x
+
+            # Use the correct work function and filter function for the given arguments
+            workFunc = workFuncForStateSample if returnStats == False else workFuncForStats
+            filterFunc = self.forwardFilterBackwardRecurse if forwardFilter else self.backwardFilterForwardRecurse
+            filterFunc( workFunc, **filterKwargs )
+
+            if( returnStats == False ):
+                ans.append( ( x, y ) )
+            else:
+                # Accumulate the statistics
+                M, T = y.shape[ 0:2 ]
+                ans = self.accumulateStats( ans, x, M, T )
+
+        # Make sure that the sampled states are in the expected form
+        if( returnStats == False ):
+            ans = tuple( list( zip( *ans ) ) )
+            self.checkShape( ans )
+
+        return ans
+
+    def isample( self, u=None, ys=None, measurements=1, T=None, forwardFilter=True, size=1, stabilize=False, returnStats=False, computeMarginal=True ):
         if( ys is not None ):
-            preprocessKwargs = { 'u': u }
+            preprocessKwargs = { 'computeMarginal': computeMarginal }
             filterKwargs = {}
-            return self.conditionedSample( ys=ys, forwardFilter=forwardFilter, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs, returnStats=returnStats )
-        return self.fullSample( measurements=measurements, T=T, size=size, stabilize=stabilize, returnStats=returnStats )
+            ans =  self.conditionedSample( ys=ys, u=u, forwardFilter=forwardFilter, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs, returnStats=returnStats )
+        else:
+            ans =  self.fullSample( measurements=measurements, T=T, size=size, stabilize=stabilize, returnStats=returnStats )
+
+        if( returnStats == True ):
+            # Re-order the stats so that they fit with the prior nat params
+            t7, t8, t1, t2, t3, t4, t5, t6 = ans[ 0 ]
+            N, M, T, TM = ans[ 1 ]
+            transFactor = T - N
+            emissionFactor = TM
+            initFactor = N
+            ans = [ t1, t2, t3, t4, t5, t6, t7, t8, transFactor, transFactor, emissionFactor, emissionFactor, initFactor, initFactor, initFactor ]
+        return ans
 
     ######################################################################
 
-    def ilog_likelihood( self, x, forwardFilter=True, conditionOnY=False, expFam=False, preprocessKwargs={}, filterKwargs={}, u=None, seperateLikelihoods=False ):
-        preprocessKwargs.update( { 'u': u } )
-        return super( LDSState, self ).ilog_likelihood( x=x, forwardFilter=forwardFilter, conditionOnY=conditionOnY, expFam=expFam, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs, seperateLikelihoods=seperateLikelihoods )
+    def ilog_likelihood( self, x, u=None, forwardFilter=True, conditionOnY=False, expFam=False, preprocessKwargs={}, filterKwargs={}, seperateLikelihoods=False ):
+
+        if( expFam ):
+            return self.log_likelihoodExpFam( x, constParams=self.constParams, natParams=self.natParams )
+
+        size = self.dataN( x )
+
+        x, ys = x
+
+        if( u is not None and u.ndim == 3 ):
+            assert len( u ) == len( x )
+            it = zip( x, ys, u )
+        else:
+            assert u is None or u.ndim == 2
+            it = zip( x, ys, itertools.repeat( u, len( x ) ) )
+
+        ans = np.zeros( size )
+
+        for i, ( x, ys, u ) in enumerate( it ):
+
+            self.preprocessData( ys=ys, u=u, **preprocessKwargs )
+
+            def workFunc( lastX, t, *args ):
+                nonlocal ans, x
+                term = self.likelihoodStep( x[ t ], *args )
+                ans[ i ] += term
+                return x[ t ]
+
+            if( conditionOnY == False ):
+                # This is if we want to compute P( x, y | ϴ )
+                self.noFilterForwardRecurse( workFunc )
+                ans[ i ] += self.emissionLikelihood( x, ys )
+            else:
+                if( forwardFilter ):
+                    # Otherwise compute P( x | y, ϴ )
+                    assert conditionOnY == True
+                    self.forwardFilterBackwardRecurse( workFunc, **filterKwargs )
+                else:
+                    assert conditionOnY == True
+                    self.backwardFilterForwardRecurse( workFunc, **filterKwargs )
+
+        if( seperateLikelihoods == True ):
+            return ans
+
+        return ans.sum()
 
     ######################################################################
 
@@ -422,39 +555,127 @@ class LDSState( StableKalmanFilter, StateBase ):
 
     ######################################################################
 
-    def expectedTransitionStatsBlock( self, t, alphas, betas ):
+    def expectedTransitionStatsBlock( self, t, alphas, betas, ys=None, u=None ):
         # E[ x_t * x_t^T ], E[ x_t+1 * x_t^T ] and E[ x_t+1 * x_t+1^T ]
 
         # Find the natural parameters for P( x_t+1, x_t | Y )
-        J11, J12, J22, h1, h2, _ = self.childParentJoint( t, alphas, betas )
+        J11, J12, J22, h1, h2, _ = self.childParentJoint( t, alphas, betas, ys=ys, u=u )
 
-        J = np.block( [ J11, J12 ], [ J12.T, J22 ] )
+        J = np.block( [ [ J11, J12 ], [ J12.T, J22 ] ] )
         h = np.hstack( ( h1, h2 ) )
 
         # The first expected sufficient statistic for N( x_t+1, x_t | Y ) will
         # be a block matrix with blocks E[ x_t+1 * x_t+1^T ], E[ x_t+1 * x_t^T ]
         # and E[ x_t * x_t^T ]
-        E = Normal.expectedSufficientStats( natParams=( -0.5 * J, h ) )[ 0 ]
+        E, _ = Normal.expectedSufficientStats( natParams=( -0.5 * J, h ) )
 
         D = h1.shape[ 0 ]
-        Ext1_xt1 = E[ np.ix( [ 0, D ], [ 0, D ] ) ]
-        Ext1_xt = E[ np.ix( [ D, 2 * D ], [ 0, D ] ) ]
-        Ext_xt = E[ np.ix( [ D, 2 * D ], [ D, 2 * D ] ) ]
+        Ext1_xt1, Ext1_xt, Ext_xt = toBlocks( E, D )
+
         return Ext1_xt1, Ext1_xt, Ext_xt
 
-    def conditionedExpectedSufficientStats( self, ys, alphas, betas ):
+    def expectedEmissionStats( self, t, ys, alphas, betas, conditionOnY=True ):
+        # E[ x_t * x_t^T ], E[ y_t * x_t^T ] and E[ y_t * y_t^T ]
 
-        assert 0, 'Add in other stats'
-        t1, t2, t3 = self.expectedTransitionStatsBlock( 0, alphas, betas )
+        # Find the expected sufficient statistic for N( y_t, x_t | Y )
+        J_x, h_x, _ = np.add( alphas[ t ], betas[ t ] )
 
-        for t in range( 1, self.T - 1 ):
+        if( conditionOnY == False ):
+            J11 = self.J1Emiss
+            J12 = -self._hy
+            J22 = self.Jy + J_x
+            D = J11.shape[ 0 ]
+            J = np.block( [ [ J11, J12 ], [ J12.T, J22 ] ] )
+            h = np.hstack( ( np.zeros( D ), h_x ) )
 
-            Ext1_xt1, Ext1_xt, Ext_xt = self.expectedTransitionStatsBlock( t, alphas, betas )
-            t1 += Ext1_xt1
-            t2 += Ext1_xt
-            t3 += Ext_xt
+            # This is a block matrix with block E[ y_t * y_t^T ], E[ y_t * x_t^T ]
+            # and E[ x_t * x_t^T ]
+            E, _ = Normal.expectedSufficientStats( natParams=( -0.5 * J, h ) )
 
-        return t1, t2, t3
+            Eyt_yt, Eyt_xt, Ext_xt = toBlocks( E, D )
+        else:
+            Ext_xt, E_xt = Normal.expectedSufficientStats( natParams=( -0.5 * J_x, h_x ) )
+            Eyt_yt = np.einsum( 'mi,mj->ij', ys[ :, t ], ys[ :, t ] )
+            Eyt_xt = np.einsum( 'mi,j->ij', ys[ :, t ], E_xt )
+
+        return Eyt_yt, Eyt_xt, Ext_xt
+
+    def expectedInitialStats( self, alphas, betas ):
+        # E[ x_0 * x_0 ], E[ x_0 ]
+        J, h, _ = np.add( alphas[ 0 ], betas[ 0 ] )
+        return Normal.expectedSufficientStats( natParams=( -0.5 * J, h ) )
+
+    def conditionedExpectedSufficientStats( self, ys, u, alphas, betas, forMStep=False ):
+
+        Ext1_xt1 = np.zeros( ( self.D_latent, self.D_latent ) )
+        Ext1_xt = np.zeros( ( self.D_latent, self.D_latent ) )
+        Ext_xt = np.zeros( ( self.D_latent, self.D_latent ) )
+        if( forMStep ):
+            Eut_ut = np.zeros( ( self.D_latent, self.D_latent ) )
+            Ext_ut = np.zeros( ( self.D_latent, self.D_latent ) )
+            Ext1_ut = np.zeros( ( self.D_latent, self.D_latent ) )
+            allT = 0
+            allM = 0
+
+        Eyt_yt = np.zeros( ( self.D_obs, self.D_obs ) )
+        Eyt_xt = np.zeros( ( self.D_obs, self.D_latent ) )
+        Ext_xt_y = np.zeros( ( self.D_latent, self.D_latent ) )
+
+        Ex0_x0 = np.zeros( ( self.D_latent, self.D_latent ) )
+        Ex0 = np.zeros( self.D_latent )
+
+        if( u is not None and u.ndim == 3 ):
+            # Multiple u's
+            assert len( ys ) == len( u )
+            it = zip( ys, alphas, betas, u )
+        else:
+            assert u is None or u.ndim == 2
+            if( u is None ):
+                J, _, _ = alphas[ 0 ][ 0 ]
+                u = np.zeros( ( len( alphas[ 0 ] ), J.shape[ 0 ] ) )
+            it = zip( ys, alphas, betas, itertools.repeat( u, len( ys ) ) )
+
+        for i, ( _ys, _alphas, _betas, _u ) in enumerate( it ):
+
+            uMask = np.isnan( _u )
+            _u = MaskedData( _u, uMask, None )
+
+            M, T, _ = _ys.shape
+
+            if( forMStep ):
+                allT += T - 1
+                allM += T * M
+
+            for t in range( 1, T ):
+
+                _Ext1_xt1, _Ext1_xt, _Ext_xt = self.expectedTransitionStatsBlock( t - 1, _alphas, _betas, ys=_ys, u=_u )
+                Ext1_xt1 += _Ext1_xt1
+                Ext1_xt += _Ext1_xt
+                Ext_xt += _Ext_xt
+
+                if( forMStep ):
+                    J, h, _ = np.add( _alphas[ t - 1 ], _betas[ t - 1 ] )
+                    J1, h1, _ = np.add( _alphas[ t ], _betas[ t ] )
+                    Ext = Normal.natToStandard( J, h, fromPrecision=True )[ 0 ]
+                    Ex1t = Normal.natToStandard( J1, h1, fromPrecision=True )[ 0 ]
+                    Eut_ut += np.outer( _u[ t - 1 ], _u[ t - 1 ] )
+                    Ext_ut += np.outer( Ext, _u[ t - 1 ] )
+                    Ext1_ut += np.outer( Ex1t, _u[ t - 1 ] )
+
+            for t in range( T ):
+                _Eyt_yt, _Eyt_xt, _Ext_xt = self.expectedEmissionStats( t, _ys, _alphas, _betas, conditionOnY=True )
+                Eyt_yt += _Eyt_yt
+                Eyt_xt += _Eyt_xt
+                Ext_xt_y += _Ext_xt
+
+            _Ex0_x0, _Ex0 = self.expectedInitialStats( _alphas, _betas )
+            Ex0_x0 += _Ex0_x0
+            Ex0 += _Ex0
+
+        if( forMStep ):
+            return Ext1_xt1, Ext1_xt, Ext_xt, Eyt_yt, Eyt_xt, Ext_xt_y, Ex0_x0, Ex0, Eut_ut, Ext_ut, Ext1_ut, allT, allM
+
+        return Ext1_xt1, Ext1_xt, Ext_xt, Eyt_yt, Eyt_xt, Ext_xt_y, Ex0_x0, Ex0
 
     ######################################################################
 
@@ -497,9 +718,148 @@ class LDSState( StableKalmanFilter, StateBase ):
         mu0, sigma0 = NormalInverseWishart.generate( D=D_latent )
 
         dummy = LDSState( A=A, sigma=sigma, C=C, R=R, mu0=mu0, sigma0=sigma0 )
-        return dummy.isample( measurements=measurements, T=T, size=size, stabilize=stabilize )
+        return dummy.isample( measurements=measurements, T=T, size=size, stabilize=stabilize, computeMarginal=False )
 
     ######################################################################
 
-    def MStep( self, stats ):
-        return Regression.maxLikelihoodFromStats( stats )
+    def EStep( self, ys=None, u=None, preprocessKwargs={}, filterKwargs={} ):
+
+        if( u is not None and u.ndim == 3 ):
+            # Multiple u's
+            assert len( ys ) == len( u )
+            it = zip( ys, u )
+        else:
+            assert u is None or u.ndim == 2
+            it = zip( ys, itertools.repeat( u, len( ys ) ) )
+
+        def work( _ys, _u ):
+            self.preprocessData( ys=_ys, u=_u, **preprocessKwargs )
+            a = self.forwardFilter( **filterKwargs )
+            b = self.backwardFilter( **filterKwargs )
+
+            return a, b
+
+        alphas, betas = zip( *[ work( _ys, _u ) for _ys, _u in it ] )
+
+        self.lastNormalizer = self.ilog_marginal( ys, alphas=alphas, betas=betas )
+        return alphas, betas
+
+    ######################################################################
+
+    def MStep( self, ys, u, alphas, betas ):
+
+        Ext1_xt1, Ext1_xt, Ext_xt, Eyt_yt, Eyt_xt, Ext_xt_y, Ex0_x0, Ex0, Eut_ut, Ext_ut, Ext1_ut, allT, allM = self.conditionedExpectedSufficientStats( ys, u, alphas, betas, forMStep=True )
+
+        D = len( ys )
+
+        mu0 = Ex0 / D
+        sigma0 = np.outer( mu0, mu0 ) + ( Ex0_x0 - 2 * np.outer( Ex0, mu0 ) ) / D
+
+        ###############
+
+        # from autograd import jacobian
+        # import autograd.numpy as anp
+        # sigInv = anp.linalg.inv( self.sigma )
+
+        # def ACheck( A ):
+        #     return -0.5 * anp.trace( sigInv @ Ext1_xt1 ) + \
+        #            -0.5 * anp.trace( A.T @ sigInv @ A @ Ext_xt ) + \
+        #            anp.trace( sigInv @ A @ Ext1_xt.T ) + \
+        #            -0.5 * anp.linalg.slogdet( self.sigma )[ 1 ] + \
+        #            anp.trace( sigInv @ Ext1_ut ) + \
+        #            -anp.trace( A.T @ sigInv @ Ext_ut )
+
+        # def sigmaCheck( sigInv ):
+        #     return -0.5 * anp.trace( sigInv @ Ext1_xt1 ) + \
+        #            -0.5 * anp.trace( self.A.T @ sigInv @ self.A @ Ext_xt ) + \
+        #            -0.5 * anp.trace( sigInv @ Eut_ut ) + \
+        #            anp.trace( sigInv @ self.A @ Ext1_xt.T ) + \
+        #            anp.trace( sigInv @ Ext1_ut.T ) + \
+        #            -anp.trace( self.A.T @ sigInv @ Ext_ut.T ) + \
+        #            -0.5 * anp.linalg.slogdet( anp.linalg.inv( sigInv ) )[ 1 ]
+
+        # def testA():
+        #     # Correct
+        #     return -sigInv @ ( self.A @ Ext_xt - Ext1_xt + Ext_ut )
+
+        # def testSigma():
+        #     # Correct
+        #     return 0.5 * ( -Ext1_xt1 - self.A@Ext_xt@self.A.T - Eut_ut + 2*Ext1_xt@self.A.T + 2*Ext1_ut - 2*self.A@Ext_ut + self.sigma )
+
+        # print( jacobian( ACheck )( self.A ) )
+        # print( testA() )
+        # print()
+        # print( jacobian( sigmaCheck )( np.linalg.inv( self.sigma ) ) )
+        # print( testSigma() )
+        # assert 0
+
+        ###############
+
+        A = rightSolve( Ext_xt, Ext1_xt - Ext_ut )
+        sigma = ( Ext1_xt1 + Eut_ut - Ext1_xt @ A.T - 2 * Ext1_ut + A @ Ext_ut ) / allT
+        # sigma_2 = ( Ext1_xt1 + A @ Ext_xt @ A.T + Eut_ut - 2 * Ext1_xt @ A.T - 2 * Ext1_ut + 2 * A @ Ext_ut ) / allT
+
+        C = rightSolve( Ext_xt_y , Eyt_xt )
+        R = ( Eyt_yt - Eyt_xt @ C.T ) / allM
+        # R_2 = ( Eyt_yt - 2 * Eyt_xt @ C.T + C @ Ext_xt_y @ C.T ) / allM
+
+        print()
+        print( 'mu0', mu0 )
+        print( 'sigma0', sigma0 )
+        print( np.linalg.eigvals( sigma0 ) )
+
+        print()
+        print( 'A', A )
+        print( 'sigma', sigma )
+        print( np.linalg.eigvals( sigma ) )
+
+        print()
+        print( 'C', C )
+        print( 'R', R )
+        print( np.linalg.eigvals( R ) )
+
+        return A, sigma, C, R, mu0, sigma0
+
+    ######################################################################
+
+    @classmethod
+    def variationalPosteriorPriorNatParams( cls, ys=None, u=None, constParams=None, params=None, natParams=None, priorParams=None, priorNatParams=None, returnNormalizer=False ):
+        assert ( params is None ) ^ ( natParams is None )
+        assert ( priorParams is None ) ^ ( priorNatParams is None )
+
+        # Because this will only be used to do variational inference,
+        # make sure that the observed data is passed in
+        assert ys is not None
+
+        expectedStats, normalizer = cls.expectedSufficientStats( ys=ys, u=u, params=params, natParams=natParams, returnNormalizer=True )
+
+        # Assume that these are variational parameters
+        priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
+
+        dataN = cls.dataN( ys, conditionOnY=True, checkY=True )
+        expectedStats = expectedStats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( expectedStats ) ) ] )
+
+        ans = [ np.add( s, p ) for s, p in zip( expectedStats, priorNatParams ) ]
+        return ans if returnNormalizer == False else ( ans, normalizer )
+
+    @classmethod
+    def expectedSufficientStats( cls, ys=None, u=None, params=None, natParams=None, returnNormalizer=False, **kwargs ):
+        assert ( params is None ) ^ ( natParams is None )
+        params = params if params is not None else cls.natToStandard( *natParams )
+        for p in params:
+            print( p )
+            print()
+        dummy = cls( *params )
+        return dummy.iexpectedSufficientStats( ys=ys, u=u, returnNormalizer=returnNormalizer, **kwargs )
+
+    def iexpectedSufficientStats( self, ys=None, u=None, preprocessKwargs={}, filterKwargs={}, returnNormalizer=False ):
+
+        if( ys is None ):
+            return super( StateBase, self ).iexpectedSufficientStats()
+
+        alphas, betas = self.EStep( ys=ys, u=u, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
+        stats = self.conditionedExpectedSufficientStats( ys, u, alphas, betas )
+
+        if( returnNormalizer ):
+            return stats, self.lastNormalizer
+        return stats

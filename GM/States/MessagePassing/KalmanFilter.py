@@ -5,40 +5,13 @@ from collections import namedtuple
 from GenModels.GM.Distributions import Normal, Regression
 from toolz import curry
 from scipy.linalg import cho_factor, cho_solve
+from GenModels.GM.Utility import rightSolve, MaskedData
 
 __all__ = [ 'KalmanFilter',
             'SwitchingKalmanFilter',
             'StableKalmanFilter' ]
 
 _HALF_LOG_2_PI = 0.5 * np.log( 2 * np.pi )
-
-class MaskedData():
-
-    def __init__( self, data=None, mask=None, shape=None ):
-        if( data is None ):
-            assert shape is not None
-            self.data = None
-            self.mask = None
-            self.shape = shape
-        else:
-            assert isinstance( data, np.ndarray )
-            assert isinstance( mask, np.ndarray )
-            assert mask.dtype == bool
-            self.mask = mask
-            self.data = data
-            self.shape = shape if shape is not None else self.data.shape[ -1 ]
-
-        # So that we don't have to alocate a new numpy array every time
-        self._zero = np.zeros( self.shape )
-
-    @property
-    def zero( self ):
-        return self._zero
-
-    def __getitem__( self, key ):
-        if( self.mask is None or np.any( self.mask[ key ] ) ):
-            return self.zero
-        return self.data[ key ]
 
 ##########################################################################
 
@@ -124,7 +97,7 @@ class KalmanFilter( MessagePasser ):
         assert C.shape[ 0 ] == R.shape[ 0 ] and R.shape[ 0 ] == R.shape[ 1 ]
         assert C.shape[ 1 ] == A.shape[ 0 ]
 
-    def preprocessData( self, ys, u=None ):
+    def preprocessData( self, ys, u=None, computeMarginal=True ):
         ys is not None
 
         ys = np.array( ys )
@@ -137,26 +110,33 @@ class KalmanFilter( MessagePasser ):
 
         self._T = ys.shape[ 1 ]
 
-        self.hy = ys.dot( self._hy ).sum( 0 )
+        # This is A.T @ sigInv @ y for each y, summed over each measurement
+        self.hy = ys.dot( self._hy ).sum( axis=0 )
 
         # P( y | x ) ~ N( -0.5 * Jy, hy )
-        partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
-        self.log_Zy = partition( self.Jy, self.hy )
+        self.computeMarginal = computeMarginal
+        if( computeMarginal ):
+            print( 'self.Jy', self.Jy )
+            print( 'self.hy', self.hy )
+            partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
+            self.log_Zy = partition( self.Jy, self.hy )
+        else:
+            self.log_Zy = np.zeros( self.hy.shape[ 0 ] )
 
         if( u is not None ):
             assert u.shape == ( self.T, self.D_latent )
             uMask = np.isnan( u )
             self.u = ( u, uMask, None )
 
-    def updateParams( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None ):
+    def updateParams( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None, computeMarginal=True ):
 
         self.parameterCheck( A, sigma, C, R, mu0, sigma0, u=u, ys=ys )
 
-        n1Trans, n2Trans, n3Trans = Regression.standardToNat( A, sigma )
-        n1Emiss, n2Emiss, n3Emiss = Regression.standardToNat( C, R )
         n1Init, n2Init = Normal.standardToNat( mu0, sigma0 )
+        n1Emiss, n2Emiss, n3Emiss = Regression.standardToNat( C, R )
+        n1Trans, n2Trans, n3Trans = Regression.standardToNat( A, sigma )
 
-        self.updateNatParams( n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=u, ys=ys )
+        self.updateNatParams( n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=u, ys=ys, computeMarginal=computeMarginal )
 
         self.fromNatural = False
         self._A = A
@@ -166,7 +146,7 @@ class KalmanFilter( MessagePasser ):
         self._mu0 = mu0
         self._sigma0 = sigma0
 
-    def updateNatParams( self, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=None, ys=None ):
+    def updateNatParams( self, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=None, ys=None, computeMarginal=True ):
         # This doesn't exactly use natural parameters, but uses J = -2 * n1 and h = n2
 
         self._D_latent = n1Trans.shape[ 0 ]
@@ -175,7 +155,7 @@ class KalmanFilter( MessagePasser ):
         self.J11 = -2 * n1Trans
         self.J12 = -n3Trans.T
         self.J22 = -2 * n2Trans
-        self.log_Z = 0.5 * np.linalg.slogdet( np.linalg.inv( self.J11 ) )[ 1 ]
+        self.log_Z = 0.5 * np.linalg.slogdet( np.linalg.inv( self.J11 ) )[ 1 ] if computeMarginal else 0
 
         self.J1Emiss = -2 * n1Emiss
         self.Jy = -2 * n2Emiss
@@ -183,10 +163,10 @@ class KalmanFilter( MessagePasser ):
 
         self.J0 = -2 * n1Init
         self.h0 = n2Init
-        self.log_Z0 = Normal.log_partition( natParams=( -2 * self.J0, self.h0 ) )
+        self.log_Z0 = Normal.log_partition( natParams=( -2 * self.J0, self.h0 ) ) if computeMarginal else 0
 
         if( ys is not None ):
-            self.preprocessData( ys )
+            self.preprocessData( ys, computeMarginal=computeMarginal )
         else:
             self._T = None
 
@@ -202,28 +182,34 @@ class KalmanFilter( MessagePasser ):
 
     ######################################################################
 
-    def transitionProb( self, t, t1, forward=False ):
+    def transitionProb( self, t, t1, forward=False, u=None ):
         # Generate P( x_t | x_t-1 ) as a function of [ x_t, x_t-1 ]
 
         J11 = self.J11
         J12 = self.J12
         J22 = self.J22
 
-        u = self.u[ t ]
-        h1 = J11.dot( u )
-        h2 = J12.T.dot( u )
-        log_Z = 0.5 * u.dot( h1 ) + self.log_Z
+        _u = self.u[ t ] if u is None else u[ t ]
+        h1 = J11.dot( _u )
+        h2 = J12.T.dot( _u )
+        log_Z = 0.5 * _u.dot( h1 ) + self.log_Z if self.computeMarginal else 0
 
         return J11, J12, J22, h1, h2, log_Z
 
     ######################################################################
 
-    def emissionProb( self, t, forward=False ):
+    def emissionProb( self, t, forward=False, ys=None ):
 
         # P( y_t | x_t ) as a function of x_t
         J = self.Jy
-        h = self.hy[ t ]
-        log_Z = self.log_Zy[ t ]
+
+        if( ys is None ):
+            h = self.hy[ t ]
+            log_Z = self.log_Zy[ t ]
+        else:
+            # A.T @ sigInv @ y
+            h = np.einsum( 'ji,mj->i', self._hy, ys[ :, t ] )
+            log_Z = Normal.log_partition( natParams=( -0.5 * self.Jy, h ) )
 
         if( forward ):
             return J, h, np.array( log_Z )
@@ -264,10 +250,10 @@ class KalmanFilter( MessagePasser ):
 
         if( forward ):
             # Integrate x_t-1
-            J, h, log_Z = Normal.marginalizeX2( *integrand )
+            J, h, log_Z = Normal.marginalizeX2( *integrand, computeMarginal=self.computeMarginal )
         else:
             # Integrate x_t+1
-            J, h, log_Z = Normal.marginalizeX1( *integrand )
+            J, h, log_Z = Normal.marginalizeX1( *integrand, computeMarginal=self.computeMarginal )
 
         return J, h, log_Z
 
@@ -288,11 +274,11 @@ class KalmanFilter( MessagePasser ):
 
     ######################################################################
 
-    def childParentJoint( self, t, alphas, betas ):
+    def childParentJoint( self, t, alphas, betas, ys=None, u=None ):
         # P( x_t+1, x_t, Y ) = P( y_t+1 | x_t+1 ) * P( y_t+2:T | x_t+1 ) * P( x_t+1 | x_t ) * P( x_t, y_1:t )
 
-        Jhy = self.emissionProb( t + 1, forward=False )
-        Jht = self.transitionProb( t, t + 1 )
+        Jhy = self.emissionProb( t + 1, forward=False, ys=ys )
+        Jht = self.transitionProb( t, t + 1, u=u )
         Jhf = self.alignOnLower( *alphas[ t ] )
         Jhb = self.alignOnUpper( *betas[ t + 1 ] )
 
@@ -347,7 +333,7 @@ class SwitchingKalmanFilter( KalmanFilter ):
 
     ######################################################################
 
-    def updateParams( self, z, As, sigmas, C, R, mu0, sigma0, u=None, ys=None ):
+    def updateParams( self, z, As, sigmas, C, R, mu0, sigma0, u=None, ys=None, computeMarginal=True ):
 
         self.parameterCheck( z, As, sigmas, C, R, mu0, sigma0, u=u, ys=ys )
 
@@ -355,11 +341,11 @@ class SwitchingKalmanFilter( KalmanFilter ):
         n1Emiss, n2Emiss, n3Emiss = Regression.standardToNat( C, R )
         n1Init, n2Init = Normal.standardToNat( mu0, sigma0 )
 
-        self.updateNatParams( z, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=u, ys=ys )
+        self.updateNatParams( z, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=u, ys=ys, computeMarginal=computeMarginal )
 
     ######################################################################
 
-    def updateNatParams( self, z, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=None, ys=None ):
+    def updateNatParams( self, z, n1Trans, n2Trans, n3Trans, n1Emiss, n2Emiss, n3Emiss, n1Init, n2Init, u=None, ys=None, computeMarginal=True ):
 
         self._D_latent = n2Init.shape[ 0 ]
         self._D_obs = n1Emiss.shape[ 0 ]
@@ -369,7 +355,7 @@ class SwitchingKalmanFilter( KalmanFilter ):
         self.J11s = [ -2 * n for n in n1Trans ]
         self.J12s = [ -n.T for n in n3Trans ]
         self.J22s = [ -2 * n for n in n2Trans ]
-        self.log_Zs = [ 0.5 * np.linalg.slogdet( np.linalg.inv( J11 ) )[ 1 ] for J11 in self.J11s ]
+        self.log_Zs = [ 0.5 * np.linalg.slogdet( np.linalg.inv( J11 ) )[ 1 ] for J11 in self.J11s ] if computeMarginal else [ 0 for _ in self.J11s ]
 
         self.J1Emiss = -2 * n1Emiss
         self.Jy = -2 * n2Emiss
@@ -377,10 +363,10 @@ class SwitchingKalmanFilter( KalmanFilter ):
 
         self.J0 = -2 * n1Init
         self.h0 = n2Init
-        self.log_Z0 = Normal.log_partition( natParams=( -2 * self.J0, self.h0 ) )
+        self.log_Z0 = Normal.log_partition( natParams=( -2 * self.J0, self.h0 ) ) if computeMarginal else 0
 
         if( ys is not None ):
-            self.preprocessData( ys )
+            self.preprocessData( ys, computeMarginal=computeMarginal )
         else:
             self._T = None
 
@@ -405,7 +391,7 @@ class SwitchingKalmanFilter( KalmanFilter ):
         h1 = J11.dot( u )
         h2 = J12.T.dot( u )
 
-        log_Z = 0.5 * u.dot( h1 ) + self.log_Zs[ k ]
+        log_Z = 0.5 * u.dot( h1 ) + self.log_Zs[ k ] if self.computeMarginal else 0
 
         return J11, J12, J22, h1, h2, log_Z
 
@@ -421,9 +407,12 @@ class StableKalmanFilter( KalmanFilter ):
     def AInv( self ):
         return self._AInv
 
-    def updateParams( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None ):
-        super( StableKalmanFilter, self ).updateParams( A, sigma, C, R, mu0, sigma0, u=u, ys=ys )
-        self._AInv = np.linalg.inv( A )
+    def updateParams( self, A, sigma, C, R, mu0, sigma0, u=None, ys=None, computeMarginal=True ):
+        super( StableKalmanFilter, self ).updateParams( A, sigma, C, R, mu0, sigma0, u=u, ys=ys, computeMarginal=computeMarginal )
+        try:
+            self._AInv = np.linalg.inv( A )
+        except:
+            self._AInv = None
 
     ######################################################################
 
@@ -433,7 +422,8 @@ class StableKalmanFilter( KalmanFilter ):
         u = self.u[ t - 1 ]
 
         M = self.AInv.T @ J @ self.AInv
-        H = np.linalg.solve( M.T + self.J11.T, M.T ).T
+        # H = np.linalg.solve( M.T + self.J11.T, M.T ).T
+        H = rightSolve( M + self.J11, M )
         L = -H
         L[ np.diag_indices( L.shape[ 0 ] ) ] += 1
 
@@ -473,7 +463,8 @@ class StableKalmanFilter( KalmanFilter ):
         J = J + self.Jy
         h = h + self.hy[ t + 1 ]
 
-        H = np.linalg.solve( J.T + self.J11.T, J.T ).T
+        # H = np.linalg.solve( J.T + self.J11.T, J.T ).T
+        H = rightSolve( J + self.J11, J )
         L = -H
         L[ np.diag_indices( L.shape[ 0 ] ) ] += 1
 
@@ -484,18 +475,21 @@ class StableKalmanFilter( KalmanFilter ):
         _h = h - J @ u
         _h = self.A.T @ L @ _h
 
-        # Transition, emission and last
-        _logZ = 0.5 * u.dot( self.J11.dot( u ) ) + self.log_Z + self.log_Zy[ t + 1 ] + logZ
+        if( self.computeMarginal ):
+            # Transition, emission and last
+            _logZ = 0.5 * u.dot( self.J11.dot( u ) ) + self.log_Z + self.log_Zy[ t + 1 ] + logZ
 
-        JInt = J + self.J11
-        hInt = self.J11.dot( u ) + h
-        JChol = cho_factor( JInt, lower=True )
-        JInvh = cho_solve( JChol, hInt )
+            JInt = J + self.J11
+            hInt = self.J11.dot( u ) + h
+            JChol = cho_factor( JInt, lower=True )
+            JInvh = cho_solve( JChol, hInt )
 
-        # Marginalization
-        _logZ += -0.5 * hInt.dot( JInvh ) + \
-                 np.log( np.diag( JChol[ 0 ] ) ).sum() - \
-                 self.D_latent * _HALF_LOG_2_PI
+            # Marginalization
+            _logZ += -0.5 * hInt.dot( JInvh ) + \
+                     np.log( np.diag( JChol[ 0 ] ) ).sum() - \
+                     self.D_latent * _HALF_LOG_2_PI
+        else:
+            _logZ = 0
 
         return _J, _h, _logZ
 
