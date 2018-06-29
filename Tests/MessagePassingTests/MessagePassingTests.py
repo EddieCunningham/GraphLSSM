@@ -20,23 +20,32 @@ def loadGraphs( graphs, feedbackSets=None, run=True ):
     msg.updateParams( parentMasks, childMasks, feedbackSets=feedbackSets )
     return msg
 
-def allTest():
-    cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph4(), cycleGraph5(), cycleGraph6() ]
-    regGraphs = [ graph1(), graph2(), graph3(), graph4(), graph5() ]
+def nonFBSTest():
+    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5(), graph6() ]
 
-    graphs, fbs = zip( *cycleGraphs )
-    graphs = list( graphs ) + regGraphs
-    fbs = list( fbs ) + [ None for _ in enumerate( regGraphs ) ]
-
-    msg = loadGraphs( graphs, feedbackSets=fbs )
-    msg.draw()
+    msg = GraphMessagePasser()
+    msg.updateParamsFromGraphs( graphs )
+    msg.draw( render=True )
 
     def nothing( a, b ):
         return
     msg.messagePassing( nothing, nothing, debug=True )
 
-    print( 'Done with the tests!' )
+    print( 'Done with the non fbs message passing tests!' )
+
+def fbsTests():
+    cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph7(), cycleGraph8() ]
+
+    msg = GraphMessagePasserFBS()
+    msg.updateParamsFromGraphs( cycleGraphs )
+    msg.draw( render=True )
+
+    def nothing( a, b ):
+        return
+    msg.messagePassing( nothing, nothing, debug=True )
+
+    print( 'Done with the fbs message passing tests!' )
 
 def messagePassingTest():
-    allTest()
-
+    nonFBSTest()
+    fbsTests()

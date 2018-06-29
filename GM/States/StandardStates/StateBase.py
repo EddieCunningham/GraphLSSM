@@ -557,7 +557,6 @@ class StateBase( ExponentialFam ):
         # E_{ q( x, Ѳ ) }[ log_P( y, x | Ѳ ) - log_q( x ) ] = normalization term after message passing
         # E_{ q( x, Ѳ ) }[ log_p( Ѳ ) - log_q( Ѳ ) ] = KL divergence between p( Ѳ ) and q( Ѳ )
 
-
         # Probably want a better way to do this than just creating a dummy state instance
         dummy = type( self )( *self.mfParams, paramCheck=False )
         dummy.EStep( ys=ys, **kwargs )

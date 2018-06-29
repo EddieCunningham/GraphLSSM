@@ -2,17 +2,20 @@ from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase imp
 import numpy as np
 from scipy.sparse import coo_matrix
 
-__all__ = [ 'graph1', \
-            'graph2', \
-            'graph3', \
-            'graph4', \
-            'graph5', \
-            'graph6', \
-            'cycleGraph1', \
-            'cycleGraph2', \
-            'cycleGraph3', \
-            'cycleGraph7', \
-            'cycleGraph8' ]
+__all__ = [ 'graph1',
+            'graph2',
+            'graph3',
+            'graph4',
+            'graph5',
+            'graph6',
+            'graph7',
+            'cycleGraph1',
+            'cycleGraph2',
+            'cycleGraph3',
+            'cycleGraph7',
+            'cycleGraph8',
+            'cycleGraph9',
+            'cycleGraph10' ]
 
 def graph1():
     graph = Graph()
@@ -62,6 +65,15 @@ def graph6():
     graph = Graph()
 
     graph.addEdge( parents=[ 0 ], children=[ 1 ] )
+
+    return graph
+
+def graph7():
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0, 1 ], children=[ 2 ] )
+    graph.addEdge( parents=[ 2 ], children=[ 3 ] )
+    graph.addEdge( parents=[ 3 ], children=[ 4 ] )
 
     return graph
 
@@ -162,5 +174,31 @@ def cycleGraph8():
     graph.addEdge( parents=[ 1, 2 ], children=[ 3 ] )
 
     fbs = np.array( [ 2 ] )
+
+    return graph, fbs
+
+def cycleGraph9():
+
+    graph = Graph()
+
+    graph.addEdge( parents=[ 7, 8 ], children=[ 0 ] )
+    graph.addEdge( parents=[ 0, 1 ], children=[ 3 ] )
+    graph.addEdge( parents=[ 1, 2 ], children=[ 4 ] )
+    graph.addEdge( parents=[ 2, 3, 4 ], children=[ 5, 6 ] )
+
+    fbs = np.array( [ 2, 4 ] )
+
+    return graph, fbs
+
+def cycleGraph10():
+
+    graph = Graph()
+
+    graph.addEdge( parents=[ 0 ], children=[ 1, 2 ] )
+    graph.addEdge( parents=[ 1, 2 ], children=[ 3 ] )
+    graph.addEdge( parents=[ 3 ], children=[ 4, 5 ] )
+    graph.addEdge( parents=[ 4, 5 ], children=[ 6 ] )
+
+    fbs = np.array( [ 1, 4 ] )
 
     return graph, fbs
