@@ -39,13 +39,17 @@ def testGraphCategoricalForwardBackward():
     onesK = np.ones( K )
     onesObs = np.ones( obsDim )
 
-    ( p, ) = Dirichlet.sample( params=onesObs )
-    ys = [ Categorical.sample( params=p, size=nNodes ) for _ in range( D ) ]
-    ( initialDist, ) = Dirichlet.sample( params=onesK )
+    ys = [ Categorical.generate( D=obsDim, size=nNodes ) for _ in range( D ) ]
+    initialDist = Dirichlet.generate( D=K )
     transitionDists = []
     for ndim in allTransitionCounts:
-        transitionDists.append( Dirichlet.sample( params=onesK, size=( K, ) * ( ndim - 1 ) ) )
-    emissionDist = Dirichlet.sample( params=onesObs, size=K )
+        transitionDists.append( np.array( [ Dirichlet.generate( D=K, size=K ) for _ in range( ndim - 1 ) ] ).squeeze() )
+    emissionDist = Dirichlet.generate( D=obsDim, size=K )
+
+    # print( initialDist )
+    # print( transitionDists )
+    # print( emissionDist )
+    # assert 0
 
     # asdf = 0.1
     # fdsa = 0.1

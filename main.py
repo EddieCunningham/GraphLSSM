@@ -4,7 +4,7 @@ from GenModels.Tests import *
 # exponentialFamilyTest()
 # marginalizationTest()
 # stateTests()
-# # # graphMarginalizationTest()
+graphMarginalizationTest()
 # priorTests()
 
-modelTests()
+# modelTests()
