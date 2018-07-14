@@ -1,10 +1,12 @@
 from GenModels.Tests import *
 
+# messagePassingTest()
+graphMarginalizationTest()
+
 # distributionTest()
 # exponentialFamilyTest()
 # marginalizationTest()
 # stateTests()
-graphMarginalizationTest()
 # priorTests()
 
 # modelTests()

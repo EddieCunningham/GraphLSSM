@@ -17,7 +17,38 @@ __all__ = [ 'multigammalnDerivative',
             'verboseRange',
             'rightSolve',
             'MaskedData',
-            'toBlocks' ]
+            'toBlocks',
+            'fbsData' ]
+
+##########################################################################
+
+class fbsData():
+    def __init__( self, data, fbsAxis ):
+        self.data = data
+        self.fbsAxis = fbsAxis
+
+    @property
+    def size( self ):
+        return self.data.size
+
+    @property
+    def shape( self ):
+        return self.data.shape
+
+    @property
+    def ndim( self ):
+        return self.data.ndim
+
+    def squeeze( self, axis=None ):
+        newData = self.data.squeeze( axis=axis )
+        dimDiff = self.data.ndim - newData.ndim
+        return fbsData( newData, self.fbsAxis - dimDiff )
+
+    def __getitem__( self, key ):
+        return self.data[ key ]
+
+    def __setitem__( self, idx, value ):
+        self.data[ idx ] = value
 
 ##########################################################################
 
