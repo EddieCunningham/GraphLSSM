@@ -23,9 +23,9 @@ __all__ = [ 'multigammalnDerivative',
 ##########################################################################
 
 class fbsData():
-    def __init__( self, data, fbsAxis ):
+    def __init__( self, data, fbs_axis ):
         self.data = data
-        self.fbsAxis = fbsAxis
+        self.fbs_axis = fbs_axis
 
     @property
     def size( self ):
@@ -42,7 +42,7 @@ class fbsData():
     def squeeze( self, axis=None ):
         newData = self.data.squeeze( axis=axis )
         dimDiff = self.data.ndim - newData.ndim
-        return fbsData( newData, self.fbsAxis - dimDiff )
+        return fbsData( newData, self.fbs_axis - dimDiff )
 
     def __getitem__( self, key ):
         return self.data[ key ]

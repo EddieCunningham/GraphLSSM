@@ -11,17 +11,17 @@ class Graph():
 
     def __init__( self ):
         self.nodes = set()
-        self.edgeChildren = list()
-        self.edgeParents = list()
+        self.edge_children = list()
+        self.edge_parents = list()
 
     @staticmethod
-    def fromParentChildMask( pMask, cMask ):
+    def fromParentChildMask( p_mask, c_mask ):
         graph = Graph()
-        assert pMask.shape == cMask.shape
-        nEdges = pMask.shape[ 1 ]
+        assert p_mask.shape == c_mask.shape
+        nEdges = p_mask.shape[ 1 ]
         for e in range( nEdges ):
-            parents = pMask.getcol( e ).nonzero()[ 0 ]
-            children = cMask.getcol( e ).nonzero()[ 0 ]
+            parents = p_mask.getcol( e ).nonzero()[ 0 ]
+            children = c_mask.getcol( e ).nonzero()[ 0 ]
             graph.addEdge( parents=parents.tolist(), children=children.tolist() )
 
         return graph
@@ -32,46 +32,46 @@ class Graph():
         for node in parents + children:
             self.nodes.add( node )
 
-        self.edgeChildren.append( children )
-        self.edgeParents.append( parents )
+        self.edge_children.append( children )
+        self.edge_parents.append( parents )
 
-    def _cooMatrixFromNodeEdge( self, nodes, edges ):
+    def cooMatrixFromNodeEdge( self, nodes, edges ):
 
-        nRows = len( nodes )
-        nCols = len( edges )
+        n_rows = len( nodes )
+        n_cols = len( edges )
 
         rows = []
         cols = []
         data = []
 
-        for i, nodeGroup in enumerate( edges ):
-            for j, node in enumerate( nodeGroup ):
-                rowIndex = nodes.index( node )
-                colIndex = i
+        for i, node_group in enumerate( edges ):
+            for j, node in enumerate( node_group ):
+                row_index = nodes.index( node )
+                col_index = i
 
-                rows.append( rowIndex )
-                cols.append( colIndex )
+                rows.append( row_index )
+                cols.append( col_index )
 
                 # Use an integer so that we can have an ordering of nodes within edges!!!!
                 data.append( j + 1 )
 
-        mask = coo_matrix( ( data, ( rows, cols ) ), shape=( nRows, nCols ), dtype=int )
+        mask = coo_matrix( ( data, ( rows, cols ) ), shape=( n_rows, n_cols ), dtype=int )
         return mask
 
     def toMatrix( self ):
 
-        nodeList = list( self.nodes )
+        node_list = list( self.nodes )
 
-        parentMask = self._cooMatrixFromNodeEdge( nodeList, self.edgeParents )
-        childMask = self._cooMatrixFromNodeEdge( nodeList, self.edgeChildren )
+        parent_mask = self.cooMatrixFromNodeEdge( node_list, self.edge_parents )
+        child_mask = self.cooMatrixFromNodeEdge( node_list, self.edge_children )
 
-        return parentMask, childMask
+        return parent_mask, child_mask
 
-    def draw( self, render=True, cutNodes=None ):
+    def draw( self, render=True, cut_nodes=None ):
 
         # Draws the graph using graphviz
         d = graphviz.Digraph()
-        for e, ( parents, children ) in enumerate( zip( self.edgeParents, self.edgeChildren ) ):
+        for e, ( parents, children ) in enumerate( zip( self.edge_parents, self.edge_children ) ):
             for p in parents:
                 d.edge( '%d '%( p ), '%d'%( e ), **{
                     'fixedsize': 'true'
@@ -91,8 +91,8 @@ class Graph():
                 'fontsize': '6'
             } )
 
-        if( cutNodes is not None ):
-            for n in cutNodes:
+        if( cut_nodes is not None ):
+            for n in cut_nodes:
                 d.node( '%d '%( n ), **{
                        'style': 'filled',
                        'fontcolor': 'white',
@@ -114,30 +114,30 @@ class GraphMessagePasser():
     def draw( self, render=True, **kwargs ):
         return self.toGraph().draw( render=render, **kwargs )
 
-    def concatSparseMatrix( self, sparseMatrices ):
+    def concatSparseMatrix( self, sparse_matrices ):
         # Builds a big block diagonal matrix where each diagonal matrix
-        # is an element in sparseMatrices
+        # is an element in sparse_matrices
 
         row = np.array( [], dtype=int )
         col = np.array( [], dtype=int )
         data = np.array( [], dtype=int )
-        graphAssignments = []
-        nRows = 0
-        nCols = 0
-        for i, mat in enumerate( sparseMatrices ):
+        graph_assigments = []
+        n_rows = 0
+        n_cols = 0
+        for i, mat in enumerate( sparse_matrices ):
             m, n = mat.shape
-            row = np.hstack( ( row, mat.row + nRows ) )
-            col = np.hstack( ( col, mat.col + nCols ) )
+            row = np.hstack( ( row, mat.row + n_rows ) )
+            col = np.hstack( ( col, mat.col + n_cols ) )
             data = np.hstack( ( data, mat.data ) )
-            nRows += m
-            nCols += n
-            graphAssignments.append( nRows )
-        return coo_matrix( ( data, ( row, col ) ), shape=( nRows, nCols ), dtype=int ), graphAssignments
+            n_rows += m
+            n_cols += n
+            graph_assigments.append( n_rows )
+        return coo_matrix( ( data, ( row, col ) ), shape=( n_rows, n_cols ), dtype=int ), graph_assigments
 
     def updateParamsFromGraphs( self, graphs ):
 
-        parentMasks = []
-        childMasks = []
+        parent_masks = []
+        child_masks = []
         for graph in graphs:
             if( isinstance( graph, Iterable ) ):
                 assert len( graph ) == 2
@@ -145,22 +145,22 @@ class GraphMessagePasser():
             else:
                 fbs = None
 
-            pMask, cMask = graph.toMatrix()
-            parentMasks.append( pMask )
-            childMasks.append( cMask )
+            p_mask, c_mask = graph.toMatrix()
+            parent_masks.append( p_mask )
+            child_masks.append( c_mask )
 
-        self.updateParams( parentMasks, childMasks )
+        self.updateParams( parent_masks, child_masks )
 
-    def updateParams( self, parentMasks, childMasks ):
+    def updateParams( self, parent_masks, child_masks ):
 
-        assert len( parentMasks ) == len( childMasks )
-        for childMask, parentMask in zip( childMasks, parentMasks ):
-            assert isinstance( childMask, coo_matrix )
-            assert isinstance( parentMask, coo_matrix )
-            assert childMask.shape == parentMask.shape
+        assert len( parent_masks ) == len( child_masks )
+        for child_mask, parent_mask in zip( child_masks, parent_masks ):
+            assert isinstance( child_mask, coo_matrix )
+            assert isinstance( parent_mask, coo_matrix )
+            assert child_mask.shape == parent_mask.shape
 
-        self.pmask, self.parentGraphAssignments = self.concatSparseMatrix( parentMasks )
-        self.cmask, self.childGraphAssignments = self.concatSparseMatrix( childMasks )
+        self.pmask, self.parent_graph_assignments = self.concatSparseMatrix( parent_masks )
+        self.cmask, self.child_graph_assignments = self.concatSparseMatrix( child_masks )
 
         self.nodes = np.arange( self.pmask.shape[ 0 ] )
 
@@ -174,11 +174,11 @@ class GraphMessagePasser():
         return np.unique( cols[ np.in1d( rows, nodes ) ] )
 
     @staticmethod
-    def _downEdges( pmask, nodes, skipEdges=None, split=False ):
+    def _downEdges( pmask, nodes, skip_edges=None, split=False ):
         if( split ):
-            return [ GraphMessagePasser._downEdges( pmask, n, skipEdges=skipEdges, split=False ) for n in nodes ]
-        if( skipEdges is not None ):
-            return np.setdiff1d( GraphMessagePasser._downEdges( pmask, nodes, skipEdges=None, split=False ), skipEdges )
+            return [ GraphMessagePasser._downEdges( pmask, n, skip_edges=skip_edges, split=False ) for n in nodes ]
+        if( skip_edges is not None ):
+            return np.setdiff1d( GraphMessagePasser._downEdges( pmask, nodes, skip_edges=None, split=False ), skip_edges )
         rows, cols = pmask.nonzero()
         return np.unique( cols[ np.in1d( rows, nodes ) ] )
 
@@ -187,8 +187,8 @@ class GraphMessagePasser():
     def upEdges( self, nodes, split=False ):
         return GraphMessagePasser._upEdges( self.cmask, nodes, split=split )
 
-    def downEdges( self, nodes, skipEdges=None, split=False ):
-        return GraphMessagePasser._downEdges( self.pmask, nodes, skipEdges=skipEdges, split=split )
+    def downEdges( self, nodes, skip_edges=None, split=False ):
+        return GraphMessagePasser._downEdges( self.pmask, nodes, skip_edges=skip_edges, split=split )
 
     ######################################################################
 
@@ -197,34 +197,34 @@ class GraphMessagePasser():
                          edges,
                          cmask,
                          pmask,
-                         getChildren=True,
-                         diffNodes=False,
-                         getOrder=False ):
+                         get_children=True,
+                         diff_nodes=False,
+                         get_order=False ):
 
-        mask = cmask if getChildren else pmask
+        mask = cmask if get_children else pmask
 
-        edgeMask = np.in1d( mask.col, edges )
+        edge_mask = np.in1d( mask.col, edges )
 
-        if( diffNodes ):
-            finalMask = edgeMask & ~np.in1d( mask.row, nodes )
+        if( diff_nodes ):
+            final_mask = edge_mask & ~np.in1d( mask.row, nodes )
         else:
-            finalMask = edgeMask
+            final_mask = edge_mask
 
-        if( getOrder is False ):
-            return np.unique( mask.row[ finalMask ] )
-        return mask.row[ finalMask ], mask.data[ finalMask ] - 1 # Subtract one to use 0 indexing
+        if( get_order is False ):
+            return np.unique( mask.row[ final_mask ] )
+        return mask.row[ final_mask ], mask.data[ final_mask ] - 1 # Subtract one to use 0 indexing
 
     @staticmethod
     def _nodeSelectFromEdge( cmask,
                              pmask,
                              nodes,
                              edges=None,
-                             upEdge=False,
-                             getChildren=True,
-                             diffNodes=False,
-                             splitByEdge=False,
+                             up_edge=False,
+                             get_children=True,
+                             diff_nodes=False,
+                             split_by_edge=False,
                              split=False,
-                             getOrder=False ):
+                             get_order=False ):
 
         if( split ):
             if( edges is None ):
@@ -232,110 +232,110 @@ class GraphMessagePasser():
                                                                  pmask,
                                                                  n,
                                                                  edges=None,
-                                                                 upEdge=upEdge,
-                                                                 getChildren=getChildren,
-                                                                 diffNodes=diffNodes,
-                                                                 splitByEdge=splitByEdge,
+                                                                 up_edge=up_edge,
+                                                                 get_children=get_children,
+                                                                 diff_nodes=diff_nodes,
+                                                                 split_by_edge=split_by_edge,
                                                                  split=False,
-                                                                 getOrder=getOrder ) for n in nodes ]
+                                                                 get_order=get_order ) for n in nodes ]
             else:
                 return [ GraphMessagePasser._nodeSelectFromEdge( cmask,
                                                                  pmask,
                                                                  n,
                                                                  edges=e,
-                                                                 upEdge=upEdge,
-                                                                 getChildren=getChildren,
-                                                                 diffNodes=diffNodes,
-                                                                 splitByEdge=splitByEdge,
+                                                                 up_edge=up_edge,
+                                                                 get_children=get_children,
+                                                                 diff_nodes=diff_nodes,
+                                                                 split_by_edge=split_by_edge,
                                                                  split=False,
-                                                                 getOrder=getOrder ) for n, e in zip( nodes, edges ) ]
+                                                                 get_order=get_order ) for n, e in zip( nodes, edges ) ]
 
-        _edges = GraphMessagePasser._upEdges( cmask, nodes ) if upEdge else GraphMessagePasser._downEdges( pmask, nodes )
+        _edges = GraphMessagePasser._upEdges( cmask, nodes ) if up_edge else GraphMessagePasser._downEdges( pmask, nodes )
 
         if( edges is not None ):
             _edges = np.intersect1d( _edges, edges )
 
-        if( splitByEdge == True ):
+        if( split_by_edge == True ):
             return [ [ e, GraphMessagePasser._nodeSelectFromEdge( cmask,
                                                                   pmask,
                                                                   nodes,
                                                                   edges=e,
-                                                                  upEdge=upEdge,
-                                                                  getChildren=getChildren,
-                                                                  diffNodes=diffNodes,
-                                                                  splitByEdge=False,
+                                                                  up_edge=up_edge,
+                                                                  get_children=get_children,
+                                                                  diff_nodes=diff_nodes,
+                                                                  split_by_edge=False,
                                                                   split=False,
-                                                                  getOrder=getOrder ) ] for e in _edges ]
+                                                                  get_order=get_order ) ] for e in _edges ]
 
         return GraphMessagePasser._nodesFromEdges( nodes,
                                                    _edges,
                                                    cmask,
                                                    pmask,
-                                                   getChildren=getChildren,
-                                                   diffNodes=diffNodes,
-                                                   getOrder=getOrder )
+                                                   get_children=get_children,
+                                                   diff_nodes=diff_nodes,
+                                                   get_order=get_order )
 
     ######################################################################
 
     @staticmethod
-    def _parents( cmask, pmask, nodes, split=False, getOrder=False ):
+    def _parents( cmask, pmask, nodes, split=False, get_order=False ):
         return GraphMessagePasser._nodeSelectFromEdge( cmask,
                                                        pmask,
                                                        nodes,
                                                        edges=None,
-                                                       upEdge=True,
-                                                       getChildren=False,
-                                                       diffNodes=False,
-                                                       splitByEdge=False,
+                                                       up_edge=True,
+                                                       get_children=False,
+                                                       diff_nodes=False,
+                                                       split_by_edge=False,
                                                        split=split,
-                                                       getOrder=getOrder )
+                                                       get_order=get_order )
 
     @staticmethod
-    def _siblings( cmask, pmask, nodes, split=False, getOrder=False ):
+    def _siblings( cmask, pmask, nodes, split=False, get_order=False ):
         return GraphMessagePasser._nodeSelectFromEdge( cmask,
                                                        pmask,
                                                        nodes, edges=None,
-                                                       upEdge=True,
-                                                       getChildren=True,
-                                                       diffNodes=True,
-                                                       splitByEdge=False,
+                                                       up_edge=True,
+                                                       get_children=True,
+                                                       diff_nodes=True,
+                                                       split_by_edge=False,
                                                        split=split,
-                                                       getOrder=getOrder )
+                                                       get_order=get_order )
 
     @staticmethod
-    def _children( cmask, pmask, nodes, edges=None, splitByEdge=False, split=False, getOrder=False ):
+    def _children( cmask, pmask, nodes, edges=None, split_by_edge=False, split=False, get_order=False ):
         return GraphMessagePasser._nodeSelectFromEdge( cmask,
                                                        pmask,
                                                        nodes,
                                                        edges=edges,
-                                                       upEdge=False,
-                                                       getChildren=True,
-                                                       diffNodes=False,
-                                                       splitByEdge=splitByEdge,
+                                                       up_edge=False,
+                                                       get_children=True,
+                                                       diff_nodes=False,
+                                                       split_by_edge=split_by_edge,
                                                        split=split,
-                                                       getOrder=getOrder )
+                                                       get_order=get_order )
 
     @staticmethod
-    def _mates( cmask, pmask, nodes, edges=None, splitByEdge=False, split=False, getOrder=False ):
+    def _mates( cmask, pmask, nodes, edges=None, split_by_edge=False, split=False, get_order=False ):
         return GraphMessagePasser._nodeSelectFromEdge( cmask,
                                                        pmask,
                                                        nodes,
                                                        edges=edges,
-                                                       upEdge=False,
-                                                       getChildren=False,
-                                                       diffNodes=True,
-                                                       splitByEdge=splitByEdge,
+                                                       up_edge=False,
+                                                       get_children=False,
+                                                       diff_nodes=True,
+                                                       split_by_edge=split_by_edge,
                                                        split=split,
-                                                       getOrder=getOrder )
+                                                       get_order=get_order )
 
     ######################################################################
 
-    def parents( self, nodes, split=False, getOrder=False ):
+    def parents( self, nodes, split=False, get_order=False ):
         return GraphMessagePasser._parents( self.cmask,
                                             self.pmask,
                                             nodes,
                                             split=split,
-                                            getOrder=getOrder )
+                                            get_order=get_order )
 
     def siblings( self, nodes, split=False ):
         return GraphMessagePasser._siblings( self.cmask,
@@ -343,22 +343,22 @@ class GraphMessagePasser():
                                              nodes,
                                              split=split )
 
-    def children( self, nodes, edges=None, splitByEdge=False, split=False ):
+    def children( self, nodes, edges=None, split_by_edge=False, split=False ):
         return GraphMessagePasser._children( self.cmask,
                                              self.pmask,
                                              nodes,
                                              edges=edges,
-                                             splitByEdge=splitByEdge,
+                                             split_by_edge=split_by_edge,
                                              split=split )
 
-    def mates( self, nodes, edges=None, splitByEdge=False, split=False, getOrder=False ):
+    def mates( self, nodes, edges=None, split_by_edge=False, split=False, get_order=False ):
         return GraphMessagePasser._mates( self.cmask,
                                           self.pmask,
                                           nodes,
                                           edges=edges,
-                                          splitByEdge=splitByEdge,
+                                          split_by_edge=split_by_edge,
                                           split=split,
-                                          getOrder=getOrder )
+                                          get_order=get_order )
 
     ######################################################################
 
@@ -367,62 +367,62 @@ class GraphMessagePasser():
         M, N = self.pmask.shape
 
         # Get the number of edges that each node is a parent of
-        parentOfEdgeCount = self.pmask.getnnz( axis=1 )
+        parent_of_edge_count = self.pmask.getnnz( axis=1 )
 
         # Get the number of edges that each node is a child of
-        childOfEdgeCount = self.cmask.getnnz( axis=1 )
+        child_of_edge_count = self.cmask.getnnz( axis=1 )
 
         # Get the indices of leaves and roots
-        rootIndices = self.nodes[ ( parentOfEdgeCount != 0 ) & ( childOfEdgeCount == 0 ) ]
-        leafIndices = self.nodes[ ( childOfEdgeCount != 0 ) & ( parentOfEdgeCount == 0 ) ]
+        root_indices = self.nodes[ ( parent_of_edge_count != 0 ) & ( child_of_edge_count == 0 ) ]
+        leaf_indices = self.nodes[ ( child_of_edge_count != 0 ) & ( parent_of_edge_count == 0 ) ]
 
         # Generate the up and down base arrays
-        uList = rootIndices
-        vList = leafIndices
+        u_list = root_indices
+        v_list = leaf_indices
 
-        vListNodes = []
-        vListEdges = []
-        for v in vList:
-            vListNodes.append( v )
-            vListEdges.append( None )
+        v_list_nodes = []
+        v_list_edges = []
+        for v in v_list:
+            v_list_nodes.append( v )
+            v_list_edges.append( None )
 
-        return uList, [ vListNodes, vListEdges ]
+        return u_list, [ v_list_nodes, v_list_edges ]
 
     ######################################################################
 
     def progressInit( self ):
-        uDone = np.zeros( self.pmask.shape[ 0 ], dtype=bool )
-        vDone = coo_matrix( ( np.zeros_like( self.pmask.row ), ( self.pmask.row, self.pmask.col ) ), shape=self.pmask.shape, dtype=bool )
-        return uDone, vDone
+        u_done = np.zeros( self.pmask.shape[ 0 ], dtype=bool )
+        v_done = coo_matrix( ( np.zeros_like( self.pmask.row ), ( self.pmask.row, self.pmask.col ) ), shape=self.pmask.shape, dtype=bool )
+        return u_done, v_done
 
     ######################################################################
 
     def countSemaphoreInit( self, debug=False ):
         # Counting semaphores for U and V
 
-        USemData = np.zeros( self.pmask.shape[ 0 ], dtype=int )
+        u_sem_data = np.zeros( self.pmask.shape[ 0 ], dtype=int )
 
-        for n in range( USemData.shape[ 0 ] ):
+        for n in range( u_sem_data.shape[ 0 ] ):
             # U:
             #  - U for all parents
             #  - V for all parents over all down edges except node's up edge
             #  - V for all siblings over all down edges
-            upEdge = self.upEdges( n )
+            up_edges = self.upEdges( n )
             parents = self.parents( n )
 
-            USemData[ n ] += parents.shape[ 0 ]
+            u_sem_data[ n ] += parents.shape[ 0 ]
 
             for parent in parents:
 
-                downEdges = self.downEdges( parent, skipEdges=upEdge )
-                USemData[ n ] += downEdges.shape[ 0 ]
+                down_edges = self.downEdges( parent, skip_edges=up_edges )
+                u_sem_data[ n ] += down_edges.shape[ 0 ]
 
             siblings = self.siblings( n )
             for sibling in siblings:
-                downEdges = self.downEdges( sibling )
-                USemData[ n ] += downEdges.shape[ 0 ]
+                down_edges = self.downEdges( sibling )
+                u_sem_data[ n ] += down_edges.shape[ 0 ]
 
-        VSemData = np.zeros_like( self.pmask.row )
+        v_sem_data = np.zeros_like( self.pmask.row )
 
         for i, ( n, e, _ ) in enumerate( zip( self.pmask.row, self.pmask.col, self.pmask.data ) ):
             # V:
@@ -432,163 +432,161 @@ class GraphMessagePasser():
 
             mates = self.mates( n, edges=e )
 
-            VSemData[ i ] += mates.shape[ 0 ]
+            v_sem_data[ i ] += mates.shape[ 0 ]
 
             for mate in mates:
-                downEdges = self.downEdges( mate, skipEdges=e )
-                VSemData[ i ] += downEdges.shape[ 0 ]
+                down_edges = self.downEdges( mate, skip_edges=e )
+                v_sem_data[ i ] += down_edges.shape[ 0 ]
 
             children = self.children( n, edges=e )
             for child in children:
-                downEdges = self.downEdges( child )
-                VSemData[ i ] += downEdges.shape[ 0 ]
+                down_edges = self.downEdges( child )
+                v_sem_data[ i ] += down_edges.shape[ 0 ]
 
-        uSem = USemData
-        vSem = coo_matrix( ( VSemData, ( self.pmask.row, self.pmask.col ) ), shape=self.pmask.shape, dtype=int )
+        u_semaphore = u_sem_data
+        v_semaphore = coo_matrix( ( v_sem_data, ( self.pmask.row, self.pmask.col ) ), shape=self.pmask.shape, dtype=int )
 
-        return uSem, vSem
-
-    ######################################################################
-
-    def readyForU( self, uSem, uDone, debug=False ):
-        return self.nodes[ ( uSem == 0 ) & ~uDone ]
-
-    def readyForV( self, vSem, vDone, debug=False ):
-        mask = ( vSem.data == 0 ) & ~vDone.data
-        return vSem.row[ mask ], vSem.col[ mask ]
+        return u_semaphore, v_semaphore
 
     ######################################################################
 
-    def UDone( self, nodes, uSem, vSem, uDone, debug=False ):
+    def readyForU( self, u_semaphore, u_done, debug=False ):
+        return self.nodes[ ( u_semaphore == 0 ) & ~u_done ]
 
-        # Decrement uSem for children
+    def readyForV( self, v_semaphore, v_done, debug=False ):
+        mask = ( v_semaphore.data == 0 ) & ~v_done.data
+        return v_semaphore.row[ mask ], v_semaphore.col[ mask ]
+
+    ######################################################################
+
+    def UDone( self, nodes, u_semaphore, v_semaphore, u_done, debug=False ):
+
+        # Decrement u_semaphore for children
         children = self.children( nodes, split=True )
-        for node, childrenForNode in zip( nodes, children ):
-            uSem[ childrenForNode ] -= 1
-            assert np.all( uSem[ childrenForNode ] >= 0 )
+        for node, children_for_nodes in zip( nodes, children ):
+            u_semaphore[ children_for_nodes ] -= 1
+            assert np.all( u_semaphore[ children_for_nodes ] >= 0 )
 
-        # Decrement vSem for all mates over down edges that node and mate are a part of
-        matesAndEdges = self.mates( nodes, splitByEdge=True, split=True )
-        for node, mateAndEdge in zip( nodes, matesAndEdges ):
-            for e, m in mateAndEdge:
-                vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] -= 1
-                assert np.all( vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] >= 0 )
+        # Decrement v_semaphore for all mates over down edges that node and mate are a part of
+        mates_and_edges = self.mates( nodes, split_by_edge=True, split=True )
+        for node, mate_and_edge in zip( nodes, mates_and_edges ):
+            for e, m in mate_and_edge:
+                v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] -= 1
+                assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
 
-        uDone[ nodes ] = True
+        u_done[ nodes ] = True
 
-    def VDone( self, nodesAndEdges, uSem, vSem, vDone, debug=False ):
+    def VDone( self, nodes_and_edges, u_semaphore, v_semaphore, v_done, debug=False ):
 
-        nodes, edges = nodesAndEdges
-        edgesWithoutNone = np.array( [ e for e in edges if e is not None ] )
+        nodes, edges = nodes_and_edges
+        edges_without_none = np.array( [ e for e in edges if e is not None ] )
 
-        notCurrentEdge = np.setdiff1d( vSem.col, edgesWithoutNone )
-
-        # Decrement uSem for children that come from a different edge than the one computed for V
-        childrenAndEdges = self.children( nodes, splitByEdge=True, split=True )
-        for node, edge, childAndEdge in zip( nodes, edges, childrenAndEdges ):
-            for e, c in childAndEdge:
+        # Decrement u_semaphore for children that come from a different edge than the one computed for V
+        children_and_edges = self.children( nodes, split_by_edge=True, split=True )
+        for node, edge, child_and_edge in zip( nodes, edges, children_and_edges ):
+            for e, c in child_and_edge:
                 if( e == edge ):
                     continue
-                uSem[ c ] -= 1
-                assert np.all( uSem[ c ] >= 0 )
+                u_semaphore[ c ] -= 1
+                assert np.all( u_semaphore[ c ] >= 0 )
 
-        # Decrement uSem for all siblings
+        # Decrement u_semaphore for all siblings
         siblings = self.siblings( nodes, split=True )
-        for _e, node, siblingsForNode in zip( edges, nodes, siblings ):
+        for _e, node, siblings_for_node in zip( edges, nodes, siblings ):
             if( _e is None ):
                 # If this node doesn't have a down edge, then we don't want to decrement
                 continue
-            uSem[ siblingsForNode ] -= 1
-            assert np.all( uSem[ siblingsForNode ] >= 0 )
+            u_semaphore[ siblings_for_node ] -= 1
+            assert np.all( u_semaphore[ siblings_for_node ] >= 0 )
 
-        # Decrement vSem for mates that aren't current edge
-        matesAndEdges = self.mates( nodes, splitByEdge=True, split=True )
-        for node, edge, mateAndEdge in zip( nodes, edges, matesAndEdges ):
-            for e, m in mateAndEdge:
+        # Decrement v_semaphore for mates that aren't current edge
+        mates_and_edges = self.mates( nodes, split_by_edge=True, split=True )
+        for node, edge, mate_and_edge in zip( nodes, edges, mates_and_edges ):
+            for e, m in mate_and_edge:
                 if( e == edge ):
                     continue
-                vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] -= 1
-                assert np.all( vSem.data[ np.in1d( vSem.row, m ) & np.in1d( vSem.col, e ) ] >= 0 )
+                v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] -= 1
+                assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
 
-        # Decrement vSem for parents over up edges
+        # Decrement v_semaphore for parents over up edges
         parents = self.parents( nodes, split=True )
-        upEdges = self.upEdges( nodes, split=True )
-        for _e, p, e in zip( edges, parents, upEdges ):
+        up_edges = self.upEdges( nodes, split=True )
+        for _e, p, e in zip( edges, parents, up_edges ):
             if( _e is None ):
                 # If this node doesn't have a down edge, then we don't want to decrement
                 continue
-            vSem.data[ np.in1d( vSem.row, p ) & np.in1d( vSem.col, e ) ] -= 1
-            assert np.all( vSem.data[ np.in1d( vSem.row, p ) & np.in1d( vSem.col, e ) ] >= 0 )
+            v_semaphore.data[ np.in1d( v_semaphore.row, p ) & np.in1d( v_semaphore.col, e ) ] -= 1
+            assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, p ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
 
-        vDone.data[ np.in1d( vDone.row, nodes ) & np.in1d( vDone.col, edgesWithoutNone ) ] = True
+        v_done.data[ np.in1d( v_done.row, nodes ) & np.in1d( v_done.col, edges_without_none ) ] = True
 
     ######################################################################
 
-    def uReady( self, nodes, uSem ):
-        return nodes[ uSem[ nodes ] == 0 ], nodes[ uSem[ nodes ] != 0 ]
+    def uReady( self, nodes, u_semaphore ):
+        return nodes[ u_semaphore[ nodes ] == 0 ], nodes[ u_semaphore[ nodes ] != 0 ]
 
-    def vReady( self, nodes, vSem ):
-        ready = np.intersect1d( nodes, np.setdiff1d( vSem.row, vSem.nonzero()[ 0 ] ) )
-        notReady = np.setdiff1d( nodes, ready )
-        return ready, notReady
+    def vReady( self, nodes, v_semaphore ):
+        ready = np.intersect1d( nodes, np.setdiff1d( v_semaphore.row, v_semaphore.nonzero()[ 0 ] ) )
+        not_ready = np.setdiff1d( nodes, ready )
+        return ready, not_ready
 
     ######################################################################
 
     def messagePassing( self, uWork, vWork, debug=False, **kwargs ):
 
-        uDone, vDone = self.progressInit()
-        uSem, vSem = self.countSemaphoreInit( debug=debug )
-        uList, vList = self.baseCaseNodes()
+        u_done, v_done = self.progressInit()
+        u_semaphore, v_semaphore = self.countSemaphoreInit( debug=debug )
+        u_list, v_list = self.baseCaseNodes()
 
         # Do work for base case nodes
-        uWork( True, uList, **kwargs )
-        vWork( True, vList, **kwargs )
+        uWork( True, u_list, **kwargs )
+        vWork( True, v_list, **kwargs )
 
         i = 1
 
         # Filter over all of the graphs
-        while( uList.size > 0 or vList[ 0 ].size > 0 ):
+        while( u_list.size > 0 or v_list[ 0 ].size > 0 ):
 
             if( i > 1 ):
               # Do work for each of the nodes
-              uWork( False, uList, **kwargs )
-              vWork( False, vList, **kwargs )
+              uWork( False, u_list, **kwargs )
+              vWork( False, v_list, **kwargs )
 
             # Mark that we're done with the current nodes
-            self.UDone( uList, uSem, vSem, uDone, debug=debug )
-            self.VDone( vList, uSem, vSem, vDone, debug=debug )
+            self.UDone( u_list, u_semaphore, v_semaphore, u_done, debug=debug )
+            self.VDone( v_list, u_semaphore, v_semaphore, v_done, debug=debug )
 
             # Find the next nodes that are ready
-            uList = self.readyForU( uSem, uDone, debug=debug )
-            vList = self.readyForV( vSem, vDone, debug=debug )
+            u_list = self.readyForU( u_semaphore, u_done, debug=debug )
+            v_list = self.readyForV( v_semaphore, v_done, debug=debug )
 
             i += 1
 
             # # Check if we need to do loopy propogation belief
-            # if( ( uList.size == 0 and vList[ 0 ].size == 0 ) and \
-            #     ( not np.any( uDone ) or not np.any( vDone.data ) ) ):
+            # if( ( u_list.size == 0 and v_list[ 0 ].size == 0 ) and \
+            #     ( not np.any( u_done ) or not np.any( v_done.data ) ) ):
             #     loopy = True
-        assert np.any( uSem != 0 ) == False
-        assert np.any( vSem.data != 0 ) == False
+        assert np.any( u_semaphore != 0 ) == False
+        assert np.any( v_semaphore.data != 0 ) == False
 
     ######################################################################
 
-    def full_parents( self, nodes, split=False, getOrder=False ):
-        return self.parents( nodes, split=split, getOrder=getOrder )
+    def full_parents( self, nodes, split=False, get_order=False ):
+        return self.parents( nodes, split=split, get_order=get_order )
 
     def full_siblings( self, nodes, split=False ):
         return self.siblings( nodes, split=split )
 
-    def full_children( self, nodes, edges=None, splitByEdge=False, split=False ):
-        return self.children( nodes, edges=edges, splitByEdge=splitByEdge, split=split )
+    def full_children( self, nodes, edges=None, split_by_edge=False, split=False ):
+        return self.children( nodes, edges=edges, split_by_edge=split_by_edge, split=split )
 
-    def full_mates( self, nodes, edges=None, splitByEdge=False, split=False, getOrder=False ):
-        return self.mates( nodes, edges=edges, splitByEdge=splitByEdge, split=split, getOrder=getOrder )
+    def full_mates( self, nodes, edges=None, split_by_edge=False, split=False, get_order=False ):
+        return self.mates( nodes, edges=edges, split_by_edge=split_by_edge, split=split, get_order=get_order )
 
 ##########################################################################################################
 ##########################################################################################################
 
-class __FBSMessagePassingMixin():
+class __fbsMessagePassingMixin():
 
     def toGraph( self, usePartial=False ):
         if( usePartial ):
@@ -598,27 +596,27 @@ class __FBSMessagePassingMixin():
     def draw( self, usePartial=False, render=True ):
         if( usePartial ):
             return self.toGraph( usePartial=True ).draw( render=render )
-        return self.toGraph().draw( render=render, cutNodes=self.fbs )
+        return self.toGraph().draw( render=render, cut_nodes=self.fbs )
 
-    def fbsConcat( self, feedbackSets, nodeCounts ):
-        assert len( feedbackSets ) == len( nodeCounts )
-        bigFBS = []
-        totalN = 0
-        for fbs, N in zip( feedbackSets, nodeCounts ):
+    def fbsConcat( self, feedback_sets, node_counts ):
+        assert len( feedback_sets ) == len( node_counts )
+        big_fbs = []
+        total_n = 0
+        for fbs, N in zip( feedback_sets, node_counts ):
             if( fbs is not None ):
-                bigFBS.append( fbs + totalN )
+                big_fbs.append( fbs + total_n )
             else:
-                bigFBS.append( np.array( [] ) )
-            totalN += N
-        if( len( bigFBS ) == 0 ):
+                big_fbs.append( np.array( [] ) )
+            total_n += N
+        if( len( big_fbs ) == 0 ):
             return np.array( [] ), np.array( [] )
-        return np.concatenate( bigFBS ), bigFBS
+        return np.concatenate( big_fbs ), big_fbs
 
     def updateParamsFromGraphs( self, graphs ):
 
-        parentMasks = []
-        childMasks = []
-        feedbackSets = []
+        parent_masks = []
+        child_masks = []
+        feedback_sets = []
         for graph in graphs:
             if( isinstance( graph, Iterable ) ):
                 assert len( graph ) == 2
@@ -626,102 +624,98 @@ class __FBSMessagePassingMixin():
             else:
                 fbs = None
 
-            pMask, cMask = graph.toMatrix()
-            parentMasks.append( pMask )
-            childMasks.append( cMask )
-            feedbackSets.append( fbs )
+            p_mask, c_mask = graph.toMatrix()
+            parent_masks.append( p_mask )
+            child_masks.append( c_mask )
+            feedback_sets.append( fbs )
 
-        self.updateParams( parentMasks, childMasks, feedbackSets=feedbackSets )
+        self.updateParams( parent_masks, child_masks, feedback_sets=feedback_sets )
 
-    def updateParams( self, parentMasks, childMasks, feedbackSets=None ):
+    def updateParams( self, parent_masks, child_masks, feedback_sets=None ):
 
         # Save off the full pmask, cmask and node set and only use the graph without
         # the fbs nodes for message passing.
 
-        if( feedbackSets is not None ):
-            assert len( parentMasks ) == len( childMasks ) == len( feedbackSets )
-            for childMask, parentMask, feedbackSet in zip( childMasks, parentMasks, feedbackSets ):
-                assert isinstance( childMask, coo_matrix )
-                assert isinstance( parentMask, coo_matrix )
-                assert childMask.shape == parentMask.shape
+        if( feedback_sets is not None ):
+            assert len( parent_masks ) == len( child_masks ) == len( feedback_sets )
+            for child_mask, parent_mask, feedbackSet in zip( child_masks, parent_masks, feedback_sets ):
+                assert isinstance( child_mask, coo_matrix )
+                assert isinstance( parent_mask, coo_matrix )
+                assert child_mask.shape == parent_mask.shape
         else:
-            assert len( parentMasks ) == len( childMasks )
-            for childMask, parentMask in zip( childMasks, parentMasks ):
-                assert isinstance( childMask, coo_matrix )
-                assert isinstance( parentMask, coo_matrix )
-                assert childMask.shape == parentMask.shape
+            assert len( parent_masks ) == len( child_masks )
+            for child_mask, parent_mask in zip( child_masks, parent_masks ):
+                assert isinstance( child_mask, coo_matrix )
+                assert isinstance( parent_mask, coo_matrix )
+                assert child_mask.shape == parent_mask.shape
 
-        self.full_pmask, self.parentGraphAssignments = self.concatSparseMatrix( parentMasks )
-        self.full_cmask, self.childGraphAssignments = self.concatSparseMatrix( childMasks )
+        self.full_pmask, self.parent_graph_assignments = self.concatSparseMatrix( parent_masks )
+        self.full_cmask, self.child_graph_assignments = self.concatSparseMatrix( child_masks )
 
         self.full_nodes = np.arange( self.full_pmask.shape[ 0 ] )
 
-        if( feedbackSets is not None ):
-            nodeCounts = [ mat.shape[ 0 ] for mat in parentMasks ]
-            # self.feedbackSets contains all of the feedback sets with the adjusted node indices
-            fbsNodes, self.feedbackSets = self.fbsConcat( feedbackSets, nodeCounts )
-            self.fbsMask = np.in1d( self.full_nodes, fbsNodes )
+        if( feedback_sets is not None ):
+            node_counts = [ mat.shape[ 0 ] for mat in parent_masks ]
+            # self.feedback_sets contains all of the feedback sets with the adjusted node indices
+            fbs_nodes, self.feedback_sets = self.fbsConcat( feedback_sets, node_counts )
+            self.fbs_mask = np.in1d( self.full_nodes, fbs_nodes )
         else:
-            self.fbsMask = np.zeros( self.full_pmask.shape[ 0 ], dtype=bool )
+            self.fbs_mask = np.zeros( self.full_pmask.shape[ 0 ], dtype=bool )
 
         # All of the feedback sets together
-        self.fbs = self.full_nodes[ self.fbsMask ]
-
-        # Parent and child mask for feedback set nodes
-        self.fbsPMask = np.in1d( self.full_pmask.row, self.fbs )
-        self.fbsCMask = np.in1d( self.full_cmask.row, self.fbs )
+        self.fbs = self.full_nodes[ self.fbs_mask ]
 
         # Create a mapping from the full indices to the new indices
-        nonFBS = self.full_nodes[ ~self.fbsMask ]
-        nonFBSReIndexed = ( self.full_nodes - self.fbsMask.cumsum() )[ ~self.fbsMask ]
-        indexMap = dict( zip( nonFBS, nonFBSReIndexed ) )
-        indexMapReverse = dict( zip( nonFBSReIndexed, nonFBS ) )
+        non_fbs = self.full_nodes[ ~self.fbs_mask ]
+        non_fbs_reindexed = ( self.full_nodes - self.fbs_mask.cumsum() )[ ~self.fbs_mask ]
+        index_map = dict( zip( non_fbs, non_fbs_reindexed ) )
+        index_map_reversed = dict( zip( non_fbs_reindexed, non_fbs ) )
 
-        # Re-index the fbs nodes starting from nonFBS.size
-        fbsIndexMap = dict( zip( self.fbs, np.arange( self.fbs.shape[ 0 ] ) + nonFBS.shape[ 0 ] ) )
-        fbsIndexMapReverse = dict( zip( np.arange( self.fbs.shape[ 0 ] ) + nonFBS.shape[ 0 ], self.fbs ) )
-        indexMap.update( fbsIndexMap )
-        indexMapReverse.update( fbsIndexMapReverse )
+        # Re-index the fbs nodes starting from non_fbs.size
+        fbs_index_map = dict( zip( self.fbs, np.arange( self.fbs.shape[ 0 ] ) + non_fbs.shape[ 0 ] ) )
+        fns_index_map_reversed = dict( zip( np.arange( self.fbs.shape[ 0 ] ) + non_fbs.shape[ 0 ], self.fbs ) )
+        index_map.update( fbs_index_map )
+        index_map_reversed.update( fns_index_map_reversed )
 
-        self.fullIndexToReduced = np.vectorize( lambda x: indexMap[ x ] )
-        self.reducedIndexToFull = np.vectorize( lambda x: indexMapReverse[ x ] )
+        self.fullIndexToReduced = np.vectorize( lambda x: index_map[ x ] )
+        self.reducedIndexToFull = np.vectorize( lambda x: index_map_reversed[ x ] )
 
         # Create the new list of nodes
-        self.nodes = self.fullIndexToReduced( nonFBS )
+        self.nodes = self.fullIndexToReduced( non_fbs )
 
         # TODO: MAKE REDUCED INDICES A DIFFERENT TYPE FROM FULL INDICES!!!!!
 
         # Get a mask over where the fbs nodes arent and
         # make the new sparse matrix parameters
         mask = ~np.in1d( self.full_pmask.row, self.fbs )
-        _pmaskRow, _pmaskCol, _pmaskData = self.full_pmask.row[ mask ], self.full_pmask.col[ mask ], self.full_pmask.data[ mask ]
-        _pmaskRow = self.fullIndexToReduced( _pmaskRow )
+        _pmask_row, _pmask_col, _pmask_data = self.full_pmask.row[ mask ], self.full_pmask.col[ mask ], self.full_pmask.data[ mask ]
+        _pmask_row = self.fullIndexToReduced( _pmask_row )
 
         mask = ~np.in1d( self.full_cmask.row, self.fbs )
-        _cmaskRow, _cmaskCol, _cmaskData = self.full_cmask.row[ mask ], self.full_cmask.col[ mask ], self.full_cmask.data[ mask ]
-        _cmaskRow = self.fullIndexToReduced( _cmaskRow )
+        _cmask_row, _cmask_col, _cmask_data = self.full_cmask.row[ mask ], self.full_cmask.col[ mask ], self.full_cmask.data[ mask ]
+        _cmask_row = self.fullIndexToReduced( _cmask_row )
 
         # The new shape will have fewer nodes
         shape = ( self.full_pmask.shape[ 0 ] - self.fbs.shape[ 0 ], self.full_pmask.shape[ 1 ] )
-        self.pmask = coo_matrix( ( _pmaskData, ( _pmaskRow, _pmaskCol ) ), shape=shape, dtype=int )
+        self.pmask = coo_matrix( ( _pmask_data, ( _pmask_row, _pmask_col ) ), shape=shape, dtype=int )
 
         shape = ( self.full_cmask.shape[ 0 ] - self.fbs.shape[ 0 ], self.full_cmask.shape[ 1 ] )
-        self.cmask = coo_matrix( ( _cmaskData, ( _cmaskRow, _cmaskCol ) ), shape=shape, dtype=int )
+        self.cmask = coo_matrix( ( _cmask_data, ( _cmask_row, _cmask_col ) ), shape=shape, dtype=int )
 
     ######################################################################
 
-    def inFBS( self, node, fromReduced=True ):
-        if( fromReduced ):
+    def inFBS( self, node, from_reduced=True ):
+        if( from_reduced ):
             return self.reducedIndexToFull( node ) in self.fbs
         return node in self.fbs
 
-    def fbsIndex( self, node, fromReduced=True, withinGraph=True ):
-        fullNode = self.reducedIndexToFull( node ) if fromReduced else node
+    def fbsIndex( self, node, from_reduced=True, within_graph=True ):
+        fullNode = self.reducedIndexToFull( node ) if from_reduced else node
 
-        if( withinGraph == False ):
+        if( within_graph == False ):
             return self.fbs.tolist().index( node )
 
-        for fbs in self.feedbackSets:
+        for fbs in self.feedback_sets:
             if( fullNode in fbs ):
                 return fbs.tolist().index( fullNode )
 
@@ -734,24 +728,24 @@ class __FBSMessagePassingMixin():
             nodes = [ nodes ]
         if( isinstance( nodes, np.ndarray ) and nodes.ndim == 0 ):
             nodes = nodes[ None ]
-        fbsNodes = [ n for n in nodes if self.inFBS( n, fromReduced=True ) ]
-        nonFBSNodes = [ n for n in nodes if not self.inFBS( n, fromReduced=True ) ]
-        return fbsNodes, nonFBSNodes
+        fbs_nodes = [ n for n in nodes if self.inFBS( n, from_reduced=True ) ]
+        non_fbs_nodes = [ n for n in nodes if not self.inFBS( n, from_reduced=True ) ]
+        return fbs_nodes, non_fbs_nodes
 
     def removeFBSFromNodes( self, nodes ):
         if( not isinstance( nodes, Iterable ) ):
             nodes = [ nodes ]
-        return np.array( [ n for n in nodes if not self.inFBS( n, fromReduced=True ) ] )
+        return np.array( [ n for n in nodes if not self.inFBS( n, from_reduced=True ) ] )
 
     def removeFBSFromNodesAndOrder( self, nodes, order ):
         if( not isinstance( nodes, Iterable ) ):
             nodes = [ nodes ]
         if( nodes.size == 0 ):
             return nodes, order
-        nodesOrder = zip( *[ ( n, o ) for n, o in zip( nodes, order ) if not self.inFBS( n, fromReduced=True ) ] )
+        nodesOrder = zip( *[ ( n, o ) for n, o in zip( nodes, order ) if not self.inFBS( n, from_reduced=True ) ] )
         if( len( list( nodesOrder ) ) > 0 ):
             # Iterator is consumed in check above
-            _nodes, _order = zip( *[ ( n, o ) for n, o in zip( nodes, order ) if not self.inFBS( n, fromReduced=True ) ] )
+            _nodes, _order = zip( *[ ( n, o ) for n, o in zip( nodes, order ) if not self.inFBS( n, from_reduced=True ) ] )
             return np.array( _nodes ), np.array( _order )
         else:
             return np.array( [] ), np.array( [] )
@@ -761,28 +755,28 @@ class __FBSMessagePassingMixin():
             nodes = [ nodes ]
         nodes_fbs = []
         for n in nodes:
-            currentFBS = []
+            current_fbs = []
             for _n in n:
                 if( not self.inFBS( _n ) ):
-                    currentFBS.append( _n )
-            nodes_fbs.append( currentFBS )
+                    current_fbs.append( _n )
+            nodes_fbs.append( current_fbs )
         return nodes_fbs
 
     def removeFBSFromSplitNodesAndOrder( self, nodes, order ):
         if( not isinstance( nodes, Iterable ) ):
             nodes = [ nodes ]
         nodes_fbs = []
-        nodesOrder_fbs = []
+        nodes_order_fbs = []
         for n, o in zip( nodes, order ):
-            currentFBS = []
-            currentOrder = []
+            current_fbs = []
+            current_order = []
             for _n, _o in zip( n, o ):
                 if( not self.inFBS( _n ) ):
-                    currentFBS.append( _n )
-                    currentOrder.append( _o )
-            nodes_fbs.append( currentFBS )
-            nodesOrder_fbs.append( currentOrder )
-        return np.array( nodes_fbs ), np.array( nodesOrder_fbs )
+                    current_fbs.append( _n )
+                    current_order.append( _o )
+            nodes_fbs.append( current_fbs )
+            nodes_order_fbs.append( current_order )
+        return np.array( nodes_fbs ), np.array( nodes_order_fbs )
 
     def removeFBSFromSplitEdges( self, nodes ):
         assert 0, 'Implement this'
@@ -798,52 +792,52 @@ class __FBSMessagePassingMixin():
 
     ######################################################################
 
-    def parents( self, nodes, split=False, getOrder=False ):
+    def parents( self, nodes, split=False, get_order=False ):
 
-        fbsNodes, nonFBSNodes = self.splitNodesFromFBS( nodes )
+        fbs_nodes, non_fbs_nodes = self.splitNodesFromFBS( nodes )
 
-        nonFBSAns = GraphMessagePasser._parents( self.cmask,
-                                                 self.pmask,
-                                                 nonFBSNodes,
-                                                 split=split,
-                                                 getOrder=getOrder )
-        if( len( fbsNodes ) == 0 ):
-            return nonFBSAns
+        non_fbs_ans = GraphMessagePasser._parents( self.cmask,
+                                                   self.pmask,
+                                                   non_fbs_nodes,
+                                                   split=split,
+                                                   get_order=get_order )
+        if( len( fbs_nodes ) == 0 ):
+            return non_fbs_ans
 
-        if( getOrder == True ):
-            full_parents, full_parentOrder = self.full_parents( fbsNodes, split=split, getOrder=getOrder )
+        if( get_order == True ):
+            full_parents, full_parent_prder = self.full_parents( fbs_nodes, split=split, get_order=get_order )
             if( split == False ):
-                parents_fbs, parentOrder_fbs = self.removeFBSFromNodesAndOrder( full_parents, full_parentOrder )
+                parents_fbs, parent_order_fbs = self.removeFBSFromNodesAndOrder( full_parents, full_parent_prder )
             else:
-                parent_fbs, parentOrder_fbs = self.removeFBSFromSplitNodesAndOrder( full_parents, full_parentOrder )
+                parent_fbs, parent_order_fbs = self.removeFBSFromSplitNodesAndOrder( full_parents, full_parent_prder )
 
-            parents, parentOrder = nonFBSAns
+            parents, parent_order = non_fbs_ans
             assert type( parents ) == type( parents_fbs ), '%s, %s'%( type( parents ), type( parents_fbs ) )
-            assert type( parentOrder ) == type( parentOrder_fbs )
-            return np.hstack( ( parents_fbs, parents ) ), np.hstack( ( parentOrder_fbs, parentOrder ) )
+            assert type( parent_order ) == type( parent_order_fbs )
+            return np.hstack( ( parents_fbs, parents ) ), np.hstack( ( parent_order_fbs, parent_order ) )
         else:
-            full_parents = self.full_parents( fbsNodes, split=split, getOrder=getOrder )
+            full_parents = self.full_parents( fbs_nodes, split=split, get_order=get_order )
             if( split == False ):
                 parents_fbs = self.removeFBSFromNodes( full_parents )
             else:
                 parent_fbs = self.removeFBSFromSplitNodes( full_parents )
 
-            parents = nonFBSAns
+            parents = non_fbs_ans
             assert type( parents ) == type( parents_fbs )
             return np.hstack( ( parents_fbs, parents ) )
 
     def siblings( self, nodes, split=False ):
 
-        fbsNodes, nonFBSNodes = self.splitNodesFromFBS( nodes )
+        fbs_nodes, non_fbs_nodes = self.splitNodesFromFBS( nodes )
 
-        nonFBSAns = GraphMessagePasser._siblings( self.cmask,
+        non_fbs_ans = GraphMessagePasser._siblings( self.cmask,
                                                   self.pmask,
-                                                  nonFBSNodes,
+                                                  non_fbs_nodes,
                                                   split=split )
-        if( len( fbsNodes ) == 0 ):
-            return nonFBSAns
+        if( len( fbs_nodes ) == 0 ):
+            return non_fbs_ans
 
-        full_siblings = self.full_siblings( fbsNodes, split=split )
+        full_siblings = self.full_siblings( fbs_nodes, split=split )
         if( split == False ):
             siblings_fbs = self.removeFBSFromNodes( full_siblings )
         else:
@@ -852,22 +846,22 @@ class __FBSMessagePassingMixin():
         assert type( siblings ) == type( siblings_fbs )
         return np.hstack( ( siblings_fbs, siblings ) )
 
-    def children( self, nodes, edges=None, splitByEdge=False, split=False ):
+    def children( self, nodes, edges=None, split_by_edge=False, split=False ):
 
-        fbsNodes, nonFBSNodes = self.splitNodesFromFBS( nodes )
+        fbs_nodes, non_fbs_nodes = self.splitNodesFromFBS( nodes )
 
-        nonFBSAns = GraphMessagePasser._children( self.cmask,
+        non_fbs_ans = GraphMessagePasser._children( self.cmask,
                                                   self.pmask,
-                                                  nonFBSNodes,
+                                                  non_fbs_nodes,
                                                   edges=edges,
-                                                  splitByEdge=splitByEdge,
+                                                  split_by_edge=split_by_edge,
                                                   split=split )
-        if( len( fbsNodes ) == 0 ):
-            return nonFBSAns
+        if( len( fbs_nodes ) == 0 ):
+            return non_fbs_ans
 
-        full_children = self.full_children( fbsNodes, edges=edges, splitByEdge=splitByEdge, split=split )
+        full_children = self.full_children( fbs_nodes, edges=edges, split_by_edge=split_by_edge, split=split )
 
-        if( splitByEdge == False ):
+        if( split_by_edge == False ):
             if( split == False ):
                 children_fbs = self.removeFBSFromNodes( full_children )
             else:
@@ -882,34 +876,34 @@ class __FBSMessagePassingMixin():
                 children_fbs = self.removeFBSFromSplitNodesAndEdges( full_children )
             assert 0
 
-    def mates( self, nodes, edges=None, splitByEdge=False, split=False, getOrder=False ):
+    def mates( self, nodes, edges=None, split_by_edge=False, split=False, get_order=False ):
 
-        fbsNodes, nonFBSNodes = self.splitNodesFromFBS( nodes )
+        fbs_nodes, non_fbs_nodes = self.splitNodesFromFBS( nodes )
 
-        nonFBSAns = GraphMessagePasser._mates( self.cmask,
+        non_fbs_ans = GraphMessagePasser._mates( self.cmask,
                                                self.pmask,
-                                               nonFBSNodes,
+                                               non_fbs_nodes,
                                                edges=edges,
-                                               splitByEdge=splitByEdge,
+                                               split_by_edge=split_by_edge,
                                                split=split,
-                                               getOrder=getOrder )
-        if( len( fbsNodes ) == 0 ):
-            return nonFBSAns
+                                               get_order=get_order )
+        if( len( fbs_nodes ) == 0 ):
+            return non_fbs_ans
 
-        if( splitByEdge == False ):
-            if( getOrder == True ):
-                full_mates, full_mateOrder = self.full_mates( fbsNodes, edges=edges, splitByEdge=splitByEdge, split=split, getOrder=getOrder )
+        if( split_by_edge == False ):
+            if( get_order == True ):
+                full_mates, full_mate_order = self.full_mates( fbs_nodes, edges=edges, split_by_edge=split_by_edge, split=split, get_order=get_order )
                 if( split == False ):
-                    mates_fbs, matesOrder_fbs = self.removeFBSFromNodesAndOrder( full_mates, full_mateOrder )
+                    mates_fbs, mate_order_fbs = self.removeFBSFromNodesAndOrder( full_mates, full_mate_order )
                 else:
-                    mates_fbs, matesOrder_fbs = self.removeFBSFromSplitNodesAndOrder( full_mates, full_mateOrder )
+                    mates_fbs, mate_order_fbs = self.removeFBSFromSplitNodesAndOrder( full_mates, full_mate_order )
 
-                mates, matesOrder = nonFBSAns
+                mates, mate_order = non_fbs_ans
                 assert type( mates ) == type( mates_fbs )
-                assert type( matesOrder ) == type( matesOrder_fbs )
-                return np.hstack( ( mates_fbs, mates ) ), np.hstack( ( matesOrder_fbs, matesOrder ) )
+                assert type( mate_order ) == type( mate_order_fbs )
+                return np.hstack( ( mates_fbs, mates ) ), np.hstack( ( mate_order_fbs, mate_order ) )
             else:
-                full_mates = self.full_mates( fbsNodes, edges=edges, splitByEdge=splitByEdge, split=split, getOrder=getOrder )
+                full_mates = self.full_mates( fbs_nodes, edges=edges, split_by_edge=split_by_edge, split=split, get_order=get_order )
                 if( split == False ):
                     mates_fbs = self.removeFBSFromNodes( full_mates )
                 else:
@@ -919,11 +913,11 @@ class __FBSMessagePassingMixin():
                 return np.hstack( ( mates_fbs, mates ) )
 
         else:
-            if( getOrder == True ):
+            if( get_order == True ):
                 if( split == False ):
-                    mates_fbs, matesOrder_fbs = self.removeFBSFromSplitEdgesAndOrder( full_mates )
+                    mates_fbs, mate_order_fbs = self.removeFBSFromSplitEdgesAndOrder( full_mates )
                 else:
-                    mates_fbs, matesOrder_fbs = self.removeFBSFromSplitNodesAndEdgesAndOrder( full_mates )
+                    mates_fbs, mate_order_fbs = self.removeFBSFromSplitNodesAndEdgesAndOrder( full_mates )
             else:
                 if( split == False ):
                     mates_fbs = self.removeFBSFromSplitEdges( full_mates )
@@ -933,8 +927,8 @@ class __FBSMessagePassingMixin():
 
     ######################################################################
 
-    def full_parents( self, nodes, split=False, getOrder=False, fullIndexing=False, returnFullIndex=False ):
-        if( fullIndexing == False ):
+    def full_parents( self, nodes, split=False, get_order=False, full_indexing=False, return_full_indexing=False ):
+        if( full_indexing == False ):
             if( isinstance( nodes, np.ndarray ) and nodes.ndim == 0 ):
                 nodes = self.reducedIndexToFull( nodes )
             else:
@@ -944,24 +938,24 @@ class __FBSMessagePassingMixin():
                                            self.full_pmask,
                                            nodes,
                                            split=split,
-                                           getOrder=getOrder )
-        if( getOrder ):
+                                           get_order=get_order )
+        if( get_order ):
             ans, order = ans
-            if( returnFullIndex == False ):
+            if( return_full_indexing == False ):
                 ans = [ self.fullIndexToReduced( n ) for n in ans ]
             if( not ( split ) ):
                 ans = np.array( ans )
             ans = ans, order
         else:
-            if( returnFullIndex == False ):
+            if( return_full_indexing == False ):
                 ans = [ self.fullIndexToReduced( n ) for n in ans ]
 
         if( split ):
             return ans
         return np.array( ans )
 
-    def full_siblings( self, nodes, split=False, fullIndexing=False, returnFullIndex=False ):
-        if( fullIndexing == False ):
+    def full_siblings( self, nodes, split=False, full_indexing=False, return_full_indexing=False ):
+        if( full_indexing == False ):
             if( isinstance( nodes, np.ndarray ) and nodes.ndim == 0 ):
                 nodes = self.reducedIndexToFull( nodes )
             else:
@@ -972,15 +966,15 @@ class __FBSMessagePassingMixin():
                                             nodes,
                                             split=split )
 
-        if( returnFullIndex == False ):
+        if( return_full_indexing == False ):
             ans = [ self.fullIndexToReduced( n ) for n in ans ]
 
         if( split ):
             return ans
         return np.array( ans )
 
-    def full_children( self, nodes, edges=None, splitByEdge=False, split=False, fullIndexing=False, returnFullIndex=False ):
-        if( fullIndexing == False ):
+    def full_children( self, nodes, edges=None, split_by_edge=False, split=False, full_indexing=False, return_full_indexing=False ):
+        if( full_indexing == False ):
             if( isinstance( nodes, np.ndarray ) and nodes.ndim == 0 ):
                 nodes = self.reducedIndexToFull( nodes )
             else:
@@ -990,18 +984,18 @@ class __FBSMessagePassingMixin():
                                             self.full_pmask,
                                             nodes,
                                             edges=edges,
-                                            splitByEdge=splitByEdge,
+                                            split_by_edge=split_by_edge,
                                             split=split )
 
-        if( returnFullIndex == False ):
+        if( return_full_indexing == False ):
             ans = [ self.fullIndexToReduced( n ) for n in ans ]
 
-        if( split or splitByEdge ):
+        if( split or split_by_edge ):
             return ans
         return np.array( ans )
 
-    def full_mates( self, nodes, edges=None, splitByEdge=False, split=False, getOrder=False, fullIndexing=False, returnFullIndex=False ):
-        if( fullIndexing == False ):
+    def full_mates( self, nodes, edges=None, split_by_edge=False, split=False, get_order=False, full_indexing=False, return_full_indexing=False ):
+        if( full_indexing == False ):
             if( isinstance( nodes, np.ndarray ) and nodes.ndim == 0 ):
                 nodes = self.reducedIndexToFull( nodes )
             else:
@@ -1011,28 +1005,28 @@ class __FBSMessagePassingMixin():
                                          self.full_pmask,
                                          nodes,
                                          edges=edges,
-                                         splitByEdge=splitByEdge,
+                                         split_by_edge=split_by_edge,
                                          split=split,
-                                         getOrder=getOrder )
-        if( getOrder ):
+                                         get_order=get_order )
+        if( get_order ):
             ans, order = ans
-            if( returnFullIndex == False ):
+            if( return_full_indexing == False ):
                 ans = [ self.fullIndexToReduced( n ) for n in ans ]
-            if( not ( split or splitByEdge ) ):
+            if( not ( split or split_by_edge ) ):
                 ans = np.array( ans )
             ans = ans, order
         else:
-            if( returnFullIndex == False ):
+            if( return_full_indexing == False ):
                 ans = [ self.fullIndexToReduced( n ) for n in ans ]
 
-        if( split or splitByEdge ):
+        if( split or split_by_edge ):
             return ans
         return np.array( ans )
 
     ######################################################################
 
-    def upEdges( self, nodes, split=False, fromFull=True ):
-        if( fromFull == False ):
+    def upEdges( self, nodes, split=False, from_full=True ):
+        if( from_full == False ):
             return GraphMessagePasser._upEdges( self.cmask, nodes, split=split )
 
         if( isinstance( nodes, np.ndarray ) and nodes.ndim == 0 ):
@@ -1042,18 +1036,18 @@ class __FBSMessagePassingMixin():
 
         return GraphMessagePasser._upEdges( self.full_cmask, nodes, split=split )
 
-    def downEdges( self, nodes, skipEdges=None, split=False, fromFull=True ):
-        if( fromFull == False ):
-            return GraphMessagePasser._downEdges( self.pmask, nodes, skipEdges=skipEdges, split=split )
+    def downEdges( self, nodes, skip_edges=None, split=False, from_full=True ):
+        if( from_full == False ):
+            return GraphMessagePasser._downEdges( self.pmask, nodes, skip_edges=skip_edges, split=split )
 
         if( isinstance( nodes, np.ndarray ) and nodes.ndim == 0 ):
             nodes = self.reducedIndexToFull( nodes )
         else:
             nodes = [ self.reducedIndexToFull( n ) for n in nodes ] if isinstance( nodes, Iterable ) else self.reducedIndexToFull( nodes )
 
-        return GraphMessagePasser._downEdges( self.full_pmask, nodes, skipEdges=skipEdges, split=split )
+        return GraphMessagePasser._downEdges( self.full_pmask, nodes, skip_edges=skip_edges, split=split )
 
 ##########################################################################################################
 
-class GraphMessagePasserFBS( __FBSMessagePassingMixin, GraphMessagePasser ):
+class GraphMessagePasserFBS( __fbsMessagePassingMixin, GraphMessagePasser ):
     pass

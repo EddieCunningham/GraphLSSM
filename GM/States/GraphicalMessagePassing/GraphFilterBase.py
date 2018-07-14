@@ -38,7 +38,7 @@ class _filterMixin():
 
     ######################################################################
 
-    def updateU( self, nodes, newU, U ):
+    def updateU( self, nodes, new_u, U ):
         assert 0
 
     def updateV( self, nodes, edges, newV, V ):
@@ -46,12 +46,12 @@ class _filterMixin():
 
     ######################################################################
 
-    def assignV( self, V, node, val, keepShape=False ):
+    def assignV( self, V, node, val, keep_shape=False ):
         V_row, V_col, V_data = V
         N = V_row.shape[ 0 ]
         VIndices = np.arange( N )[ np.in1d( V_row, node ) ].astype( np.int )
         for i in VIndices:
-            if( keepShape is False ):
+            if( keep_shape is False ):
                 V_data[ i ] = val
             else:
                 V_data[ i ][ : ] = val
@@ -59,24 +59,24 @@ class _filterMixin():
     def vDataFromMask( self, V, mask ):
         _, _, V_data = V
         ans = []
-        for i, maskValue in enumerate( mask ):
-            if( maskValue == True ):
+        for i, mask_value in enumerate( mask ):
+            if( mask_value == True ):
                 ans.append( V_data[ i ] )
         return ans
 
     ######################################################################
 
     @classmethod
-    def extendAxes( cls, node, term, targetAxis, maxDim ):
-        # Push the first axis out to targetAxis, but don't change
-        # the axes past maxDim
+    def extendAxes( cls, node, term, target_axis, max_dim ):
+        # Push the first axis out to target_axis, but don't change
+        # the axes past max_dim
 
         # Add axes before the fbsAxes
-        for _ in range( maxDim - targetAxis - 1 ):
+        for _ in range( max_dim - target_axis - 1 ):
             term = np.expand_dims( term, 1 )
 
         # Prepend axes
-        for _ in range( targetAxis ):
+        for _ in range( target_axis ):
             term = np.expand_dims( term, 0 )
 
         return term
@@ -148,87 +148,87 @@ class _filterMixin():
 
     ######################################################################
 
-    def a( self, U, V, node, downEdge, forceComputeU=False, forceComputeV=False ):
+    def a( self, U, V, node, down_edge, force_compute_u=False, force_compute_v=False ):
         # Compute P( Y \ !( e, n )_y, n_x )
         #
-        # Probability of all emissions that can be reached without going down downEdge from node.
+        # Probability of all emissions that can be reached without going down down_edge from node.
         #
-        # P( Y \ !( e, n )_y, n_x ) = U( n_x ) * prod( [ V( n_x, e ) for e in downEdges( n ) if e is not downEdge ] )
+        # P( Y \ !( e, n )_y, n_x ) = U( n_x ) * prod( [ V( n_x, e ) for e in down_edges( n ) if e is not down_edge ] )
         #
         # U( n_x )
         #   - Probability of all emissions up from node, emission of node, and latent state of node
-        # prod( [ V( n_x, e ) for e in downEdges( n ) if e is not downEdge ] )
-        #   - Probability of all emissions down from node (but not down downEdge) given latent state of node
+        # prod( [ V( n_x, e ) for e in down_edges( n ) if e is not down_edge ] )
+        #   - Probability of all emissions down from node (but not down down_edge) given latent state of node
         #
         # Inputs:
         #   - U, V     : ans arrays
         #   - node     : n
-        #   - downEdge : e
+        #   - down_edge : e
         #
         # Outputs:
         #   - term     : shape should be ( K, ) * ( F + 1 ) where K is the latent state size and F is the size of the fbs
 
-        if( isinstance( downEdge, Iterable ) ):
-            assert len( downEdge ) > 0
+        if( isinstance( down_edge, Iterable ) ):
+            assert len( down_edge ) > 0
 
         # U over node
-        # V over node for each down edge that isn't downEdge
+        # V over node for each down edge that isn't down_edge
         # Multiply U and all Vs
-        u = self.uData( U, V, node ) if forceComputeU == False else self.u( U, V, node )
+        u = self.uData( U, V, node ) if force_compute_u == False else self.u( U, V, node )
 
-        downEdges = self.downEdges( node, skipEdges=downEdge )
-        if( forceComputeV == False ):
-            vs = self.vData( U, V, node, edges=downEdges )
+        down_edges = self.downEdges( node, skip_edges=down_edge )
+        if( force_compute_v == False ):
+            vs = self.vData( U, V, node, edges=down_edges )
         else:
-            vs = [ self.v( U, V, node, edge ) for edge in downEdges ]
+            vs = [ self.v( U, V, node, edge ) for edge in down_edges ]
 
         ans = self.multiplyTerms( terms=( u, *vs ) )
         return ans
 
     ######################################################################
 
-    def b( self, U, V, node, forceComputeV=False ):
+    def b( self, U, V, node, force_compute_v=False ):
         # Compute P( n_y, Y \ ↑( n )_y | ↑( n )_x )
         #
-        # Probability of all emissions that can be reached without going up node's upEdge
+        # Probability of all emissions that can be reached without going up node's up_edge
         # conditioned on the latent state of node's parents
         #
         # P( n_y, Y \ ↑( n )_y | ↑( n )_x )
-        #   = integral over node latent states{ P( n_x | parents( n )_x ) * P( n_y | n_x ) * prod( [ V( n_x, e ) for e in downEdges( n ) ] ) }
+        #   = integral over node latent states{ P( n_x | parents( n )_x ) * P( n_y | n_x ) * prod( [ V( n_x, e ) for e in down_edges( n ) ] ) }
         #
         # Integrate over node's latent states n_x:
         # P( n_x | parents( n )_x )
         #   - Transition probability from parent's latent states to node's latent state
         # P( n_y | n_x )
         #   - Emission probability of node's emission given node's latent state
-        # prod( [ V( n_x, e ) for e in downEdges( n ) ] )
+        # prod( [ V( n_x, e ) for e in down_edges( n ) ] )
         #   - Probability of all emissions down from node given latent state of node
         #
         # Return array should be of size ( K, ) *  N where K is the latent state size
         # and N is the number of parents.
 
-        nParents = self.nParents( node, full=True )
+        n_parents = self.nParents( node, full=True )
 
         # Transition prob to node
         # Emission prob of node (aligned on last axis)
-        nodeTransition = self.transitionProb( node )
-        nodeEmission = self.emissionProb( node )
-        nodeEmission = self.extendAxes( node, nodeEmission, nParents, nParents + 1 )
+        node_transition = self.transitionProb( node )
+        node_emission = self.emissionProb( node )
+        node_emission = self.extendAxes( node, node_emission, n_parents, n_parents + 1 )
 
         # V over node for all down edges (aligned on last axis)
-        if( forceComputeV == False ):
+        if( force_compute_v == False ):
             vs = self.vData( U, V, node )
         else:
-            downEdges = self.downEdges( node )
-            vs = [ self.v( U, V, node, edge ) for edge in downEdges ]
+            down_edges = self.downEdges( node )
+            vs = [ self.v( U, V, node, edge ) for edge in down_edges ]
 
-        vs = [ self.extendAxes( node, v, nParents, nParents + 1 ) for v in vs if v.size > 0 ]
+        vs = [ self.extendAxes( node, v, n_parents, n_parents + 1 ) for v in vs if v.size > 0 ]
 
         # Multiply together the transition, emission and Vs
         # Integrate over node's (last) axis unless node is in the fbs
         # Integrate over the node's latent states which is last axis
-        integrand = self.multiplyTerms( terms=( nodeTransition, nodeEmission, *vs ) )
-        ans = self.integrate( integrand, axes=[ nParents ] )
+        integrand = self.multiplyTerms( terms=( node_transition, node_emission, *vs ) )
+        ans = self.integrate( integrand, axes=[ n_parents ] )
 
         return ans
 
@@ -242,7 +242,7 @@ class _filterMixin():
         #
         # P( ↑( n )_y, n_x )
         #   = integral over node's parents latent states{ P( n_x | parents( n )_x ) * P( n_y | n_x )
-        #                                     * prod( [ a( n_p_x, node's upEdge ) for n_p in parents( node ) ] )
+        #                                     * prod( [ a( n_p_x, node's up_edge ) for n_p in parents( node ) ] )
         #                                     * prod( [ b( n_s, parents( node )_x ) for n_s in siblings( node ) ] ) }
         #
         # Integrate over node's parents' latent states [ n_p_x for n_p in parents( node ) ]
@@ -250,48 +250,48 @@ class _filterMixin():
         #   - Transition probability from parent's latent states to node's latent state
         # P( n_y | n_x )
         #   - Emission probability of node's emission given node's latent state
-        # prod( [ a( n_p_x, node's upEdge ) for n_p in parents( node ) ] )
+        # prod( [ a( n_p_x, node's up_edge ) for n_p in parents( node ) ] )
         #   - Probability of all emissions that can be reached by all branches from parents except
-        #     this node's upEdge
+        #     this node's up_edge
         # prod( [ b( n_s, parents( node )_x ) for n_s in siblings( node ) ] )
         #   - Probability of all emissions that can be reached down every siblings down branches
         #
         # Return array should be of size ( K, ) where K is the latent state size
 
         # Don't use full parents here
-        parents, parentOrder = self.parents( node, getOrder=True )
-        nParents = parentOrder.shape[ 0 ]
+        parents, parent_order = self.parents( node, get_order=True )
+        n_parents = parent_order.shape[ 0 ]
 
         # Use full siblings here so that we can use transition information
         siblings = self.full_siblings( node )
 
         # Transition prob to node
-        nodeTransition = self.transitionProb( node )
+        node_transition = self.transitionProb( node )
 
         # A over each parent (aligned according to ordering of parents)
-        parentAs = [ self.a( U, V, p, self.upEdges( node ) ) for p in parents ]
-        parentAs = [ self.extendAxes( p, a, i, nParents ) for p, a, i in zip( parents, parentAs, parentOrder ) if a.size > 0 ]
+        parent_as = [ self.a( U, V, p, self.upEdges( node ) ) for p in parents ]
+        parent_as = [ self.extendAxes( p, a, i, n_parents ) for p, a, i in zip( parents, parent_as, parent_order ) if a.size > 0 ]
 
         # B over each sibling
-        siblingBs = [ self.b( U, V, s ) for s in siblings ]
+        sigling_bs = [ self.b( U, V, s ) for s in siblings ]
 
         # Multiply all of the terms together
         # Integrate out the parent latent states
-        integrand = self.multiplyTerms( terms=( nodeTransition, *parentAs, *siblingBs ) )
+        integrand = self.multiplyTerms( terms=( node_transition, *parent_as, *sigling_bs ) )
 
-        nodeTerms = self.integrate( integrand, axes=parentOrder )
+        note_terms = self.integrate( integrand, axes=parent_order )
 
         # Squeeze all of the left most dims.  This is because if a parent is in
         # the fbs and we integrate out the other one, there will be an empty dim
         # remaining
-        while( nodeTerms.shape[ 0 ] == 1 ):
-            nodeTerms = nodeTerms.squeeze( axis=0 )
+        while( note_terms.shape[ 0 ] == 1 ):
+            note_terms = note_terms.squeeze( axis=0 )
 
         # Emission for this node
-        nodeEmission = self.emissionProb( node )
+        node_emission = self.emissionProb( node )
 
         # Combine this nodes emission with the rest of the calculation
-        ans = self.multiplyTerms( terms=( nodeTerms, nodeEmission ) )
+        ans = self.multiplyTerms( terms=( note_terms, node_emission ) )
         return ans
 
     ######################################################################
@@ -307,7 +307,7 @@ class _filterMixin():
         #                                     * prod( [ b( n_c, parents( n_s )_x ) for n_c in children( node ) ] ) }
         #
         # Integrate over node's mates' latent states [ n_m_x for n_m in mates( node ) ]
-        # prod( [ a( n_m_x, node's upEdge ) for n_m in mates( node ) ] )
+        # prod( [ a( n_m_x, node's up_edge ) for n_m in mates( node ) ] )
         #   - Probability of all emissions that can be reached by all branches from mates except edge
         # prod( [ b( n_c, parents( n_c )_x ) for n_c in children( node ) ] )
         #   - Probability of all emissions that can be reached down every child's down branches
@@ -319,21 +319,21 @@ class _filterMixin():
         children = self.full_children( node, edges=edge )
 
         # Don't get the full mates here
-        mates, mateOrder = self.mates( node, getOrder=True, edges=edge )
-        nParents = self.nParents( children[ 0 ], full=True )
+        mates, mate_order = self.mates( node, get_order=True, edges=edge )
+        n_parents = self.nParents( children[ 0 ], full=True )
 
         # A values over each mate (aligned according to ordering of mates)
-        mateAs = [ self.a( U, V, m, edge ) for m in mates ]
-        mateAs = [ self.extendAxes( m, a, i, nParents ) for m, a, i in zip( mates, mateAs, mateOrder ) if a.size > 0  ]
+        mate_as = [ self.a( U, V, m, edge ) for m in mates ]
+        mate_as = [ self.extendAxes( m, a, i, n_parents ) for m, a, i in zip( mates, mate_as, mate_order ) if a.size > 0  ]
 
         # B over each child
-        childBs = [ self.b( U, V, c ) for c in children ]
+        child_bs = [ self.b( U, V, c ) for c in children ]
 
         # Multiply all of the terms together
-        integrand = self.multiplyTerms( terms=( *childBs, *mateAs ) )
+        integrand = self.multiplyTerms( terms=( *child_bs, *mate_as ) )
 
         # Integrate out the mates latent states
-        ans = self.integrate( integrand, axes=mateOrder )
+        ans = self.integrate( integrand, axes=mate_order )
 
         # Squeeze all of the left most dims.  This is because if a parent is in
         # the fbs and we integrate out the other one, there will be an empty dim
@@ -345,23 +345,23 @@ class _filterMixin():
 
     ######################################################################
 
-    def uFilter( self, baseCase, nodes, U, V ):
+    def uFilter( self, base_case, nodes, U, V ):
         # Compute P( ↑( n )_y, n_x )
         # Probability of all emissions that can be reached by going up node's up edge
 
-        newU = []
+        new_u = []
         for node in nodes:
             if( self.nParents( node, full=False ) == 0 ):
                 u = self.uBaseCase( node )
             else:
                 u = self.u( U, V, node )
-            newU.append( u )
+            new_u.append( u )
 
-        self.updateU( nodes, newU, U )
+        self.updateU( nodes, new_u, U )
 
-    def vFilter( self, baseCase, nodesAndEdges, U, V ):
+    def vFilter( self, base_case, nodes_and_edges, U, V ):
 
-        nodes, edges = nodesAndEdges
+        nodes, edges = nodes_and_edges
 
         newV = []
         for node, edge in zip( nodes, edges ):
@@ -396,44 +396,44 @@ class _filterMixin():
 
     ######################################################################
 
-    def _nodeJoint( self, U, V, node, forceComputeU=False, forceComputeV=False ):
+    def _nodeJoint( self, U, V, node, force_compute_u=False, force_compute_v=False ):
         # P( x, Y )
 
-        u = self.uData( U, V, node ) if forceComputeU == False else self.u( U, V, node )
+        u = self.uData( U, V, node ) if force_compute_u == False else self.u( U, V, node )
 
-        if( forceComputeV == False ):
+        if( force_compute_v == False ):
             vs = self.vData( U, V, node )
         else:
-            downEdges = self.downEdges( node )
-            vs = [ self.v( U, V, node, edge ) for edge in downEdges ]
+            down_edges = self.downEdges( node )
+            vs = [ self.v( U, V, node, edge ) for edge in down_edges ]
 
         vs = [ self.extendAxes( node, v, 0, 1 ) for v in vs ]
 
-        fullJoint = self.multiplyTerms( terms=( u, *vs ) )
-        return fullJoint
+        full_joint = self.multiplyTerms( terms=( u, *vs ) )
+        return full_joint
 
     ######################################################################
 
     def _jointParents( self, U, V, node ):
         # P( x_p1..pN, Y )
 
-        parents, parentOrder = self.parents( node, getOrder=True )
-        nParents = self.nParents( node, full=True )
+        parents, parent_order = self.parents( node, get_order=True )
+        n_parents = self.nParents( node, full=True )
         siblings = self.full_siblings( node )
-        upEdge = self.upEdges( node )
+        up_edge = self.upEdges( node )
 
         # Down each child
-        siblingBs = [ self.b( U, V, s ) for s in siblings ]
+        sigling_bs = [ self.b( U, V, s ) for s in siblings ]
 
         # Down this node
-        nodeTerm = self.b( U, V, node )
+        node_term = self.b( U, V, node )
 
         # Out from each parent
-        parentAs = [ self.a( U, V, p, upEdge ) for p in parents ]
-        parentAs = [ self.extendAxes( p, a, i, nParents ) for p, a, i in zip( parents, parentAs, parentOrder ) ]
+        parent_as = [ self.a( U, V, p, up_edge ) for p in parents ]
+        parent_as = [ self.extendAxes( p, a, i, n_parents ) for p, a, i in zip( parents, parent_as, parent_order ) ]
 
-        jointParents = self.multiplyTerms( terms=( nodeTerm, *parentAs, *siblingBs ) )
-        return jointParents
+        joint = self.multiplyTerms( terms=( node_term, *parent_as, *sigling_bs ) )
+        return joint
 
     ######################################################################
 
@@ -441,29 +441,29 @@ class _filterMixin():
         # P( x_c, x_p1..pN, Y )
 
         siblings = self.full_siblings( node )
-        parents, parentOrder = self.parents( node, getOrder=True )
-        upEdge = self.upEdges( node )
-        nParents = self.nParents( node, full=True )
+        parents, parent_order = self.parents( node, get_order=True )
+        up_edge = self.upEdges( node )
+        n_parents = self.nParents( node, full=True )
 
         # Down to this node
-        nodeTransition = self.transitionProb( node )
-        nodeEmission = self.emissionProb( node )
+        node_transition = self.transitionProb( node )
+        node_emission = self.emissionProb( node )
         # Align this node's values on the last axis
-        nodeEmission = self.extendAxes( node, nodeEmission, nParents, nParents + 1 )
+        node_emission = self.extendAxes( node, node_emission, n_parents, n_parents + 1 )
 
         # Out from each sibling
-        siblingBs = [ self.b( U, V, s ) for s in siblings ]
+        sigling_bs = [ self.b( U, V, s ) for s in siblings ]
 
         # Out from each parent
-        parentAs = [ self.a( U, V, p, upEdge ) for p in parents ]
-        parentAs = [ self.extendAxes( p, a, i, nParents ) for p, a, i in zip( parents, parentAs, parentOrder ) ]
+        parent_as = [ self.a( U, V, p, up_edge ) for p in parents ]
+        parent_as = [ self.extendAxes( p, a, i, n_parents ) for p, a, i in zip( parents, parent_as, parent_order ) ]
 
         # Down this node
         vs = self.vData( U, V, node )
-        vs = [ self.extendAxes( node, _v, nParents, nParents + 1 ) for _v in vs ]
+        vs = [ self.extendAxes( node, _v, n_parents, n_parents + 1 ) for _v in vs ]
 
-        fullJoint = self.multiplyTerms( terms=( *parentAs, *siblingBs, *vs, nodeTransition, nodeEmission ) )
-        return fullJoint
+        full_joint = self.multiplyTerms( terms=( *parent_as, *sigling_bs, *vs, node_transition, node_emission ) )
+        return full_joint
 
     ######################################################################
 
@@ -517,39 +517,39 @@ class __FBSFilterMixin():
 
     ######################################################################
 
-    def nParents( self, node, full=True, fullIndexing=False ):
+    def nParents( self, node, full=True, full_indexing=False ):
         if( full == True ):
-            return self.full_parents( node, fullIndexing=fullIndexing ).shape[ 0 ]
-        assert fullIndexing == False
+            return self.full_parents( node, full_indexing=full_indexing ).shape[ 0 ]
+        assert full_indexing == False
         return self.parents( node ).shape[ 0 ]
 
     ######################################################################
 
-    def extendAxes( self, node, term, targetAxis, maxDim ):
-        # Push the first axis out to targetAxis, but don't change
-        # the axes past maxDim
-        term, fbsAxisStart = ( term.data, term.fbsAxis )
+    def extendAxes( self, node, term, target_axis, max_dim ):
+        # Push the first axis out to target_axis, but don't change
+        # the axes past max_dim
+        term, fbs_axis = ( term.data, term.fbs_axis )
 
         # Add axes before the fbsAxes
-        for _ in range( maxDim - targetAxis - 1 ):
+        for _ in range( max_dim - target_axis - 1 ):
             term = np.expand_dims( term, 1 )
-            if( fbsAxisStart != -1 ):
-                fbsAxisStart += 1
+            if( fbs_axis != -1 ):
+                fbs_axis += 1
 
         # Prepend axes
-        for _ in range( targetAxis ):
+        for _ in range( target_axis ):
             term = np.expand_dims( term, 0 )
-            if( fbsAxisStart != -1 ):
-                fbsAxisStart += 1
+            if( fbs_axis != -1 ):
+                fbs_axis += 1
 
-        return fbsData( term, fbsAxisStart )
+        return fbsData( term, fbs_axis )
 
     ######################################################################
 
     def vData( self, U, V, node, edges=None, ndim=None, debug=False ):
         V_row, V_col, V_data = V
 
-        if( self.inFBS( node, fromReduced=True ) ):
+        if( self.inFBS( node, from_reduced=True ) ):
             # This is going to be empty because by construction,
             # if a node is in the fbs, all the information from
             # going down the down edges can be gained by going
@@ -599,27 +599,27 @@ class __FBSFilterMixin():
     def b( self, U, V, node ):
         # For a fbs node, this is computed as P( node_y | node_x ) * P( node_x | parents_x )
         # because we are calculating the joint with the fbs nodes
-        if( not self.inFBS( node, fromReduced=True ) ):
+        if( not self.inFBS( node, from_reduced=True ) ):
             return super().b( U, V, node )
         else:
-            nodeTransition = self.transitionProb( node )
-            nodeEmission = self.emissionProb( node )
-            return self.multiplyTerms( terms=( nodeTransition, nodeEmission ) )
+            node_transition = self.transitionProb( node )
+            node_emission = self.emissionProb( node )
+            return self.multiplyTerms( terms=( node_transition, node_emission ) )
 
     ######################################################################
 
     def _anotherNode( self, node, parents=True, mates=True, siblings=True, children=True ):
-        toUse = []
+        to_use = []
         if( parents ):
-            toUse.append( self.full_parents( node, fullIndexing=True, returnFullIndex=True ) )
+            to_use.append( self.full_parents( node, full_indexing=True, return_full_indexing=True ) )
         if( mates ):
-            toUse.append( self.full_mates( node, fullIndexing=True, returnFullIndex=True ) )
+            to_use.append( self.full_mates( node, full_indexing=True, return_full_indexing=True ) )
         if( siblings ):
-            siblings = self.full_siblings( node, fullIndexing=True, returnFullIndex=True )
-            toUse.append( siblings )
+            siblings = self.full_siblings( node, full_indexing=True, return_full_indexing=True )
+            to_use.append( siblings )
         if( children ):
-            toUse.append( self.full_children( node, fullIndexing=True, returnFullIndex=True ) )
-        possibilities = itertools.chain( *toUse )
+            to_use.append( self.full_children( node, full_indexing=True, return_full_indexing=True ) )
+        possibilities = itertools.chain( *to_use )
         for _node in possibilities:
             if( _node not in self.fbs ):
                 return int( _node )
@@ -632,50 +632,50 @@ class __FBSFilterMixin():
         # Having different methods is more of a sanity check than anything
 
         # NODE MUST BE FROM THE FULL SET OF NODES!!!!
-        notInFBS = not self.inFBS( node, fromReduced=False )
+        not_in_fbs = not self.inFBS( node, from_reduced=False )
 
         # If the fbs node is a leaf, must use the integrate method
-        if( notInFBS == False and self.full_parents( node, fullIndexing=True ).size == 0 ):
+        if( not_in_fbs == False and self.full_parents( node, full_indexing=True ).size == 0 ):
             method = 'integrate'
 
         # Also if the fbs node has all fbs node parents, must use integrate method
-        if( len( [ 1 for p in self.full_parents( node, fullIndexing=True ) if not self.inFBS( p, fromReduced=True ) ] ) == 0 ):
+        if( len( [ 1 for p in self.full_parents( node, full_indexing=True ) if not self.inFBS( p, from_reduced=True ) ] ) == 0 ):
             method = 'integrate'
 
         if( method == 'compute' ):
             _node = self.fullIndexToReduced( node )
 
             # If the node isn't in the fbs, compute the joint the normal way.
-            if( notInFBS ):
+            if( not_in_fbs ):
                 u = self.uData( U, V, _node )
                 vs = self.vData( U, V, _node )
                 vs = [ self.extendAxes( _node, v, 0, 1 ) for v in vs ]
-                jointFBS = self.multiplyTerms( terms=( u, *vs ) )
-                intAxes = range( 1, jointFBS.ndim )
+                joint_fbs = self.multiplyTerms( terms=( u, *vs ) )
+                int_axes = range( 1, joint_fbs.ndim )
             else:
                 # Just computing u for the fbs should, by construction,
                 # cover all of the nodes in the graph.  Still need to integrate
                 # out other fbs nodes in this case
-                jointFBS = self.u( U, V, _node )
-                fbsIndex = self.fbsIndex( node, fromReduced=False, withinGraph=True )
-                keepAxis = fbsIndex + jointFBS.fbsAxis
-                intAxes = np.setdiff1d( np.arange( jointFBS.ndim ), keepAxis )
-            return self.integrate( jointFBS, axes=intAxes ).data
+                joint_fbs = self.u( U, V, _node )
+                fbs_index = self.fbsIndex( node, from_reduced=False, within_graph=True )
+                keepAxis = fbs_index + joint_fbs.fbs_axis
+                int_axes = np.setdiff1d( np.arange( joint_fbs.ndim ), keepAxis )
+            return self.integrate( joint_fbs, axes=int_axes ).data
 
         elif( method == 'integrate' ):
             # If node is in the fbs, choose another node to get the joint with the fbs node with.
             # Otherwise, calculate the joint the regular way
-            _node = node if notInFBS else self._anotherNode( node )
-            jointFBS = super()._nodeJoint( U, V, self.fullIndexToReduced( _node ) )
+            _node = node if not_in_fbs else self._anotherNode( node )
+            joint_fbs = super()._nodeJoint( U, V, self.fullIndexToReduced( _node ) )
 
-            if( notInFBS ):
-                intAxes = range( 1, jointFBS.ndim )
+            if( not_in_fbs ):
+                int_axes = range( 1, joint_fbs.ndim )
             else:
-                fbsIndex = self.fbsIndex( node, fromReduced=False, withinGraph=True )
-                keepAxis = fbsIndex + jointFBS.fbsAxis
-                intAxes = np.setdiff1d( np.arange( jointFBS.ndim ), keepAxis )
+                fbs_index = self.fbsIndex( node, from_reduced=False, within_graph=True )
+                keepAxis = fbs_index + joint_fbs.fbs_axis
+                int_axes = np.setdiff1d( np.arange( joint_fbs.ndim ), keepAxis )
 
-            return self.integrate( jointFBS, axes=intAxes ).data
+            return self.integrate( joint_fbs, axes=int_axes ).data
         else:
             assert 0, 'Invalid method'
 
@@ -684,172 +684,170 @@ class __FBSFilterMixin():
     def _jointParents( self, U, V, node, method='compute' ):
         # P( x_p1..pN, Y )
 
-        notInFBS = not self.inFBS( node, fromReduced=False )
+        not_in_fbs = not self.inFBS( node, from_reduced=False )
 
         if( method == 'integrate' ):
             # This fbs node has no siblings, so must compute
-            _node = node if notInFBS else self._anotherNode( node, parents=False, mates=False, children=False, siblings=True )
+            _node = node if not_in_fbs else self._anotherNode( node, parents=False, mates=False, children=False, siblings=True )
             if( _node is None ):
                 method = 'compute'
 
-            if( notInFBS ):
+            if( not_in_fbs ):
                 method = 'compute'
 
         # If all of the parents are in the fbs, then use nodeJoint and integrate out the correct nodes
-        if( len( [ 1 for p in self.full_parents( node, fullIndexing=True ) if not self.inFBS( p, fromReduced=True ) ] ) == 0 ):
-            _node = node if notInFBS else self._anotherNode( node )
+        if( len( [ 1 for p in self.full_parents( node, full_indexing=True ) if not self.inFBS( p, from_reduced=True ) ] ) == 0 ):
+            _node = node if not_in_fbs else self._anotherNode( node )
             _node = self.fullIndexToReduced( _node )
-            jointFBS = super()._nodeJoint( U, V, _node )
+            joint_fbs = super()._nodeJoint( U, V, _node )
 
         elif( method == 'compute' ):
             _node = self.fullIndexToReduced( node )
-            jointFBS = super()._jointParents( U, V, _node )
+            joint_fbs = super()._jointParents( U, V, _node )
 
         elif( method == 'integrate' ):
-            _node = node if notInFBS else self._anotherNode( node, parents=False, mates=False, children=False, siblings=True )
+            _node = node if not_in_fbs else self._anotherNode( node, parents=False, mates=False, children=False, siblings=True )
             _node = self.fullIndexToReduced( _node )
 
-            jointFBS = super()._jointParents( U, V, _node )
+            joint_fbs = super()._jointParents( U, V, _node )
 
         else:
             assert 0, 'Invalid method'
 
         # Integrate out the nodes that aren't parents
-        parents, parentOrder = self.full_parents( node, getOrder=True, fullIndexing=True, returnFullIndex=False )
-        # parents, parentOrder = self.full_parents( _node, getOrder=True, fullIndexing=False, returnFullIndex=False )
-        keepAxes = []
-        numbFbsParents = 0
-        for p, o in zip( parents, parentOrder ):
-            if( self.inFBS( p, fromReduced=True ) ):
-                numbFbsParents += 1
-                keepAxes.append( jointFBS.fbsAxis + self.fbsIndex( p, fromReduced=True, withinGraph=True ) )
+        parents, parent_order = self.full_parents( node, get_order=True, full_indexing=True, return_full_indexing=False )
+        # parents, parent_order = self.full_parents( _node, get_order=True, full_indexing=False, return_full_indexing=False )
+        keep_axes = []
+        n_fbs_parents = 0
+        for p, o in zip( parents, parent_order ):
+            if( self.inFBS( p, from_reduced=True ) ):
+                n_fbs_parents += 1
+                keep_axes.append( joint_fbs.fbs_axis + self.fbsIndex( p, from_reduced=True, within_graph=True ) )
             else:
-                keepAxes.append( o )
+                keep_axes.append( o )
 
-        keepAxes = np.array( keepAxes )
+        keep_axes = np.array( keep_axes )
 
         # Integrate out all fbs nodes that aren't the parents
-        intAxes = np.setdiff1d( np.arange( jointFBS.ndim ), keepAxes )
+        int_axes = np.setdiff1d( np.arange( joint_fbs.ndim ), keep_axes )
 
-        ans = self.integrate( jointFBS, axes=intAxes ).data
+        ans = self.integrate( joint_fbs, axes=int_axes ).data
 
         # Need to swap the order of the axes!!!! Right now, all of the fbs nodes
         # are on the last axes!!!
         # The axes in ans should be aligned in order of non fbs parents, then
         # by fbs index
-        parents, parentOrder = self.full_parents( node, getOrder=True, fullIndexing=True, returnFullIndex=False )
-        nonFBSOrder = [ o for p, o in zip( parents, parentOrder ) if not self.inFBS( p, fromReduced=True ) ]
-        fbsParents = [ ( p, o ) for p, o in zip( parents, parentOrder ) if self.inFBS( p, fromReduced=True ) ]
-        fbsOrder = sorted( fbsParents, key=lambda x: self.fbsIndex( x[ 0 ], fromReduced=True, withinGraph=True ) )
-        fbsOrder = [ o for p, o in fbsOrder ]
+        parents, parent_order = self.full_parents( node, get_order=True, full_indexing=True, return_full_indexing=False )
+        non_fbs_order = [ o for p, o in zip( parents, parent_order ) if not self.inFBS( p, from_reduced=True ) ]
+        fbs_parents = [ ( p, o ) for p, o in zip( parents, parent_order ) if self.inFBS( p, from_reduced=True ) ]
+        fbs_order = sorted( fbs_parents, key=lambda x: self.fbsIndex( x[ 0 ], from_reduced=True, within_graph=True ) )
+        fbs_order = [ o for p, o in fbs_order ]
 
-        trueOrder = nonFBSOrder + fbsOrder
-        transposeAxes = [ trueOrder.index( i ) for i in range( len( trueOrder ) ) ]
+        true_order = non_fbs_order + fbs_order
+        transpose_axes = [ true_order.index( i ) for i in range( len( true_order ) ) ]
 
-        return np.transpose( ans, transposeAxes )
+        return np.transpose( ans, transpose_axes )
 
     ######################################################################
 
     def _jointParentChild( self, U, V, node, method='compute' ):
         # P( x_c, x_p1..pN, Y )
 
-        notInFBS = not self.inFBS( node, fromReduced=False )
+        not_in_fbs = not self.inFBS( node, from_reduced=False )
 
         if( method == 'integrate' ):
             # This fbs node has no siblings, so must compute
-            _node = node if notInFBS else self._anotherNode( node, parents=False, mates=False, children=False, siblings=True )
+            _node = node if not_in_fbs else self._anotherNode( node, parents=False, mates=False, children=False, siblings=True )
             if( _node is None ):
                 method = 'compute'
 
-        method = 'compute' if notInFBS else method
+        method = 'compute' if not_in_fbs else method
 
         # If all of the parents are in the fbs, then use nodeJoint and integrate out the correct nodes.
         # This also will work when node is in the fbs too
-        if( len( [ 1 for p in self.full_parents( node, fullIndexing=True ) if not self.inFBS( p, fromReduced=True ) ] ) == 0 ):
-            _node = node if notInFBS else self._anotherNode( node )
+        if( len( [ 1 for p in self.full_parents( node, full_indexing=True ) if not self.inFBS( p, from_reduced=True ) ] ) == 0 ):
+            _node = node if not_in_fbs else self._anotherNode( node )
             _node = self.fullIndexToReduced( _node )
-            jointFBS = super()._nodeJoint( U, V, _node )
+            joint_fbs = super()._nodeJoint( U, V, _node )
 
         elif( method == 'compute' ):
             _node = self.fullIndexToReduced( node )
-            jointFBS = super()._jointParentChild( U, V, _node )
+            joint_fbs = super()._jointParentChild( U, V, _node )
 
         elif( method == 'integrate' ):
-            _node = node if notInFBS else self._anotherNode( node, parents=False, mates=False, children=False, siblings=True )
+            _node = node if not_in_fbs else self._anotherNode( node, parents=False, mates=False, children=False, siblings=True )
             _node = self.fullIndexToReduced( _node )
 
-            jointFBS = super()._jointParentChild( U, V, _node )
+            joint_fbs = super()._jointParentChild( U, V, _node )
 
         else:
             assert 0, 'Invalid method'
 
         # Integrate out the nodes that aren't parents
-        parents, parentOrder = self.full_parents( node, getOrder=True, fullIndexing=True, returnFullIndex=False )
-        # parents, parentOrder = self.full_parents( _node, getOrder=True, fullIndexing=False, returnFullIndex=False )
-        nParents = self.nParents( node, full=True, fullIndexing=True )
-        # nParents = self.nParents( _node, full=True )
-        keepAxes = []
-        for p, o in zip( parents, parentOrder ):
-            if( self.inFBS( p, fromReduced=True ) ):
-                keepAxes.append( jointFBS.fbsAxis + self.fbsIndex( p, fromReduced=True, withinGraph=True ) )
+        parents, parent_order = self.full_parents( node, get_order=True, full_indexing=True, return_full_indexing=False )
+        n_parents = self.nParents( node, full=True, full_indexing=True )
+        keep_axes = []
+        for p, o in zip( parents, parent_order ):
+            if( self.inFBS( p, from_reduced=True ) ):
+                keep_axes.append( joint_fbs.fbs_axis + self.fbsIndex( p, from_reduced=True, within_graph=True ) )
             else:
-                keepAxes.append( o )
+                keep_axes.append( o )
 
         # Keep the axis that node is on
-        if( notInFBS ):
-            keepAxes.append( nParents )
+        if( not_in_fbs ):
+            keep_axes.append( n_parents )
         else:
-            keepAxes.append( jointFBS.fbsAxis + self.fbsIndex( node, fromReduced=False, withinGraph=True ) )
+            keep_axes.append( joint_fbs.fbs_axis + self.fbsIndex( node, from_reduced=False, within_graph=True ) )
 
-        keepAxes = np.array( keepAxes )
+        keep_axes = np.array( keep_axes )
 
         # Integrate out all fbs nodes that aren't the parents
-        intAxes = np.setdiff1d( np.arange( jointFBS.ndim ), keepAxes )
+        int_axes = np.setdiff1d( np.arange( joint_fbs.ndim ), keep_axes )
 
-        ans = self.integrate( jointFBS, axes=intAxes ).data
+        ans = self.integrate( joint_fbs, axes=int_axes ).data
 
         # Need to swap the order of the axes!!!! Right now, all of the fbs nodes
         # are on the last axes!!!
         # The axes in ans should be aligned in order of non fbs parents, then the child, then
         # by fbs index
-        parents, parentOrder = self.full_parents( node, getOrder=True, fullIndexing=True, returnFullIndex=False )
-        nonFBSOrder = [ o for p, o in zip( parents, parentOrder ) if not self.inFBS( p, fromReduced=True ) ]
-        fbsParents = [ ( p, o ) for p, o in zip( parents, parentOrder ) if self.inFBS( p, fromReduced=True ) ]
-        fbsOrder = sorted( fbsParents, key=lambda x: self.fbsIndex( x[ 0 ], fromReduced=True, withinGraph=True ) )
-        fbsOrder = [ o for p, o in fbsOrder ]
+        parents, parent_order = self.full_parents( node, get_order=True, full_indexing=True, return_full_indexing=False )
+        non_fbs_order = [ o for p, o in zip( parents, parent_order ) if not self.inFBS( p, from_reduced=True ) ]
+        fbs_parents = [ ( p, o ) for p, o in zip( parents, parent_order ) if self.inFBS( p, from_reduced=True ) ]
+        fbs_order = sorted( fbs_parents, key=lambda x: self.fbsIndex( x[ 0 ], from_reduced=True, within_graph=True ) )
+        fbs_order = [ o for p, o in fbs_order ]
 
         # This is going to contain the indices of where each axis should go,
         # which is not what transpose expects!
-        if( self.inFBS( node, fromReduced=False ) ):
+        if( self.inFBS( node, from_reduced=False ) ):
             # If node is in the fbs, then that means that its current axis
-            # is somewhere after the fbsAxis
-            # So just need to place len( parents ) somewhere in fbsOrder
-            insertionIndex = self.fbsIndex( node, fromReduced=False, withinGraph=True )
-            trueOrder = nonFBSOrder + fbsOrder[ :insertionIndex ] + [ len( parents ) ] + fbsOrder[ insertionIndex: ]
+            # is somewhere after the fbs_axis
+            # So just need to place len( parents ) somewhere in fbs_order
+            insertion_index = self.fbsIndex( node, from_reduced=False, within_graph=True )
+            true_order = non_fbs_order + fbs_order[ :insertion_index ] + [ len( parents ) ] + fbs_order[ insertion_index: ]
         else:
-            trueOrder = nonFBSOrder + [ len( parents ) ] + fbsOrder
+            true_order = non_fbs_order + [ len( parents ) ] + fbs_order
 
         # Find the correct axes
-        transposeAxes = [ trueOrder.index( i ) for i in range( len( trueOrder ) ) ]
+        transpose_axes = [ true_order.index( i ) for i in range( len( true_order ) ) ]
 
-        return np.transpose( ans, transposeAxes )
+        return np.transpose( ans, transpose_axes )
 
     ######################################################################
 
     def jointParents( self, U, V, nodes ):
         # P( x_p1..pN, Y )
-        return [ ( node, self._jointParents( U, V, node ) ) for node in nodes if self.nParents( node, full=True, fullIndexing=True ) > 0 ]
+        return [ ( node, self._jointParents( U, V, node ) ) for node in nodes if self.nParents( node, full=True, full_indexing=True ) > 0 ]
 
     def jointParentChild( self, U, V, nodes ):
         # P( x_c, x_p1..pN, Y )
-        return [ ( node, self._jointParentChild( U, V, node ) ) for node in nodes if self.nParents( node, full=True, fullIndexing=True ) > 0 ]
+        return [ ( node, self._jointParentChild( U, V, node ) ) for node in nodes if self.nParents( node, full=True, full_indexing=True ) > 0 ]
 
     ######################################################################
 
     def marginalProb( self, U, V, node ):
         # P( Y )
         joint = self._nodeJoint( U, V, node )
-        return self.integrate( joint, axes=range( joint.ndim ), useSuper=True )
+        return self.integrate( joint, axes=range( joint.ndim ), use_super=True )
 
     def nodeSmoothed( self, U, V, nodes ):
         # P( x | Y )
@@ -859,11 +857,11 @@ class __FBSFilterMixin():
         # P( x_c | x_p1..pN, Y )
         ans = []
         for node in nodes:
-            if( self.nParents( node, full=True, fullIndexing=True ) > 0 ):
+            if( self.nParents( node, full=True, full_indexing=True ) > 0 ):
 
                 jpc = self._jointParentChild( U, V, node )
                 jp = self._jointParents( U, V, node )
-                _ans = self.multiplyTerms( terms=( jpc, -jp ), useSuper=True )
+                _ans = self.multiplyTerms( terms=( jpc, -jp ), use_super=True )
 
                 ans.append( ( node, _ans ) )
 
