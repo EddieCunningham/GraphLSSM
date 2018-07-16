@@ -1,6 +1,6 @@
 *__pycache__*
 *.DS_Store
-*.ipynb
 *.pyc
 *.gv
 *.pdf
+*.ipynb_checkpoints*
