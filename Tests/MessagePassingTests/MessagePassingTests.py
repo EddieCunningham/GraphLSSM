@@ -34,24 +34,25 @@ def nonFBSTest():
     print( 'Done with the non fbs message passing tests!' )
 
 def fbsTests():
-    cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph7(), cycleGraph8() ]
+    graphs = [ graph1(),
+               graph2(),
+               graph3(),
+               graph4(),
+               graph5(),
+               graph6(),
+               graph7(),
+               cycleGraph1(),
+               cycleGraph2(),
+               cycleGraph3(),
+               cycleGraph7(),
+               cycleGraph8(),
+               cycleGraph9(),
+               cycleGraph10(),
+               cycleGraph11() ]
+    # graphs = [ cycleGraph1() ]
 
     msg = GraphMessagePasserFBS()
-    msg.updateParamsFromGraphs( cycleGraphs )
-    msg.draw( render=True )
-
-    def nothing( a, b ):
-        return
-    msg.messagePassing( nothing, nothing )
-
-    print( 'Done with the fbs message passing tests!' )
-
-def fbsTestsImproved():
-    cycleGraphs = [ cycleGraph1(), cycleGraph2(), cycleGraph3(), cycleGraph7(), cycleGraph8() ]
-    # cycleGraphs = [ cycleGraph1() ]
-
-    msg = GraphMessagePasserFBSImproved()
-    msg.updateParamsFromGraphs( cycleGraphs )
+    msg.updateParamsFromGraphs( graphs )
     msg.draw( render=True )
 
     def nothing( a, b ):
@@ -61,7 +62,7 @@ def fbsTestsImproved():
     print( 'Done with the improved fbs message passing tests!' )
 
 def messagePassingTest():
+
     nonFBSTest()
     fbsTests()
-    fbsTestsImproved()
     # assert 0
