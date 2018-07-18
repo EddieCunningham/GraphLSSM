@@ -9,7 +9,7 @@ def loadGraphs( graphs, feedback_sets=None, run=True ):
     parent_masks = []
     child_masks = []
     for graph in graphs:
-        p_mask, cMask = graph.toMatrix()
+        p_mask, c_mask = graph.toMatrix()
         parent_masks.append( p_mask )
         child_masks.append( c_mask )
 
@@ -29,7 +29,7 @@ def nonFBSTest():
 
     def nothing( a, b ):
         return
-    msg.messagePassing( nothing, nothing )
+    msg.upDown( nothing, nothing )
 
     print( 'Done with the non fbs message passing tests!' )
 
@@ -49,20 +49,41 @@ def fbsTests():
                cycleGraph9(),
                cycleGraph10(),
                cycleGraph11() ]
-    # graphs = [ cycleGraph1() ]
+    graphs = [ cycleGraph3() ]
 
     msg = GraphMessagePasserFBS()
     msg.updateParamsFromGraphs( graphs )
     msg.draw( render=True )
 
-    def nothing( a, b ):
+    def nothing( is_base_case, node_list ):
         return
-    msg.messagePassing( nothing, nothing )
+
+    count = 0
+    def loopyHasConverged():
+        nonlocal count
+        count += 1
+        return count > 3
+    msg.upDown( nothing, nothing, loopyHasConverged=loopyHasConverged )
+
+    class worker():
+
+        def __init__( self ):
+            self.visited = []
+
+        def __call__( self, node_list ):
+            self.visited.append( node_list )
+
+    work = worker()
+    msg.forwardPass( work )
+
+    visited = np.hstack( work.visited )
+    diff = np.setdiff1d( msg.nodes, visited )
+    assert diff.size == 0
 
     print( 'Done with the improved fbs message passing tests!' )
 
 def messagePassingTest():
 
-    nonFBSTest()
+    # nonFBSTest()
     fbsTests()
-    # assert 0
+    assert 0

@@ -156,9 +156,16 @@ class _fowardBackwardMixin():
 
     ######################################################################
 
+    def filter( self ):
+        # For loopy belief propagation
+        self.total_deviation = 0.0
+
+    ######################################################################
+
     def updateU( self, nodes, newU, U ):
 
         for u, node in zip( newU, nodes ):
+            self.total_deviation += np.logaddexp( U_data[ i ], -v )**2
             U[ node ] = u
 
     def updateV( self, nodes, edges, newV, V ):
@@ -176,6 +183,7 @@ class _fowardBackwardMixin():
                 # Don't convert V_data to an np.array even though it makes this
                 # step faster because it messes up when we add fbs nodes
                 if( maskValue == True ):
+                    self.total_deviation += np.logaddexp( V_data[ i ], -v )**2
                     V_data[ i ] = v
 
 ######################################################################

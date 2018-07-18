@@ -286,8 +286,6 @@ class GraphMessagePasser():
 
     def baseCaseNodes( self ):
 
-        M, N = self.pmask.shape
-
         # Get the number of edges that each node is a parent of
         parent_of_edge_count = self.pmask.getnnz( axis=1 )
 
@@ -385,27 +383,27 @@ class GraphMessagePasser():
 
         # Decrement u_semaphore for children
         children = self.getChildren( nodes, split=True )
-        for node, children_for_nodes in zip( nodes, children ):
+        for children_for_nodes in children:
             u_semaphore[ children_for_nodes ] -= 1
             assert np.all( u_semaphore[ children_for_nodes ] >= 0 )
 
         # Decrement v_semaphore for all mates over down edges that node and mate are a part of
         mates_and_edges = self.getMates( nodes, split_by_edge=True, split=True )
-        for node, mate_and_edge in zip( nodes, mates_and_edges ):
+        for mate_and_edge in mates_and_edges:
             for e, m in mate_and_edge:
                 v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] -= 1
                 assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
 
+        # Update u_done
         u_done[ nodes ] = True
 
     def VDone( self, nodes_and_edges, u_semaphore, v_semaphore, v_done ):
 
         nodes, edges = nodes_and_edges
-        edges_without_none = np.array( [ e for e in edges if e is not None ] )
 
         # Decrement u_semaphore for children that come from a different edge than the one computed for V
         children_and_edges = self.getChildren( nodes, split_by_edge=True, split=True )
-        for node, edge, child_and_edge in zip( nodes, edges, children_and_edges ):
+        for edge, child_and_edge in zip( edges, children_and_edges ):
             for e, c in child_and_edge:
                 if( e == edge ):
                     continue
@@ -414,7 +412,7 @@ class GraphMessagePasser():
 
         # Decrement u_semaphore for all siblings
         siblings = self.getSiblings( nodes, split=True )
-        for _e, node, siblings_for_node in zip( edges, nodes, siblings ):
+        for _e, siblings_for_node in zip( edges, siblings ):
             if( _e is None ):
                 # If this node doesn't have a down edge, then we don't want to decrement
                 continue
@@ -423,7 +421,7 @@ class GraphMessagePasser():
 
         # Decrement v_semaphore for mates that aren't current edge
         mates_and_edges = self.getMates( nodes, split_by_edge=True, split=True )
-        for node, edge, mate_and_edge in zip( nodes, edges, mates_and_edges ):
+        for edge, mate_and_edge in zip( edges, mates_and_edges ):
             for e, m in mate_and_edge:
                 if( e == edge ):
                     continue
@@ -440,21 +438,110 @@ class GraphMessagePasser():
             v_semaphore.data[ np.in1d( v_semaphore.row, p ) & np.in1d( v_semaphore.col, e ) ] -= 1
             assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, p ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
 
+        # Update v_done
+        edges_without_none = np.array( [ e for e in edges if e is not None ] )
         v_done.data[ np.in1d( v_done.row, nodes ) & np.in1d( v_done.col, edges_without_none ) ] = True
 
     ######################################################################
 
-    def uReady( self, nodes, u_semaphore ):
-        return nodes[ u_semaphore[ nodes ] == 0 ], nodes[ u_semaphore[ nodes ] != 0 ]
+    def forwardPass( self, work, **kwargs ):
+        # Calls work at every node when its parents are ready
 
-    def vReady( self, nodes, v_semaphore ):
-        ready = np.intersect1d( nodes, np.setdiff1d( v_semaphore.row, v_semaphore.nonzero()[ 0 ] ) )
-        not_ready = np.setdiff1d( nodes, ready )
-        return ready, not_ready
+        # Get the number of edges that each node is a parent of
+        # Get the number of edges that each node is a child of
+        parent_of_edge_count = self.pmask.getnnz( axis=1 )
+        child_of_edge_count = self.cmask.getnnz( axis=1 )
+
+        # Start with the roots
+        node_list = self.nodes[ ( parent_of_edge_count != 0 ) & ( child_of_edge_count == 0 ) ]
+
+        # Semaphore is the number of parents in the nodes up edge
+        parents_per_edge = self.pmask.getnnz( axis=0 )
+        edge_semaphore = parents_per_edge
+
+        traversed_edges = np.zeros( self.cmask.shape[ 1 ], dtype=bool )
+
+        while( node_list.size > 0 ):
+
+            # Do work on the current nodes
+            work( node_list, **kwargs )
+
+            # Subtract a value off of each of node_list's down edges
+            decremented_edges = self.pmask.col[ np.in1d( self.pmask.row, node_list ) ]
+            edge_counts = np.bincount( decremented_edges, minlength=self.cmask.shape[ 1 ] )
+            edge_semaphore -= edge_counts
+
+            # Select the next edges to traverse and update the traversed list
+            next_edge_mask = ( edge_semaphore == 0 ) & ( ~traversed_edges )
+            next_edges = np.arange( next_edge_mask.shape[ 0 ] )[ next_edge_mask ]
+            traversed_edges[ next_edge_mask ] = True
+
+            # Update node_list
+            node_list = self.cmask.row[ np.in1d( self.cmask.col, next_edges ) ]
+
+        assert np.any( edge_semaphore != 0 ) == False
 
     ######################################################################
 
-    def messagePassing( self, uWork, vWork, **kwargs ):
+    def loopyNextNodes( self, last_u_list, last_v_list ):
+        last_u_nodes = last_u_list
+        last_v_nodes, last_v_edges = last_v_list
+
+        # Add all of the children from last_u_nodes and siblings from last_v_nodes
+        next_u_list = np.hstack( ( self.getChildren( last_u_nodes ), self.getSiblings( last_v_nodes ) ) )
+
+        # Add children that come from a different edge than the one computed for last_v_nodes
+        children_and_edges = self.getChildren( last_v_nodes, split_by_edge=True, split=True )
+        for edge, child_and_edge in zip( last_v_edges, children_and_edges ):
+            for e, c in child_and_edge:
+                if( e == edge ):
+                    continue
+                next_u_list = np.hstack( ( next_u_list, c ) )
+
+        # Add mates over down edges that last_u_nodes and mate are a part of
+        mates_and_edges = self.getMates( last_u_nodes, split_by_edge=True, split=True )
+        next_v_nodes = np.array( [], dtype=int )
+        next_v_edges = np.array( [], dtype=int )
+        for mate_and_edge in mates_and_edges:
+            for e, m in mate_and_edge:
+                mask = np.in1d( self.pmask.row, m ) & np.in1d( self.pmask.col, e )
+                next_v_nodes = np.hstack( ( next_v_nodes, self.pmask.row[ mask ] ) )
+                next_v_edges = np.hstack( ( next_v_edges, self.pmask.col[ mask ] ) )
+
+        # Add mates of last_v_nodes that aren't from last_v_edges
+        mates_and_edges = self.getMates( last_v_nodes, split_by_edge=True, split=True )
+        for edge, mate_and_edge in zip( last_v_edges, mates_and_edges ):
+            for e, m in mate_and_edge:
+                if( e == edge ):
+                    continue
+                mask = np.in1d( self.pmask.row, m ) & np.in1d( self.pmask.col, e )
+                next_v_nodes = np.hstack( ( next_v_nodes, self.pmask.row[ mask ] ) )
+                next_v_edges = np.hstack( ( next_v_edges, self.pmask.col[ mask ] ) )
+
+        # Add parents over up edges for last_v_nodes
+        parents = self.getParents( last_v_nodes, split=True )
+        up_edges = self.getUpEdges( last_v_nodes, split=True )
+        for _e, p, e in zip( last_v_edges, parents, up_edges ):
+            if( _e is None ):
+                # If this node doesn't have a down edge, then we don't want to decrement
+                continue
+            mask = np.in1d( self.pmask.row, p ) & np.in1d( self.pmask.col, e )
+            next_v_nodes = np.hstack( ( next_v_nodes, self.pmask.row[ mask ] ) )
+            next_v_edges = np.hstack( ( next_v_edges, self.pmask.col[ mask ] ) )
+
+        # Remove duplicates
+        next_u_list = np.array( list( set( next_u_list.tolist() ) ) )
+
+        next_v_nodes, next_v_edges = zip( *list( set( zip( next_v_nodes, next_v_edges ) ) ) )
+        next_v_nodes = np.array( next_v_nodes )
+        next_v_edges = np.array( next_v_edges )
+
+        return next_u_list, ( next_v_nodes, next_v_edges )
+
+    ######################################################################
+
+    def upDown( self, uWork, vWork, enable_loopy=True, loopyHasConverged=None, **kwargs ):
+        # Run the up down algorithm for latent state space models
 
         u_done, v_done = self.progressInit()
         u_semaphore, v_semaphore = self.countSemaphoreInit()
@@ -465,6 +552,7 @@ class GraphMessagePasser():
         vWork( True, v_list, **kwargs )
 
         i = 1
+        loopy = False
 
         # Filter over all of the graphs
         while( u_list.size > 0 or v_list[ 0 ].size > 0 ):
@@ -478,18 +566,44 @@ class GraphMessagePasser():
             self.UDone( u_list, u_semaphore, v_semaphore, u_done )
             self.VDone( v_list, u_semaphore, v_semaphore, v_done )
 
+            last_u_list = u_list
+            last_v_list = v_list
+
             # Find the next nodes that are ready
             u_list = self.readyForU( u_semaphore, u_done )
             v_list = self.readyForV( v_semaphore, v_done )
 
             i += 1
 
-            # # Check if we need to do loopy propogation belief
-            # if( ( u_list.size == 0 and v_list[ 0 ].size == 0 ) and \
-            #     ( not np.any( u_done ) or not np.any( v_done.data ) ) ):
-            #     loopy = True
-        assert np.any( u_semaphore != 0 ) == False
-        assert np.any( v_semaphore.data != 0 ) == False
+            # Check if we need to do loopy propagation belief
+            if( ( u_list.size == 0 and v_list[ 0 ].size == 0 ) and \
+                ( not np.any( u_done ) or not np.any( v_done.data ) ) ):
+
+                if( not enable_loopy ):
+                    assert 0, 'Cycle encountered.  Set enable_loopy to True'
+                if( loopyHasConverged is None ):
+                    assert 0, 'Need to specify the convergence function loopyHasConverged!'
+
+                print( 'Cycle encountered!  Starting loopy belief propagation...' )
+
+                # The loopy algorithm will just forcibly keep adding mates, parents, siblings and children
+                # to be computed
+                u_list = last_u_list
+                v_list = last_v_list
+
+                while( loopyHasConverged() == False ):
+
+                    u_list, v_list = self.loopyNextNodes( u_list, v_list )
+
+                    uWork( False, u_list, **kwargs )
+                    vWork( False, v_list, **kwargs )
+
+                loopy = True
+                break
+
+        if( not loopy ):
+            assert np.any( u_semaphore != 0 ) == False
+            assert np.any( v_semaphore.data != 0 ) == False
 
     ######################################################################
 
@@ -652,6 +766,14 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
     @property
     def nodes( self ):
         return self.full_graph.nodes
+
+    @property
+    def pmask( self ):
+        return self.full_graph.pmask
+
+    @property
+    def cmask( self ):
+        return self.full_graph.cmask
 
     ######################################################################
 
@@ -996,8 +1118,8 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
 
     ######################################################################
 
-    def messagePassing( self, uWork, vWork, **kwargs ):
+    def upDown( self, uWork, vWork, enable_loopy=True, loopyHasConverged=None, **kwargs ):
         # Message passing is from the partial graph!
-        return self.partial_graph.messagePassing( uWork, vWork, **kwargs )
+        return self.partial_graph.upDown( uWork, vWork, enable_loopy=enable_loopy, loopyHasConverged=loopyHasConverged, **kwargs )
 
 ##########################################################################################################

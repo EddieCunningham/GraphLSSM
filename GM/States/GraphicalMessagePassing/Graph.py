@@ -119,35 +119,7 @@ class Graph():
 
     ######################################################################
 
-    def draw( self, horizontal=False, render=False, view=False, highlight_nodes=None, file_format='png' ):
-
-        # Draws the graph using graphviz
-        d = graphviz.Digraph( format=file_format, filename='graph' )
-        if( horizontal == True ):
-            d.attr( rankdir='LR' )
-
-        for e, ( parents, children ) in enumerate( zip( self.edge_parents, self.edge_children ) ):
-            for p in parents:
-                d.edge( '%d '%( p ), '%d'%( e ), **self.node_style )
-            for c in children:
-                d.edge( '%d'%( e ), '%d '%( c ), **self.node_style )
-
-            d.node( '%d'%( e ), **self.edge_style )
-
-        if( highlight_nodes is not None ):
-            for n in highlight_nodes:
-                d.node( '%d '%( n ), **self.highlight_node_style )
-
-        if( view ):
-            d.view()
-        elif( render ):
-            d.render( cleanup=True )
-
-        return d
-
-    ######################################################################
-
-    def advancedDraw( self, render=True, horizontal=False, styles={}, node_to_style_key={}, edge_to_style_key={}, file_format='png', output_folder='.', output_name='graph' ):
+    def draw( self, render=True, horizontal=False, styles={}, node_to_style_key={}, edge_to_style_key={}, file_format='png', output_folder='.', output_name='graph' ):
 
         getEdgeStyle = lambda ne: styles[ edge_to_style_key[ ne ] ] if ne in edge_to_style_key else self.node_style
 

@@ -113,7 +113,7 @@ def testGraphCategoricalForwardBackward():
                cycleGraph9(),
                cycleGraph10(),
                cycleGraph11() ]
-    graphs = [ cycleGraph11() ]
+    # graphs = [ cycleGraph11() ]
 
     # Check how many transition distributions we need
     all_transition_counts = set()

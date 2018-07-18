@@ -122,7 +122,7 @@ class _filterMixin():
 
     ######################################################################
 
-    def a( self, U, V, node, down_edge, force_compute_u=False, force_compute_v=False ):
+    def a( self, U, V, node, down_edge ):
         # Compute P( Y \ !( e, n )_y, n_x )
         #
         # Probability of all emissions that can be reached without going down down_edge from node.
@@ -148,20 +148,17 @@ class _filterMixin():
         # U over node
         # V over node for each down edge that isn't down_edge
         # Multiply U and all Vs
-        u = self.uData( U, V, node ) if force_compute_u == False else self.u( U, V, node )
+        u = self.uData( U, V, node )
 
         down_edges = self.getDownEdges( node, skip_edges=down_edge )
-        if( force_compute_v == False ):
-            vs = self.vData( U, V, node, edges=down_edges )
-        else:
-            vs = [ self.v( U, V, node, edge ) for edge in down_edges ]
+        vs = self.vData( U, V, node, edges=down_edges )
 
         ans = self.multiplyTerms( terms=( u, *vs ) )
         return ans
 
     ######################################################################
 
-    def b( self, U, V, node, force_compute_v=False ):
+    def b( self, U, V, node ):
         # Compute P( n_y, Y \ ↑( n )_y | ↑( n )_x )
         #
         # Probability of all emissions that can be reached without going up node's up_edge
@@ -190,12 +187,7 @@ class _filterMixin():
         node_emission = self.extendAxes( node, node_emission, n_parents, n_parents + 1 )
 
         # V over node for all down edges (aligned on last axis)
-        if( force_compute_v == False ):
-            vs = self.vData( U, V, node )
-        else:
-            down_edges = self.getDownEdges( node )
-            vs = [ self.v( U, V, node, edge ) for edge in down_edges ]
-
+        vs = self.vData( U, V, node )
         vs = [ self.extendAxes( node, v, n_parents, n_parents + 1 ) for v in vs if v.size > 0 ]
 
         # Multiply together the transition, emission and Vs
@@ -361,7 +353,7 @@ class _filterMixin():
         # To get the filtered probs for the smoothed probs for the
         # feedback set nodes, marginalize over the non fbs nodes
         # at any extended smoothed prob
-        self.messagePassing( self.uFilter, self.vFilter, U=U, V=V )
+        self.upDown( self.uFilter, self.vFilter, U=U, V=V )
 
         return U, V
 
@@ -692,7 +684,7 @@ class __FBSFilterMixin():
 
     ######################################################################
 
-    def uFilter( self, base_case, nodes, U, V ):
+    def uFilter( self, is_base_case, nodes, U, V ):
         # Compute P( ↑( n )_y, n_x )
         # Probability of all emissions that can be reached by going up node's up edge
 
@@ -706,7 +698,7 @@ class __FBSFilterMixin():
 
         self.updateU( nodes, new_u, U )
 
-    def vFilter( self, base_case, nodes_and_edges, U, V ):
+    def vFilter( self, is_base_case, nodes_and_edges, U, V ):
 
         nodes, edges = nodes_and_edges
 
@@ -729,7 +721,7 @@ class __FBSFilterMixin():
         U, V = self.genFilterProbs()
 
         # Run message passing over the partial graph
-        self.partial_graph.messagePassing( self.uFilter, self.vFilter, U=U, V=V )
+        self.partial_graph.upDown( self.uFilter, self.vFilter, U=U, V=V )
 
         return U, V
 
