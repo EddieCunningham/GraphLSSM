@@ -182,10 +182,10 @@ class LDSMNIWPrior( ExponentialFam ):
         return t1, t2, t3, t4, t5, t6, t7, t8, -t9, -t10, -t11, -t12, -t13, -t14, -t15
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
-        M_trans, V_trans, psi_trans, nu_trans, Q1, M_emiss, V_emiss, psi_emiss, nu_emiss, Q2, mu_0, kappa_0, psi_0, nu_0, Q0 = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        M_trans, V_trans, psi_trans, nu_trans, Q1, M_emiss, V_emiss, psi_emiss, nu_emiss, Q2, mu_0, kappa_0, psi_0, nu_0, Q0 = params if params is not None else cls.natToStandard( *nat_params )
 
         A1 = MatrixNormalInverseWishart.log_partition( x=x, params=( M_trans, V_trans, psi_trans, nu_trans, Q1 ), split=split )
         A2 = MatrixNormalInverseWishart.log_partition( x=x, params=( M_emiss, V_emiss, psi_emiss, nu_emiss, Q2 ), split=split )
@@ -193,13 +193,13 @@ class LDSMNIWPrior( ExponentialFam ):
         return A1 + A2 + A3
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+    def log_partitionGradient( cls, params=None, nat_params=None, split=False ):
         # Derivative w.r.t. natural params. Also the expected sufficient stat
-        assert ( params is None ) ^ ( natParams is None )
-        n1, n2, n3, n6, n7, n8, n11, n12, n4, n5, n9, n10, n13, n14, n15 = natParams if natParams is not None else cls.standardToNat( *params )
-        d1, d2, d3, d4, d5 = MatrixNormalInverseWishart.log_partitionGradient( natParams=( n1, n2, n3, n4, n5 ) )
-        d6, d7, d8, d9, d10 = MatrixNormalInverseWishart.log_partitionGradient( natParams=( n6, n7, n8, n9, n10 ) )
-        d11, d12, d13, d14, d15 = NormalInverseWishart.log_partitionGradient( natParams=( n11, n12, n13, n14, n15 ) )
+        assert ( params is None ) ^ ( nat_params is None )
+        n1, n2, n3, n6, n7, n8, n11, n12, n4, n5, n9, n10, n13, n14, n15 = nat_params if nat_params is not None else cls.standardToNat( *params )
+        d1, d2, d3, d4, d5 = MatrixNormalInverseWishart.log_partitionGradient( nat_params=( n1, n2, n3, n4, n5 ) )
+        d6, d7, d8, d9, d10 = MatrixNormalInverseWishart.log_partitionGradient( nat_params=( n6, n7, n8, n9, n10 ) )
+        d11, d12, d13, d14, d15 = NormalInverseWishart.log_partitionGradient( nat_params=( n11, n12, n13, n14, n15 ) )
 
         if( split == False ):
             return d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15
@@ -258,11 +258,11 @@ class LDSMNIWPrior( ExponentialFam ):
             return d1 + d2 + d3
 
         def p( n, i=None ):
-            ns = [ _n if j != i else n for j, _n in enumerate( self.natParams ) ]
+            ns = [ _n if j != i else n for j, _n in enumerate( self.nat_params ) ]
             return part( *ns )
 
         #0   1   2   3   4   5    6   7    8   9  10   11   12   13   14
-        n1, n2, n3, n6, n7, n8, n11, n12, n4, n5, n9, n10, n13, n14, n15 = self.natParams
+        n1, n2, n3, n6, n7, n8, n11, n12, n4, n5, n9, n10, n13, n14, n15 = self.nat_params
 
         _d1 = jacobian( partial( p, i=0 ) )( n1 )
         _d2 = jacobian( partial( p, i=1 ) )( n2 )
@@ -280,7 +280,7 @@ class LDSMNIWPrior( ExponentialFam ):
         _d14 = jacobian( partial( p, i=13 ) )( float( n14 ) )
         _d15 = jacobian( partial( p, i=14 ) )( float( n15 ) )
 
-        d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 = self.log_partitionGradient( natParams=self.natParams )
+        d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 = self.log_partitionGradient( nat_params=self.nat_params )
 
         assert np.allclose( _d1, d1 )
         assert np.allclose( _d2, d2 )
@@ -330,11 +330,11 @@ class LDSMNIWPrior( ExponentialFam ):
         return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
-        M_trans, V_trans, psi_trans, nu_trans, Q1, M_emiss, V_emiss, psi_emiss, nu_emiss, Q2, mu_0, kappa_0, psi_0, nu_0, Q0 = params if params is not None else cls.natToStandard( *natParams )
+        M_trans, V_trans, psi_trans, nu_trans, Q1, M_emiss, V_emiss, psi_emiss, nu_emiss, Q2, mu_0, kappa_0, psi_0, nu_0, Q0 = params if params is not None else cls.natToStandard( *nat_params )
 
         A, sigma = MatrixNormalInverseWishart.sample( params=( M_trans, V_trans, psi_trans, nu_trans, Q1 ), size=size )
         C, R = MatrixNormalInverseWishart.sample( params=( M_emiss, V_emiss, psi_emiss, nu_emiss, Q2 ), size=size )
@@ -348,12 +348,12 @@ class LDSMNIWPrior( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
         A, sigma, C, R, mu0, sigma0 = x
-        M_trans, V_trans, psi_trans, nu_trans, Q1, M_emiss, V_emiss, psi_emiss, nu_emiss, Q2, mu_0, kappa_0, psi_0, nu_0, Q0 = params if params is not None else cls.natToStandard( *natParams )
+        M_trans, V_trans, psi_trans, nu_trans, Q1, M_emiss, V_emiss, psi_emiss, nu_emiss, Q2, mu_0, kappa_0, psi_0, nu_0, Q0 = params if params is not None else cls.natToStandard( *nat_params )
 
         ans1 = MatrixNormalInverseWishart.log_likelihood( ( A, sigma ), params=( M_trans, V_trans, psi_trans, nu_trans, Q1 ) )
         ans2 = MatrixNormalInverseWishart.log_likelihood( ( C, R ), params=( M_emiss, V_emiss, psi_emiss, nu_emiss, Q2 ) )
@@ -371,28 +371,28 @@ class LDSMNIWPrior( ExponentialFam ):
     ##########################################################################
 
     # @classmethod
-    # def log_pdf( cls, natParams, sufficientStats, log_partition=None ):
+    # def log_pdf( cls, nat_params, sufficientStats, log_partition=None ):
 
     #     from collections import Iterable
 
     #     ans1 = 0.0
-    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ :3 ], sufficientStats[ :3 ] ) ):
+    #     for i, ( natParam, stat ) in enumerate( zip( nat_params[ :3 ], sufficientStats[ :3 ] ) ):
     #         ans1 += ( natParam * stat ).sum()
-    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ 8:10 ], sufficientStats[ 8:10 ] ) ):
+    #     for i, ( natParam, stat ) in enumerate( zip( nat_params[ 8:10 ], sufficientStats[ 8:10 ] ) ):
     #         ans1 += ( natParam * stat ).sum()
     #     ans1 -= sum( log_partition[ :5 ] )
 
     #     ans2 = 0.0
-    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ 3:6 ], sufficientStats[ 3:6 ] ) ):
+    #     for i, ( natParam, stat ) in enumerate( zip( nat_params[ 3:6 ], sufficientStats[ 3:6 ] ) ):
     #         ans2 += ( natParam * stat ).sum()
-    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ 10:12 ], sufficientStats[ 10:12 ] ) ):
+    #     for i, ( natParam, stat ) in enumerate( zip( nat_params[ 10:12 ], sufficientStats[ 10:12 ] ) ):
     #         ans2 += ( natParam * stat ).sum()
     #     ans2 -= sum( log_partition[ 5:10 ] )
 
     #     ans3 = 0.0
-    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ 6:8 ], sufficientStats[ 6:8 ] ) ):
+    #     for i, ( natParam, stat ) in enumerate( zip( nat_params[ 6:8 ], sufficientStats[ 6:8 ] ) ):
     #         ans3 += ( natParam * stat ).sum()
-    #     for i, ( natParam, stat ) in enumerate( zip( natParams[ 12:15 ], sufficientStats[ 12:15 ] ) ):
+    #     for i, ( natParam, stat ) in enumerate( zip( nat_params[ 12:15 ], sufficientStats[ 12:15 ] ) ):
     #         ans3 += ( natParam * stat ).sum()
     #     ans3 -= sum( log_partition[ 10: ] )
 

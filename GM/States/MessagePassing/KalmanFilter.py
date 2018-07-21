@@ -118,7 +118,7 @@ class KalmanFilter( MessagePasser ):
         if( computeMarginal ):
             print( 'self.Jy', self.Jy )
             print( 'self.hy', self.hy )
-            partition = np.vectorize( lambda J, h: Normal.log_partition( natParams=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
+            partition = np.vectorize( lambda J, h: Normal.log_partition( nat_params=( -0.5 * J, h ) ), signature='(n,n),(n)->()' )
             self.log_Zy = partition( self.Jy, self.hy )
         else:
             self.log_Zy = np.zeros( self.hy.shape[ 0 ] )
@@ -163,7 +163,7 @@ class KalmanFilter( MessagePasser ):
 
         self.J0 = -2 * n1Init
         self.h0 = n2Init
-        self.log_Z0 = Normal.log_partition( natParams=( -2 * self.J0, self.h0 ) ) if computeMarginal else 0
+        self.log_Z0 = Normal.log_partition( nat_params=( -2 * self.J0, self.h0 ) ) if computeMarginal else 0
 
         if( ys is not None ):
             self.preprocessData( ys, computeMarginal=computeMarginal )
@@ -209,7 +209,7 @@ class KalmanFilter( MessagePasser ):
         else:
             # A.T @ sigInv @ y
             h = np.einsum( 'ji,mj->i', self._hy, ys[ :, t ] )
-            log_Z = Normal.log_partition( natParams=( -0.5 * self.Jy, h ) )
+            log_Z = Normal.log_partition( nat_params=( -0.5 * self.Jy, h ) )
 
         if( forward ):
             return J, h, np.array( log_Z )
@@ -291,7 +291,7 @@ class KalmanFilter( MessagePasser ):
     def log_marginalFromAlphaBeta( cls, alpha, beta ):
         Ja, ha, log_Za = alpha
         Jb, hb, log_Zb = beta
-        return Normal.log_partition( natParams=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
+        return Normal.log_partition( nat_params=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
 
 #########################################################################################
 
@@ -363,7 +363,7 @@ class SwitchingKalmanFilter( KalmanFilter ):
 
         self.J0 = -2 * n1Init
         self.h0 = n2Init
-        self.log_Z0 = Normal.log_partition( natParams=( -2 * self.J0, self.h0 ) ) if computeMarginal else 0
+        self.log_Z0 = Normal.log_partition( nat_params=( -2 * self.J0, self.h0 ) ) if computeMarginal else 0
 
         if( ys is not None ):
             self.preprocessData( ys, computeMarginal=computeMarginal )

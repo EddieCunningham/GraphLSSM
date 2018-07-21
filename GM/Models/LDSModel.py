@@ -110,14 +110,14 @@ class LDSModel( _InferenceModel ):
             self.state.mfNatParams = self.state.iexpectedNatParams( useMeanField=True )
             priorMFNatParams, normalizer = self.state.variationalPosteriorPriorNatParams( ys=ys,
                                                                                           u=u,
-                                                                                          natParams=self.state.mfNatParams,
-                                                                                          priorNatParams=self.state.prior.natParams,
+                                                                                          nat_params=self.state.mfNatParams,
+                                                                                          priorNatParams=self.state.prior.nat_params,
                                                                                           returnNormalizer=True )
 
             # The ELBO computation is only valid right after the variational E step
             elbo = self.state.ELBO( normalizer=normalizer,
                                     priorMFNatParams=self.state.prior.mfNatParams,
-                                    priorNatParams=self.state.prior.natParams )
+                                    priorNatParams=self.state.prior.nat_params )
 
             if( np.isclose( lastElbo, elbo ) ):
                 break

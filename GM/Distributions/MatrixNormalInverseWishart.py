@@ -126,11 +126,11 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         return t1, t2, t3, -t4, -t5
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
-        M, V, psi, nu, Q = params if params is not None else cls.natToStandard( *natParams )
+        M, V, psi, nu, Q = params if params is not None else cls.natToStandard( *nat_params )
 
         n, p = M.shape
 
@@ -143,10 +143,10 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         return A1 + A2 + A3 + A4 + A5
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+    def log_partitionGradient( cls, params=None, nat_params=None, split=False ):
         # Derivative w.r.t. natural params. Also the expected sufficient stat
-        assert ( params is None ) ^ ( natParams is None )
-        n1, n2, n3, n4, n5 = natParams if natParams is not None else cls.standardToNat( *params )
+        assert ( params is None ) ^ ( nat_params is None )
+        n1, n2, n3, n4, n5 = nat_params if nat_params is not None else cls.standardToNat( *params )
 
         p, n = n3.shape
 
@@ -169,7 +169,7 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         import autograd.scipy as asp
         from autograd import jacobian
 
-        n1, n2, n3, n4, n5 = self.natParams
+        n1, n2, n3, n4, n5 = self.nat_params
         p, n = n3.shape
 
         def _part( M, V, psi, nu, Q ):
@@ -214,7 +214,7 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         _d4 = jacobian( p4 )( float( n4 ) )
         _d5 = jacobian( p5 )( float( n5 ) )
 
-        d1, d2, d3, d4, d5 = self.log_partitionGradient( natParams=self.natParams )
+        d1, d2, d3, d4, d5 = self.log_partitionGradient( nat_params=self.nat_params )
 
         assert np.allclose( _d1, d1 )
         assert np.allclose( _d2, d2 )
@@ -231,13 +231,13 @@ class MatrixNormalInverseWishart( ExponentialFam ):
         return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *nat_params )
 
         if( size > 1 ):
-            ans = list( zip( *[ cls.unpackSingleSample( cls.sample( params=params, natParams=natParams, size=1 ) ) for _ in range( size ) ] ) )
+            ans = list( zip( *[ cls.unpackSingleSample( cls.sample( params=params, nat_params=nat_params, size=1 ) ) for _ in range( size ) ] ) )
             A, sigma = ans
             ans = ( np.array( A ), np.array( sigma ) )
         else:
@@ -254,12 +254,12 @@ class MatrixNormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        M, V, psi, nu, _ = params if params is not None else cls.natToStandard( *nat_params )
         if( cls.dataN( x ) > 1 ):
-            return sum( [ cls.log_likelihood( ( A, sigma ), params=params, natParams=natParams ) for A, sigma in zip( *x ) ] )
+            return sum( [ cls.log_likelihood( ( A, sigma ), params=params, nat_params=nat_params ) for A, sigma in zip( *x ) ] )
         A, sigma = x
         return InverseWishart.log_likelihood( sigma, params=( psi, nu ) ) + \
                TensorNormal.log_likelihood( A[ None ], params=( M, ( sigma, V ) ) )

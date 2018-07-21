@@ -132,8 +132,8 @@ def cycleGraph3():
     graph.addEdge( parents=[ 1, 2, 3, 8 ], children=[ 5, 6 ] )
     graph.addEdge( parents=[ 1, 2, 4, 5, 6, 9 ], children=[ 7, 10 ] )
 
-    fbs = np.array( [] )
-    # fbs = np.array( [ 1, 2, 3, 4, 6 ] )
+    # fbs = np.array( [] )
+    fbs = np.array( [ 1, 2, 3, 4, 6 ] )
 
     return graph, fbs
 

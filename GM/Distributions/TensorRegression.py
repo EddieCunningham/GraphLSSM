@@ -81,10 +81,10 @@ class TensorRegression( TensorExponentialFam ):
 
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
-        A, sigma = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        A, sigma = params if params is not None else cls.natToStandard( *nat_params )
 
         p = sigma.shape[ 0 ]
 
@@ -98,10 +98,10 @@ class TensorRegression( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def sample( cls, xs=None, params=None, natParams=None, size=1 ):
+    def sample( cls, xs=None, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        A, sigma = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        A, sigma = params if params is not None else cls.natToStandard( *nat_params )
 
         D = sigma.shape[ 0 ]
         N = len( A.shape )
@@ -124,11 +124,11 @@ class TensorRegression( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
-        A, sigma = params if params is not None else cls.natToStandard( *natParams )
+        A, sigma = params if params is not None else cls.natToStandard( *nat_params )
 
         xs, ys = x
         assert ( isinstance( xs, tuple ) or isinstance( xs, list ) ) and isinstance( ys, np.ndarray )

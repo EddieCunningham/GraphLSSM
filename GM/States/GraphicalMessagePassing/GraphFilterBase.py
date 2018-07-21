@@ -446,6 +446,14 @@ class _filterMixin():
         # P( x | Y )
         return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.nodeJoint( U, V, nodes ) ]
 
+    def parentsSmoothed( self, U, V, nodes ):
+        # P( x_p1..pN | Y )
+        return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.jointParents( U, V, nodes ) ]
+
+    def parentChildSmoothed( self, U, V, nodes ):
+        # P( x_c, x_p1..pN | Y )
+        return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.jointParentChild( U, V, nodes ) ]
+
     def conditionalParentChild( self, U, V, nodes ):
         # P( x_c | x_p1..pN, Y )
         ans = []
@@ -1034,6 +1042,14 @@ class __FBSFilterMixin():
     def nodeSmoothed( self, U, V, nodes ):
         # P( x | Y )
         return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.nodeJoint( U, V, nodes ) ]
+
+    def parentsSmoothed( self, U, V, nodes ):
+        # P( x_p1..pN | Y )
+        return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.jointParents( U, V, nodes ) ]
+
+    def parentChildSmoothed( self, U, V, nodes ):
+        # P( x_c, x_p1..pN | Y )
+        return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.jointParentChild( U, V, nodes ) ]
 
     def conditionalParentChild( self, U, V, nodes ):
         # P( x_c | x_p1..pN, Y )

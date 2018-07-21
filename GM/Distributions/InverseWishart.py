@@ -89,12 +89,12 @@ class InverseWishart( ExponentialFam ):
         return t1, t2
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
         # its just easier to use the standard params
-        psi, nu = params if params is not None else cls.natToStandard( *natParams )
+        psi, nu = params if params is not None else cls.natToStandard( *nat_params )
         p = psi.shape[ 0 ]
 
         A1 = -nu / 2 * np.linalg.slogdet( psi )[ 1 ]
@@ -106,10 +106,10 @@ class InverseWishart( ExponentialFam ):
         return A1 + A2 + A3
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+    def log_partitionGradient( cls, params=None, nat_params=None, split=False ):
         # Derivative w.r.t. natural params. Also the expected sufficient stat
-        assert ( params is None ) ^ ( natParams is None )
-        n1, n2 = natParams if natParams is not None else cls.standardToNat( *params )
+        assert ( params is None ) ^ ( nat_params is None )
+        n1, n2 = nat_params if nat_params is not None else cls.standardToNat( *params )
         n1Inv = np.linalg.inv( n1 )
         p = n1.shape[ 0 ]
 
@@ -125,7 +125,7 @@ class InverseWishart( ExponentialFam ):
         import autograd.scipy as asp
         from autograd import jacobian
 
-        n1, n2 = self.natParams
+        n1, n2 = self.nat_params
         p = n1.shape[ 0 ]
 
         def part( _n1 ):
@@ -140,7 +140,7 @@ class InverseWishart( ExponentialFam ):
 
         d2 = jacobian( part )( n2 )
 
-        dAdn1, dAdn2 = self.log_partitionGradient( natParams=self.natParams )
+        dAdn1, dAdn2 = self.log_partitionGradient( nat_params=self.nat_params )
 
         assert np.allclose( d1, dAdn1 )
         assert np.allclose( d2, dAdn2 )
@@ -154,15 +154,15 @@ class InverseWishart( ExponentialFam ):
         return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
 
-        if( params is None and natParams is None ):
+        if( params is None and nat_params is None ):
             assert D is not None
             params = ( np.eye( D ), D )
 
-        assert ( params is None ) ^ ( natParams is None )
-        psi, nu = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        psi, nu = params if params is not None else cls.natToStandard( *nat_params )
         ans = invwishart.rvs( df=nu, scale=psi, size=size )
         if( size == 1 ):
             ans = ans[ None ]
@@ -172,10 +172,10 @@ class InverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
         # There is a bug in scipy's invwishart.logpdf! Don't use it!
-        return cls.log_likelihoodExpFam( x, params=params, natParams=natParams )
+        return cls.log_likelihoodExpFam( x, params=params, nat_params=nat_params )
 
     ##########################################################################

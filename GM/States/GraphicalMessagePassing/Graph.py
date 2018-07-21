@@ -2,7 +2,7 @@ import graphviz
 from scipy.sparse import coo_matrix
 import os
 
-__all__ = [ 'Graph' ]
+__all__ = [ 'Graph', 'DataGraph' ]
 
 class Graph():
     # This class is how we make sparse matrices
@@ -142,3 +142,48 @@ class Graph():
             d.render( cleanup=True )
 
         return d
+
+##########################################################################
+
+class DataGraph( Graph ):
+    # Same as graph except each node will hold some data field
+
+    def __init__( self ):
+        super().__init__()
+        self.data = {}
+
+    ######################################################################
+
+    @staticmethod
+    def fromGraph( graph, nodes_data ):
+        data_graph = DataGraph()
+        data_graph.nodes = graph.nodes
+        data_graph.edge_children = graph.edge_children
+        data_graph.edge_parents = graph.edge_parents
+
+        for node in graph.nodes:
+            data_graph.data[ node ] = None
+
+        for node, data in nodes_data:
+            data_graph.data[ node ] = data
+
+        return data_graph
+
+    ######################################################################
+
+    def addEdge( self, parents, children ):
+        assert isinstance( parents, list ) or isinstance( parents, tuple )
+        assert isinstance( children, list ) or isinstance( children, tuple )
+        for node in parents + children:
+            self.nodes.add( node )
+            self.data[ node ] = None
+
+        self.edge_children.append( children )
+        self.edge_parents.append( parents )
+
+    def updateNodeData( self, nodes, datum ):
+        if( isinstance( nodes, int ) ):
+            self.data[ nodes ] = datum
+        else:
+            for node, data in zip( nodes, datum ):
+                self.data[ node ] = data

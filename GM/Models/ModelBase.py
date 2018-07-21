@@ -60,7 +60,7 @@ class _EMMixin():
 
         for i in verboseRange( nIters, verbose ):
             alphas, betas = self.state.EStep( ys=ys, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
-            self.state.natParams = self.state.MStep( ys, alphas, betas )
+            self.state.nat_params = self.state.MStep( ys, alphas, betas )
 
             marginal = self.state.lastNormalizer
             if( np.isclose( marginal, lastMarginal ) ):
@@ -83,14 +83,14 @@ class _CoordinateAscentVIMixin():
 
             self.state.mfNatParams = self.state.iexpectedNatParams( useMeanField=True )
             priorMFNatParams, normalizer = self.state.variationalPosteriorPriorNatParams( ys=ys,
-                                                                                          natParams=self.state.mfNatParams,
-                                                                                          priorNatParams=self.state.prior.natParams,
+                                                                                          nat_params=self.state.mfNatParams,
+                                                                                          priorNatParams=self.state.prior.nat_params,
                                                                                           returnNormalizer=True )
 
             # The ELBO computation is only valid right after the variational E step
             elbo = self.state.ELBO( normalizer=normalizer,
                                     priorMFNatParams=self.state.prior.mfNatParams,
-                                    priorNatParams=self.state.prior.natParams )
+                                    priorNatParams=self.state.prior.nat_params )
 
             if( np.isclose( lastElbo, elbo ) ):
                 break

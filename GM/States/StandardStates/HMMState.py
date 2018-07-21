@@ -183,15 +183,15 @@ class HMMState( CategoricalForwardBackward, StateBase ):
         return t1, t2, t3
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
         if( split ):
             return ( 0, 0, 0 )
         return 0
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None , split=False):
+    def log_partitionGradient( cls, params=None, nat_params=None , split=False):
         return ( 0, 0, 0 ) if split == False else ( ( 0, 0, 0 ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
@@ -229,10 +229,10 @@ class HMMState( CategoricalForwardBackward, StateBase ):
     ######################################################################
 
     def sampleStep( self, p ):
-        return int( Categorical.sample( natParams=( p, ) ) )
+        return int( Categorical.sample( nat_params=( p, ) ) )
 
     def likelihoodStep( self, x, p ):
-        return Categorical.log_likelihood( np.array( [ x ] ), natParams=( p, ) )
+        return Categorical.log_likelihood( np.array( [ x ] ), nat_params=( p, ) )
 
     ######################################################################
 

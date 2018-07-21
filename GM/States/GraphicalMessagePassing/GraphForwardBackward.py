@@ -6,8 +6,6 @@ from scipy.sparse import coo_matrix
 from collections import Iterable
 from GenModels.GM.Utility import fbsData
 
-from GenModels.GM.Distributions import Normal
-
 __all__ = [ 'GraphCategoricalForwardBackward',
             'GraphCategoricalForwardBackwardFBS' ]
 
@@ -37,8 +35,8 @@ class _fowardBackwardMixin():
 
     ######################################################################
 
-    def updateParamsFromGraphs( self, ys, initial_dist, transition_dist, emission_dist, graphs ):
-        super( _fowardBackwardMixin, self ).updateParamsFromGraphs( graphs )
+    def updateParamsFromGraphs( self, initial_dist, transition_dist, emission_dist, data_graphs ):
+        super( _fowardBackwardMixin, self ).updateParamsFromGraphs( data_graphs )
         self.K = initial_dist.shape[ 0 ]
         assert initial_dist.ndim == 1
         assert initial_dist.shape == ( self.K, )
@@ -54,12 +52,14 @@ class _fowardBackwardMixin():
             assert ndim not in self.pis
             self.pis[ ndim ] = np.log( dist )
 
-        _L = np.log( emission_dist )
+        self.emission_dist = np.log( emission_dist )
 
-        if( not isinstance( ys, np.ndarray ) ):
-            ys = np.array( ys )
+        ys = []
+        for graph in data_graphs:
+            ys.extend( [ graph.data[ node ] if graph.data[ node ] is not None else np.nan for node in graph.nodes ] )
 
-        self.L = np.array( [ _L[ :, y ] for y in ys ] ).sum( axis=0 ).T
+        ys = np.array( ys ).T
+        self.L = np.array( [ self.emission_dist[ :, y ] for y in ys ] ).sum( axis=0 ).T
 
     ######################################################################
 
@@ -156,16 +156,17 @@ class _fowardBackwardMixin():
 
     ######################################################################
 
-    def filter( self ):
+    def filter( self, **kwargs ):
         # For loopy belief propagation
         self.total_deviation = 0.0
+        return super().filter( **kwargs )
 
     ######################################################################
 
     def updateU( self, nodes, newU, U ):
 
         for u, node in zip( newU, nodes ):
-            self.total_deviation += np.logaddexp( U_data[ i ], -v )**2
+            # self.total_deviation += np.logaddexp( U_data[ i ], -v )**2
             U[ node ] = u
 
     def updateV( self, nodes, edges, newV, V ):
@@ -183,7 +184,7 @@ class _fowardBackwardMixin():
                 # Don't convert V_data to an np.array even though it makes this
                 # step faster because it messes up when we add fbs nodes
                 if( maskValue == True ):
-                    self.total_deviation += np.logaddexp( V_data[ i ], -v )**2
+                    # self.total_deviation += np.logaddexp( V_data[ i ], -v )**2
                     V_data[ i ] = v
 
 ######################################################################
@@ -194,6 +195,36 @@ class GraphCategoricalForwardBackward( _fowardBackwardMixin, GraphFilter ):
 ######################################################################
 
 class GraphCategoricalForwardBackwardFBS( _fowardBackwardMixin, GraphFilterFBS ):
+
+    def updateParamsFromGraphs( self, initial_dist, transition_dist, emission_dist, data_graphs ):
+        super( _fowardBackwardMixin, self ).updateParamsFromGraphs( data_graphs )
+        self.K = initial_dist.shape[ 0 ]
+        assert initial_dist.ndim == 1
+        assert initial_dist.shape == ( self.K, )
+        for _transition_dist in transition_dist:
+            assert np.allclose( np.ones( self.K ), _transition_dist.sum( axis=-1 ) )
+        assert emission_dist.shape[ 0 ] == self.K
+        assert np.isclose( 1.0, initial_dist.sum() )
+        assert np.allclose( np.ones( self.K ), emission_dist.sum( axis=1 ) )
+        self.pi0 = np.log( initial_dist )
+        self.pis = {}
+        for dist in transition_dist:
+            ndim = dist.ndim
+            assert ndim not in self.pis
+            self.pis[ ndim ] = np.log( dist )
+
+        self.emission_dist = np.log( emission_dist )
+
+        ys = []
+        for graph, fbs in data_graphs:
+            ys.extend( [ graph.data[ node ] if graph.data[ node ] is not None else np.nan for node in graph.nodes ] )
+
+        self.ys = ys
+
+        ys = np.array( ys ).T
+        self.L = np.array( [ self.emission_dist[ :, y ] for y in ys ] ).sum( axis=0 ).T
+
+    ######################################################################
 
     def genFilterProbs( self ):
 

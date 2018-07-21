@@ -84,6 +84,5 @@ def fbsTests():
 
 def messagePassingTest():
 
-    # nonFBSTest()
+    nonFBSTest()
     fbsTests()
-    assert 0

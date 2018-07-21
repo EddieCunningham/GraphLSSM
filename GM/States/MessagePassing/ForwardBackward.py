@@ -228,7 +228,7 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
             n1 = self.n1Emiss[ k ]
             n2 = self.n2Emiss[ k ]
 
-            self.L[ :, k ] = Normal.log_likelihood( ys, natParams=( n1, n2 ) ).sum( axis=0 )
+            self.L[ :, k ] = Normal.log_likelihood( ys, nat_params=( n1, n2 ) ).sum( axis=0 )
 
     def updateParams( self, initialDist, transDist, mus, sigmas, ys=None, computeMarginal=True ):
 
@@ -268,7 +268,7 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
                 n1 = self.n1Emiss[ k ]
                 n2 = self.n2Emiss[ k ]
 
-                emiss += Normal.log_likelihood( ys[ :, t ], natParams=( n1, n2 ) ).sum( axis=0 )
+                emiss += Normal.log_likelihood( ys[ :, t ], nat_params=( n1, n2 ) ).sum( axis=0 )
 
         return emiss if forward == True else np.broadcast_to( emiss, ( self.K, self.K ) )
 
@@ -292,7 +292,7 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
 
         # Compute P( x_t | x_t-1, z ) for all of the observations over each z
 
-        self.L0 = Normal.log_likelihood( xs[ 0 ], natParams=( self.n1_0, self.n2_0 ) )
+        self.L0 = Normal.log_likelihood( xs[ 0 ], nat_params=( self.n1_0, self.n2_0 ) )
 
         self.L = np.empty( ( self.T - 1, self.K ) )
 
@@ -300,7 +300,7 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
 
             def ll( _x ):
                 x, x1 = np.split( _x, 2 )
-                return Regression.log_likelihood( ( x, x1 ), natParams=( n1, n2, n3 ) )
+                return Regression.log_likelihood( ( x, x1 ), nat_params=( n1, n2, n3 ) )
 
             self.L[ :, i ] = np.apply_along_axis( ll, -1, np.hstack( ( xs[ :-1 ], xs[ 1: ] ) ) )
 
@@ -357,7 +357,7 @@ class SLDSForwardBackward( CategoricalForwardBackward ):
 
                 def ll( _x ):
                     x, x1 = np.split( _x, 2 )
-                    return Regression.log_likelihood( ( x, x1 ), natParams=( n1, n2, n3 ) )
+                    return Regression.log_likelihood( ( x, x1 ), nat_params=( n1, n2, n3 ) )
 
                 emiss[ i ] = np.apply_along_axis( ll, -1, np.hstack( ( xs[ :-1, t ], xs[ 1: , t ] ) ) )
 

@@ -90,12 +90,12 @@ class Normal( ExponentialFam ):
         return t1, t2
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
-        if( natParams is not None ):
-            n1, n2 = natParams
+        if( nat_params is not None ):
+            n1, n2 = nat_params
             k = n1.shape[ 0 ]
             A1 = -0.25 * n2.dot( np.linalg.solve( n1, n2 ) )
             A2 = -0.5 * np.linalg.slogdet( -2 * n1 )[ 1 ]
@@ -112,11 +112,11 @@ class Normal( ExponentialFam ):
         return A1 + A2 + log_h
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+    def log_partitionGradient( cls, params=None, nat_params=None, split=False ):
         # Derivative w.r.t. natural params. Also the expected sufficient stat
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
-        mu, sigma = params if params is not None else cls.natToStandard( *natParams )
+        mu, sigma = params if params is not None else cls.natToStandard( *nat_params )
         d1 = np.outer( mu, mu ) + sigma
         d2 = mu
 
@@ -127,7 +127,7 @@ class Normal( ExponentialFam ):
         import autograd.numpy as anp
         from autograd import jacobian
 
-        n1, n2 = self.natParams
+        n1, n2 = self.nat_params
 
         def part( _n1 ):
             _n1Inv = anp.linalg.inv( _n1 )
@@ -143,7 +143,7 @@ class Normal( ExponentialFam ):
 
         d2 = jacobian( part )( n2 )
 
-        dAdn1, dAdn2 = self.log_partitionGradient( natParams=self.natParams )
+        dAdn1, dAdn2 = self.log_partitionGradient( nat_params=self.nat_params )
 
         assert np.allclose( d1, dAdn1 )
         assert np.allclose( d2, dAdn2 )
@@ -157,10 +157,10 @@ class Normal( ExponentialFam ):
         return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        mu, sigma = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        mu, sigma = params if params is not None else cls.natToStandard( *nat_params )
         ans = multivariate_normal.rvs( mean=mu, cov=sigma, size=size )
         if( mu.size == 1 ):
             ans = ans.reshape( ( -1, 1 ) )
@@ -172,10 +172,10 @@ class Normal( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        mu, sigma = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        mu, sigma = params if params is not None else cls.natToStandard( *nat_params )
 
         if( x.ndim == 2 ):
             return multivariate_normal.logpdf( x, mean=mu, cov=sigma ).sum()
@@ -186,8 +186,6 @@ class Normal( ExponentialFam ):
     @classmethod
     def marginalizeX1( cls, J11, J12, J22, h1, h2, log_Z, computeMarginal=True ):
         K = h1.shape[ 0 ]
-
-        # J11 = cheatPrecisionHelper( J11, h1.shape[ 0 ] )
 
         J11Chol = cho_factor( J11, lower=True )
         J11Invh1 = cho_solve( J11Chol, h1 )
@@ -203,12 +201,6 @@ class Normal( ExponentialFam ):
         else:
             log_Z = 0
 
-        # More numerical precision stuff.
-        # This is definitely the main source of numerical inaccuracy in the kalman filter.
-        # Might use Emily Fox's solution ( https://homes.cs.washington.edu/~ebfox/publication-files/PhDthesis_ebfox.pdf algorithm 3 )
-        # TODO: Use the cholesky decomposition of the covariance everywhere.
-        # J = cheatPrecisionHelper( J, h.shape[ 0 ] )
-
         return J, h, log_Z
 
     @classmethod
@@ -218,8 +210,8 @@ class Normal( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def mode( cls, params=None, natParams=None ):
-        mu, sigma = params if params is not None else cls.natToStandard( *natParams )
+    def mode( cls, params=None, nat_params=None ):
+        mu, sigma = params if params is not None else cls.natToStandard( *nat_params )
         return ( mu, )
 
     ##########################################################################

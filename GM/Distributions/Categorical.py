@@ -79,15 +79,15 @@ class Categorical( ExponentialFam ):
         return ( t1, )
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
         if( split ):
             return ( 0, )
         return 0
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+    def log_partitionGradient( cls, params=None, nat_params=None, split=False ):
         return ( 0, ) if split == False else ( ( 0, ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
@@ -103,11 +103,11 @@ class Categorical( ExponentialFam ):
         return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
 
-        assert ( params is None ) ^ ( natParams is None )
-        ( p, ) = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        ( p, ) = params if params is not None else cls.natToStandard( *nat_params )
 
         ans = np.random.choice( p.shape[ 0 ], size, p=p )
         cls.checkShape( ans )
@@ -116,9 +116,9 @@ class Categorical( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
         assert isinstance( x, np.ndarray )
         assert x.ndim == 1
 
@@ -126,17 +126,17 @@ class Categorical( ExponentialFam ):
             ( p, ) = params
             return np.log( p[ x ] ).sum()
         else:
-            ( n, ) = natParams
+            ( n, ) = nat_params
             return n[ x ].sum()
 
     ##########################################################################
 
     @classmethod
-    def mode( cls, params=None, natParams=None ):
-        assert ( params is None ) ^ ( natParams is None )
+    def mode( cls, params=None, nat_params=None ):
+        assert ( params is None ) ^ ( nat_params is None )
         if( params is not None ):
             return np.argmax( params )
-        return ( np.argmax( natParams ), )
+        return ( np.argmax( nat_params ), )
 
     ##########################################################################
 

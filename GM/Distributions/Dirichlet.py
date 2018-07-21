@@ -79,10 +79,10 @@ class Dirichlet( ExponentialFam ):
         return t1, t2
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
-        ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        ( alpha, ) = params if params is not None else cls.natToStandard( *nat_params )
         A1 = gammaln( alpha ).sum()
         A2 = -gammaln( alpha.sum() )
         if( split ):
@@ -90,10 +90,10 @@ class Dirichlet( ExponentialFam ):
         return A1 + A2
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+    def log_partitionGradient( cls, params=None, nat_params=None, split=False ):
         # Derivative w.r.t. natural params. Also the expected sufficient stat
-        assert ( params is None ) ^ ( natParams is None )
-        n, = natParams if natParams is not None else cls.standardToNat( *params )
+        assert ( params is None ) ^ ( nat_params is None )
+        n, = nat_params if nat_params is not None else cls.standardToNat( *params )
         assert np.all( n > 0 )
         d = digamma( ( n + 1 ) ) - digamma( ( n + 1 ).sum() )
         return ( d, ) if split == False else ( ( d, ), ( 0, ) )
@@ -104,14 +104,14 @@ class Dirichlet( ExponentialFam ):
         import autograd.scipy as asp
         from autograd import jacobian
 
-        n, = self.natParams
+        n, = self.nat_params
 
         def part( _n ):
             d = anp.sum( asp.special.gammaln( ( _n + 1 ) ) ) - asp.special.gammaln( anp.sum( _n + 1 ) )
             return d
 
         d = jacobian( part )( n )
-        dAdn = self.log_partitionGradient( natParams=self.natParams )
+        dAdn = self.log_partitionGradient( nat_params=self.nat_params )
 
         assert np.allclose( d, dAdn )
 
@@ -124,11 +124,11 @@ class Dirichlet( ExponentialFam ):
         return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
-        ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
+        ( alpha, ) = params if params is not None else cls.natToStandard( *nat_params )
         ans = dirichlet.rvs( alpha=alpha, size=size )
         cls.checkShape( ans )
         return ans
@@ -136,10 +136,10 @@ class Dirichlet( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        ( alpha, ) = params if params is not None else cls.natToStandard( *nat_params )
         if( isinstance( x, tuple ) ):
             assert len( x ) == 1
             x, = x
@@ -152,7 +152,7 @@ class Dirichlet( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def mode( cls, params=None, natParams=None ):
-        assert ( params is None ) ^ ( natParams is None )
-        ( n, ) = natParams if natParams is not None else cls.standardToNat( *params )
+    def mode( cls, params=None, nat_params=None ):
+        assert ( params is None ) ^ ( nat_params is None )
+        ( n, ) = nat_params if nat_params is not None else cls.standardToNat( *params )
         return ( n / n.sum(), )

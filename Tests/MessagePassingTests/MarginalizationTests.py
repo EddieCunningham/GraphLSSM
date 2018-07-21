@@ -261,13 +261,13 @@ def testKalmanFilter():
     Ja, ha, log_Za = alphas[ -1 ]
     Jb, hb, log_Zb = betas[ -1 ]
 
-    marginal = Normal.log_partition( natParams=( -0.5*Ja, ha ) ) - log_Za
+    marginal = Normal.log_partition( nat_params=( -0.5*Ja, ha ) ) - log_Za
 
     for a, b in zip( alphas, betas ):
         Ja, ha, log_Za = a
         Jb, hb, log_Zb = b
 
-        # _marginal = Normal.log_partition( natParams=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
+        # _marginal = Normal.log_partition( nat_params=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
         _marginal = mp.log_marginalFromAlphaBeta( a, b )
 
         assert np.isclose( _marginal, marginal ), _marginal - marginal
@@ -326,13 +326,13 @@ def testSwitchingKalmanFilter():
     Ja, ha, log_Za = alphas[ -1 ]
     Jb, hb, log_Zb = betas[ -1 ]
 
-    marginal = Normal.log_partition( natParams=( -0.5*Ja, ha ) ) - log_Za
+    marginal = Normal.log_partition( nat_params=( -0.5*Ja, ha ) ) - log_Za
 
     for a, b in zip( alphas, betas ):
         Ja, ha, log_Za = a
         Jb, hb, log_Zb = b
 
-        # comp = Normal.log_partition( natParams=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
+        # comp = Normal.log_partition( nat_params=( -0.5*( Ja + Jb ), ( ha + hb ) ) ) - ( log_Za + log_Zb )
         comp = mp.log_marginalFromAlphaBeta( a, b )
 
         assert np.isclose( comp, marginal ), comp - marginal

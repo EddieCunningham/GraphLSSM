@@ -132,16 +132,16 @@ class Transition( ExponentialFam ):
             return ( t, )
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
-        ( pi, ) = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        ( pi, ) = params if params is not None else cls.natToStandard( *nat_params )
         if( split ):
             return ( 0, )
         return 0
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None ):
+    def log_partitionGradient( cls, params=None, nat_params=None ):
         return ( 0, ) if split == False else ( ( 0, ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
@@ -157,10 +157,10 @@ class Transition( ExponentialFam ):
         return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        ( pi, ) = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        ( pi, ) = params if params is not None else cls.natToStandard( *nat_params )
         x = np.random.choice( pi.shape[ 0 ], size )
         y = np.array( [ np.random.choice( pi.shape[ 1 ], 1, p=pi[ _x ] ) for _x in x ] ).ravel()
 
@@ -171,9 +171,9 @@ class Transition( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
         x, y = x
         assert isinstance( x, np.ndarray )
         assert x.ndim == 1 and y.ndim == 1
@@ -182,17 +182,17 @@ class Transition( ExponentialFam ):
             ( pi, ) = params
             return np.log( pi[ x, y ] ).sum()
         else:
-            ( n, ) = natParams
+            ( n, ) = nat_params
             return n[ x, y ].sum()
 
     ##########################################################################
 
     @classmethod
-    def mode( cls, params=None, natParams=None ):
-        assert ( params is None ) ^ ( natParams is None )
+    def mode( cls, params=None, nat_params=None ):
+        assert ( params is None ) ^ ( nat_params is None )
         if( params is not None ):
             return np.argmax( params, axis=1 )
-        return ( np.argmax( natParams, axis=1 ), )
+        return ( np.argmax( nat_params, axis=1 ), )
 
     ##########################################################################
 

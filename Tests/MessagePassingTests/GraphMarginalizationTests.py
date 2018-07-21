@@ -7,10 +7,41 @@ import itertools
 
 __all__ = [ 'graphMarginalizationTest' ]
 
+def graphToDataGraph( graphs, dataPerNode, with_fbs=False ):
+    assert isinstance( graphs, list )
+    data_graphs = []
+    for graph in graphs:
+
+        if( with_fbs ):
+            if( not isinstance( graph, Graph ) ):
+                graph, fbs = graph
+            else:
+                graph, fbs = graph, np.array( [] )
+
+        data = [ ( node, dataPerNode( node ) ) for node in graph.nodes ]
+        data_graph = DataGraph.fromGraph( graph, data )
+
+        if( with_fbs ):
+            data_graphs.append( ( data_graph, fbs ) )
+        else:
+            data_graphs.append( data_graph )
+    return data_graphs
+
 def testGraphCategoricalForwardBackwardNoFBS():
 
-    # graphs = [ graph1() ]
+
+    d_latent = 2
+    d_obs = 5
+    D = 2
+
+    # Create the dataset
     graphs = [ graph1(), graph2(), graph3(), graph4(), graph5(), graph6(), graph7() ]
+    def dataPerNode( node ):
+        return Categorical.generate( D=d_obs, size=D )
+    data_graphs = graphToDataGraph( graphs, dataPerNode, with_fbs=False )
+
+    # Initial dist
+    initial_dists = Dirichlet.generate( D=d_latent )
 
     # Check how many transition distributions we need
     all_transition_counts = set()
@@ -20,22 +51,6 @@ def testGraphCategoricalForwardBackwardNoFBS():
         for parents in graph.edge_parents:
             ndim = len( parents ) + 1
             all_transition_counts.add( ndim )
-
-    n_nodes = 0
-    for graph in graphs:
-        if( isinstance( graph, Iterable ) ):
-            graph, fbs = graph
-        n_nodes += len( graph.nodes )
-
-    d_latent = 2      # Latent state size
-    d_obs = 5 # Obs state size
-    D = 2      # Data sets
-
-    # Dumb way to create labels.  In the future this is going to come from a graph
-    ys = [ Categorical.generate( D=d_obs, size=n_nodes ) for _ in range( D ) ]
-
-    # Initial dist
-    initial_dists = Dirichlet.generate( D=d_latent )
 
     # Create the transition distribution
     transition_dists = []
@@ -50,11 +65,14 @@ def testGraphCategoricalForwardBackwardNoFBS():
     # Emission dist
     emission_dist = Dirichlet.generate( D=d_obs, size=d_latent )
 
+    # Create the message passer and initialize
     msg = GraphCategoricalForwardBackward()
-    msg.updateParamsFromGraphs( ys, initial_dists, transition_dists, emission_dist, graphs )
+    msg.updateParamsFromGraphs( initial_dists, transition_dists, emission_dist, data_graphs )
 
+    # Draw the graphs
     msg.draw()
 
+    # Filter
     U, V = msg.filter()
 
     print( 'Done with filter' )
@@ -115,6 +133,18 @@ def testGraphCategoricalForwardBackward():
                cycleGraph11() ]
     # graphs = [ cycleGraph11() ]
 
+    d_latent = 2
+    d_obs = 5
+    D = 2
+
+    # Create the dataset
+    def dataPerNode( node ):
+        return Categorical.generate( D=d_obs, size=D )
+    data_graphs = graphToDataGraph( graphs, dataPerNode, with_fbs=True )
+
+    # Initial dist
+    initial_dists = Dirichlet.generate( D=d_latent )
+
     # Check how many transition distributions we need
     all_transition_counts = set()
     for graph in graphs:
@@ -123,19 +153,6 @@ def testGraphCategoricalForwardBackward():
         for parents in graph.edge_parents:
             ndim = len( parents ) + 1
             all_transition_counts.add( ndim )
-
-    n_nodes = 0
-    for graph in graphs:
-        if( isinstance( graph, Iterable ) ):
-            graph, fbs = graph
-        n_nodes += len( graph.nodes )
-
-    d_latent = 2      # Latent state size
-    d_obs = 5 # Obs state size
-    D = 2      # Data sets
-
-    ys = [ Categorical.generate( D=d_obs, size=n_nodes ) for _ in range( D ) ]
-    initial_dists = Dirichlet.generate( D=d_latent )
 
     # Create the transition distribution
     transition_dists = []
@@ -147,14 +164,18 @@ def testGraphCategoricalForwardBackward():
 
         transition_dists.append( trans )
 
+    # Emission dist
     emission_dist = Dirichlet.generate( D=d_obs, size=d_latent )
 
+    # Create the message passer and initialize
     msg = GraphCategoricalForwardBackwardFBS()
-    msg.updateParamsFromGraphs( ys, initial_dists, transition_dists, emission_dist, graphs )
+    msg.updateParamsFromGraphs( initial_dists, transition_dists, emission_dist, data_graphs )
 
-    # msg.draw()
+    # Draw the graphs
+    msg.draw()
     # msg.draw( use_partial=True )
 
+    # Filter
     U, V = msg.filter()
 
     print( 'Done with filter' )
@@ -238,6 +259,6 @@ def testGraphCategoricalForwardBackward():
         print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
 
 def graphMarginalizationTest():
-    # testGraphCategoricalForwardBackwardNoFBS()
+    testGraphCategoricalForwardBackwardNoFBS()
     testGraphCategoricalForwardBackward()
     # assert 0

@@ -235,18 +235,18 @@ class LDSState( StableKalmanFilter, StateBase ):
     ##########################################################################
 
     @classmethod
-    def log_posteriorExpFam( cls, x, params=None, natParams=None, constParams=None, priorParams=None, priorNatParams=None, stats=None ):
-        assert ( params is None ) ^ ( natParams is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+    def log_posteriorExpFam( cls, x, params=None, nat_params=None, constParams=None, priorParams=None, priorNatParams=None, stats=None ):
+        assert ( params is None ) ^ ( nat_params is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
         assert ( x is None ) ^ ( stats is None )
 
         if( x is not None ):
             cls.checkShape( x )
         postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams, stats=stats )
 
-        params = params if params is not None else cls.natToStandard( *natParams )
+        params = params if params is not None else cls.natToStandard( *nat_params )
         cls.priorClass.checkShape( params )
         stat = cls.priorClass.sufficientStats( params, constParams=constParams )
-        part = cls.priorClass.log_partition( params, natParams=postNatParams, split=True )
+        part = cls.priorClass.log_partition( params, nat_params=postNatParams, split=True )
 
         return cls.priorClass.log_pdf( postNatParams, stat, part )
 
@@ -257,12 +257,12 @@ class LDSState( StableKalmanFilter, StateBase ):
     # the average sequence length in the parition function.  Not sure
     # which way is more correct, but this seems to make more sense
     @classmethod
-    def log_likelihoodExpFam( cls, x, constParams=None, params=None, natParams=None ):
-        assert ( params is None ) ^ ( natParams is None )
-        natParams = natParams if natParams is not None else cls.standardToNat( *params )
+    def log_likelihoodExpFam( cls, x, constParams=None, params=None, nat_params=None ):
+        assert ( params is None ) ^ ( nat_params is None )
+        nat_params = nat_params if nat_params is not None else cls.standardToNat( *params )
         cls.checkShape( x )
         stats = cls.sufficientStats( x, constParams=constParams )
-        A1, A2, A3, A4, A5, A6, A7 = cls.log_partition( x, natParams=natParams, split=True )
+        A1, A2, A3, A4, A5, A6, A7 = cls.log_partition( x, nat_params=nat_params, split=True )
         transFactor, emissionFactor, initFactor = cls.partitionFactors( x )
         A1 *= transFactor
         A2 *= transFactor
@@ -272,17 +272,17 @@ class LDSState( StableKalmanFilter, StateBase ):
         A6 *= initFactor
         A7 *= initFactor
         part = A1 + A2 + A3 + A4 + A5 + A6 + A7
-        return cls.log_pdf( natParams, stats, part )
+        return cls.log_pdf( nat_params, stats, part )
 
     ##########################################################################
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
         # Need to multiply each partition by the length of each sequence!!!!
-        A, sigma, C, R, mu0, sigma0 = params if params is not None else cls.natToStandard( *natParams )
+        A, sigma, C, R, mu0, sigma0 = params if params is not None else cls.natToStandard( *nat_params )
         A1, A2 = Regression.log_partition( params=( A, sigma ), split=True )
         A3, A4 = Regression.log_partition( params=( C, R ), split=True )
         A5, A6, A7 = Normal.log_partition( params=( mu0, sigma0 ), split=True )
@@ -294,7 +294,7 @@ class LDSState( StableKalmanFilter, StateBase ):
     ##########################################################################
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None ):
+    def log_partitionGradient( cls, params=None, nat_params=None ):
         # ?? Not sure what to do considering one of the natural parameters in Regression is redundant
         assert 0, 'Just don\'t call this.  Not sure what to do at the moment'
 
@@ -333,7 +333,7 @@ class LDSState( StableKalmanFilter, StateBase ):
 
     def sampleSingleEmission( self, x, measurements=1 ):
         assert x.size == x.squeeze().shape[ 0 ]
-        return Normal.sample( natParams=( -0.5 * self.J1Emiss, self._hy.dot( x.squeeze() ) ), size=measurements )
+        return Normal.sample( nat_params=( -0.5 * self.J1Emiss, self._hy.dot( x.squeeze() ) ), size=measurements )
 
     def sampleEmissions( self, x ):
         # Sample from P( y | x, ϴ )
@@ -358,7 +358,7 @@ class LDSState( StableKalmanFilter, StateBase ):
 
             ans = 0.0
             for t, ( _x, _ys ) in enumerate( zip( x, ys ) ):
-                ans += Normal.log_likelihood( _ys, natParams=( -0.5 * self.J1Emiss, self._hy.dot( _x ) ) )
+                ans += Normal.log_likelihood( _ys, nat_params=( -0.5 * self.J1Emiss, self._hy.dot( _x ) ) )
             return ans
 
         else:
@@ -369,7 +369,7 @@ class LDSState( StableKalmanFilter, StateBase ):
             else:
                 assert ys.ndim == 2
 
-            return Normal.log_likelihood( _ys, natParams=( -0.5 * self.J1Emiss, self._hy.dot( _x ) ) )
+            return Normal.log_likelihood( _ys, nat_params=( -0.5 * self.J1Emiss, self._hy.dot( _x ) ) )
 
     ######################################################################
 
@@ -504,7 +504,7 @@ class LDSState( StableKalmanFilter, StateBase ):
     def ilog_likelihood( self, x, u=None, forwardFilter=True, conditionOnY=False, expFam=False, preprocessKwargs={}, filterKwargs={}, seperateLikelihoods=False ):
 
         if( expFam ):
-            return self.log_likelihoodExpFam( x, constParams=self.constParams, natParams=self.natParams )
+            return self.log_likelihoodExpFam( x, constParams=self.constParams, nat_params=self.nat_params )
 
         size = self.dataN( x )
 
@@ -567,7 +567,7 @@ class LDSState( StableKalmanFilter, StateBase ):
         # The first expected sufficient statistic for N( x_t+1, x_t | Y ) will
         # be a block matrix with blocks E[ x_t+1 * x_t+1^T ], E[ x_t+1 * x_t^T ]
         # and E[ x_t * x_t^T ]
-        E, _ = Normal.expectedSufficientStats( natParams=( -0.5 * J, h ) )
+        E, _ = Normal.expectedSufficientStats( nat_params=( -0.5 * J, h ) )
 
         D = h1.shape[ 0 ]
         Ext1_xt1, Ext1_xt, Ext_xt = toBlocks( E, D )
@@ -590,11 +590,11 @@ class LDSState( StableKalmanFilter, StateBase ):
 
             # This is a block matrix with block E[ y_t * y_t^T ], E[ y_t * x_t^T ]
             # and E[ x_t * x_t^T ]
-            E, _ = Normal.expectedSufficientStats( natParams=( -0.5 * J, h ) )
+            E, _ = Normal.expectedSufficientStats( nat_params=( -0.5 * J, h ) )
 
             Eyt_yt, Eyt_xt, Ext_xt = toBlocks( E, D )
         else:
-            Ext_xt, E_xt = Normal.expectedSufficientStats( natParams=( -0.5 * J_x, h_x ) )
+            Ext_xt, E_xt = Normal.expectedSufficientStats( nat_params=( -0.5 * J_x, h_x ) )
             Eyt_yt = np.einsum( 'mi,mj->ij', ys[ :, t ], ys[ :, t ] )
             Eyt_xt = np.einsum( 'mi,j->ij', ys[ :, t ], E_xt )
 
@@ -603,7 +603,7 @@ class LDSState( StableKalmanFilter, StateBase ):
     def expectedInitialStats( self, alphas, betas ):
         # E[ x_0 * x_0 ], E[ x_0 ]
         J, h, _ = np.add( alphas[ 0 ], betas[ 0 ] )
-        return Normal.expectedSufficientStats( natParams=( -0.5 * J, h ) )
+        return Normal.expectedSufficientStats( nat_params=( -0.5 * J, h ) )
 
     def conditionedExpectedSufficientStats( self, ys, u, alphas, betas, forMStep=False ):
 
@@ -823,15 +823,15 @@ class LDSState( StableKalmanFilter, StateBase ):
     ######################################################################
 
     @classmethod
-    def variationalPosteriorPriorNatParams( cls, ys=None, u=None, constParams=None, params=None, natParams=None, priorParams=None, priorNatParams=None, returnNormalizer=False ):
-        assert ( params is None ) ^ ( natParams is None )
+    def variationalPosteriorPriorNatParams( cls, ys=None, u=None, constParams=None, params=None, nat_params=None, priorParams=None, priorNatParams=None, returnNormalizer=False ):
+        assert ( params is None ) ^ ( nat_params is None )
         assert ( priorParams is None ) ^ ( priorNatParams is None )
 
         # Because this will only be used to do variational inference,
         # make sure that the observed data is passed in
         assert ys is not None
 
-        expectedStats, normalizer = cls.expectedSufficientStats( ys=ys, u=u, params=params, natParams=natParams, returnNormalizer=True )
+        expectedStats, normalizer = cls.expectedSufficientStats( ys=ys, u=u, params=params, nat_params=nat_params, returnNormalizer=True )
 
         # Assume that these are variational parameters
         priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
@@ -843,9 +843,9 @@ class LDSState( StableKalmanFilter, StateBase ):
         return ans if returnNormalizer == False else ( ans, normalizer )
 
     @classmethod
-    def expectedSufficientStats( cls, ys=None, u=None, params=None, natParams=None, returnNormalizer=False, **kwargs ):
-        assert ( params is None ) ^ ( natParams is None )
-        params = params if params is not None else cls.natToStandard( *natParams )
+    def expectedSufficientStats( cls, ys=None, u=None, params=None, nat_params=None, returnNormalizer=False, **kwargs ):
+        assert ( params is None ) ^ ( nat_params is None )
+        params = params if params is not None else cls.natToStandard( *nat_params )
         for p in params:
             print( p )
             print()

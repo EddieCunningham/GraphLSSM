@@ -80,19 +80,19 @@ class TransitionDirichletPrior( ExponentialFam ):
         return t1, -t2
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
-        ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        ( alpha, ) = params if params is not None else cls.natToStandard( *nat_params )
         return sum( [ Dirichlet.log_partition( params=( a, ) ) for a in alpha ] )
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None, split=False ):
+    def log_partitionGradient( cls, params=None, nat_params=None, split=False ):
         # Derivative w.r.t. natural params. Also the expected sufficient stat
-        assert ( params is None ) ^ ( natParams is None )
-        n, = natParams if natParams is not None else cls.standardToNat( *params )
+        assert ( params is None ) ^ ( nat_params is None )
+        n, = nat_params if nat_params is not None else cls.standardToNat( *params )
 
-        d = np.vstack( [ Dirichlet.log_partitionGradient( natParams=( _n, ) ) for _n in n ] )
+        d = np.vstack( [ Dirichlet.log_partitionGradient( nat_params=( _n, ) ) for _n in n ] )
         return ( d, ) if split == False else ( ( d, ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
@@ -101,14 +101,14 @@ class TransitionDirichletPrior( ExponentialFam ):
         import autograd.scipy as asp
         from autograd import jacobian
 
-        n, = self.natParams
+        n, = self.nat_params
         def part( _n ):
             ans = 0.0
             for __n in _n:
                 ans = ans + anp.sum( asp.special.gammaln( ( __n + 1 ) ) ) - asp.special.gammaln( anp.sum( __n + 1 ) )
             return ans
 
-        d = self.log_partitionGradient( natParams=self.natParams )
+        d = self.log_partitionGradient( nat_params=self.nat_params )
         _d = jacobian( part )( n )
 
         assert np.allclose( d, _d )
@@ -122,11 +122,11 @@ class TransitionDirichletPrior( ExponentialFam ):
         return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
-    def sample( cls, params=None, natParams=None, size=1 ):
+    def sample( cls, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
-        ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
+        ( alpha, ) = params if params is not None else cls.natToStandard( *nat_params )
 
         ans = np.swapaxes( np.array( [ Dirichlet.sample( params=( a, ), size=size ) for a in alpha ] ), 0, 1 )
         cls.checkShape( ans )
@@ -135,10 +135,10 @@ class TransitionDirichletPrior( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        ( alpha, ) = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        ( alpha, ) = params if params is not None else cls.natToStandard( *nat_params )
         if( isinstance( x, tuple ) ):
             assert len( x ) == 1
             x, = x

@@ -42,11 +42,11 @@ def scoreTest( dist, **kwargs ):
         # This wont work, but fix it whenever fisherInfo gets implemented
         fisher = np.linalg.inv( dist.ifisherInfo( x ) )
 
-        n = list( dist.natParams )
+        n = list( dist.nat_params )
         for i, s, f in enumerate( score, fisher ):
             n[ i ] -= f @ s
 
-        dist.natParams = n
+        dist.nat_params = n
 
     assert 0
 
@@ -99,13 +99,13 @@ def likelihoodNoPartitionTestExpFam( dist, **kwargs ):
         print( '\ntrueAns1', trueAns1 )
         print( '\ntrueAns2', trueAns2 )
 
-        print( '\nnatParams', dist.natParams )
+        print( '\nnat_params', dist.nat_params )
         stats1 = dist.sufficientStats( x, constParams=dist.constParams )
         stats2 = dist.sufficientStats( xOld, constParams=dist.constParams )
         print( '\nstats1', stats1 )
         print( '\nstats2', stats2 )
         total = 0.0
-        for n, s in zip( dist.natParams, stats1 ):
+        for n, s in zip( dist.nat_params, stats1 ):
             total += ( n * s ).sum()
             print( 'n*s', ( n * s ).sum() )
         print( '->', total )
@@ -346,8 +346,9 @@ def tensorNormalMarginalizationTest():
 
 def exponentialFamilyTest():
 
-    standardTests()
-    # tensorTests()
-    # tensorNormalMarginalizationTest()
-    stateAndModelTests()
+    # standardTests()
+    tensorTests()
+    tensorNormalMarginalizationTest()
+    assert 0
+    # stateAndModelTests()
     print( 'Passed all of the exp fam tests!' )

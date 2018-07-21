@@ -17,16 +17,16 @@ class StateBase( ExponentialFam ):
     @property
     def params( self ):
         if( self.naturalChanged ):
-            self._params = self.natToStandard( *self.natParams )
+            self._params = self.natToStandard( *self.nat_params )
             self.naturalChanged = False
         return self._params
 
     @property
-    def natParams( self ):
+    def nat_params( self ):
         if( self.standardChanged ):
-            self._natParams = self.standardToNat( *self.params )
+            self._nat_params = self.standardToNat( *self.params )
             self.standardChanged = False
-        return self._natParams
+        return self._nat_params
 
     @params.setter
     def params( self, val ):
@@ -35,12 +35,12 @@ class StateBase( ExponentialFam ):
         self.updateParams( *val )
         self._params = val
 
-    @natParams.setter
-    def natParams( self, val ):
+    @nat_params.setter
+    def nat_params( self, val ):
         self.naturalChanged = True
         self.standardChanged = False
         self.updateNatParams( *val )
-        self._natParams = val
+        self._nat_params = val
 
     ##########################################################################
     ## Mean field parameters for variational inference.  Only update from ##
@@ -226,9 +226,9 @@ class StateBase( ExponentialFam ):
         pass
 
     @classmethod
-    def expectedSufficientStats( cls, ys=None, params=None, natParams=None, returnNormalizer=False, **kwargs ):
-        assert ( params is None ) ^ ( natParams is None )
-        params = params if params is not None else cls.natToStandard( *natParams )
+    def expectedSufficientStats( cls, ys=None, params=None, nat_params=None, returnNormalizer=False, **kwargs ):
+        assert ( params is None ) ^ ( nat_params is None )
+        params = params if params is not None else cls.natToStandard( *nat_params )
         dummy = cls( *params, paramCheck=False )
         return dummy.iexpectedSufficientStats( ys=ys, returnNormalizer=returnNormalizer, **kwargs )
 
@@ -247,9 +247,9 @@ class StateBase( ExponentialFam ):
     ######################################################################
 
     @classmethod
-    def sample( cls, ys=None, params=None, natParams=None, measurements=1, T=None, forwardFilter=True, size=1, returnStats=False, **kwargs ):
-        assert ( params is None ) ^ ( natParams is None )
-        params = params if params is not None else cls.natToStandard( *natParams )
+    def sample( cls, ys=None, params=None, nat_params=None, measurements=1, T=None, forwardFilter=True, size=1, returnStats=False, **kwargs ):
+        assert ( params is None ) ^ ( nat_params is None )
+        params = params if params is not None else cls.natToStandard( *nat_params )
         dummy = cls( *params )
         return dummy.isample( ys=ys, measurements=measurements, T=T, forwardFilter=forwardFilter, size=size, returnStats=returnStats, **kwargs )
 
@@ -412,9 +412,9 @@ class StateBase( ExponentialFam ):
     ######################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None, forwardFilter=True, conditionOnY=False, seperateLikelihoods=False, preprocessKwargs={}, filterKwargs={} ):
-        assert ( params is None ) ^ ( natParams is None )
-        params = params if params is not None else cls.natToStandard( *natParams )
+    def log_likelihood( cls, x, params=None, nat_params=None, forwardFilter=True, conditionOnY=False, seperateLikelihoods=False, preprocessKwargs={}, filterKwargs={} ):
+        assert ( params is None ) ^ ( nat_params is None )
+        params = params if params is not None else cls.natToStandard( *nat_params )
 
         dummy = cls( *params )
         return dummy.ilog_likelihood( x, forwardFilter=forwardFilter, conditionOnY=conditionOnY, seperateLikelihoods=seperateLikelihoods, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
@@ -422,7 +422,7 @@ class StateBase( ExponentialFam ):
     def ilog_likelihood( self, x, forwardFilter=True, conditionOnY=False, expFam=False, preprocessKwargs={}, filterKwargs={}, seperateLikelihoods=False ):
 
         if( expFam ):
-            return self.log_likelihoodExpFam( x, constParams=self.constParams, natParams=self.natParams )
+            return self.log_likelihoodExpFam( x, constParams=self.constParams, nat_params=self.nat_params )
 
         size = self.dataN( x )
 
@@ -468,9 +468,9 @@ class StateBase( ExponentialFam ):
     ######################################################################
 
     @classmethod
-    def log_marginal( cls, x, params=None, natParams=None, seperateMarginals=False, preprocessKwargs={}, filterKwargs={}, alphas=None, betas=None ):
-        assert ( params is None ) ^ ( natParams is None )
-        params = params if params is not None else cls.natToStandard( *natParams )
+    def log_marginal( cls, x, params=None, nat_params=None, seperateMarginals=False, preprocessKwargs={}, filterKwargs={}, alphas=None, betas=None ):
+        assert ( params is None ) ^ ( nat_params is None )
+        params = params if params is not None else cls.natToStandard( *nat_params )
 
         dummy = cls( *params )
         return dummy.ilog_marginal( x, seperateMarginals=seperateMarginals, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs, alphas=alphas, betas=betas )
@@ -548,7 +548,7 @@ class StateBase( ExponentialFam ):
             dummy.EStep( ys=ys, **kwargs )
             normalizer = dummy.lastNormalizer
 
-        klDiv = cls.priorClass.KLDivergence( params1=priorParams, natParams1=priorNatParams, params2=priorMFParams, natParams2=priorMFNatParams )
+        klDiv = cls.priorClass.KLDivergence( params1=priorParams, nat_params1=priorNatParams, params2=priorMFParams, nat_params2=priorMFNatParams )
 
         return normalizer + klDiv
 

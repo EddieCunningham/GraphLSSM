@@ -144,15 +144,15 @@ class Regression( ExponentialFam ):
         return t1, t2, t3
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
-        A, sigma = params if params is not None else cls.natToStandard( *natParams )
-        if( natParams is not None ):
+        assert ( params is None ) ^ ( nat_params is None )
+        A, sigma = params if params is not None else cls.natToStandard( *nat_params )
+        if( nat_params is not None ):
             n1, n2, n3 = cls.standardToNat( A, sigma )
-            assert np.allclose( n1, natParams[ 0 ] )
-            assert np.allclose( n2, natParams[ 1 ] )
-            assert np.allclose( n3, natParams[ 2 ] )
+            assert np.allclose( n1, nat_params[ 0 ] )
+            assert np.allclose( n2, nat_params[ 1 ] )
+            assert np.allclose( n3, nat_params[ 2 ] )
 
         n = sigma.shape[ 0 ]
 
@@ -164,7 +164,7 @@ class Regression( ExponentialFam ):
         return A1 + A2
 
     @classmethod
-    def log_partitionGradient( cls, params=None, natParams=None ):
+    def log_partitionGradient( cls, params=None, nat_params=None ):
         # ?? Not sure what to do considering one of the natural parameters is redundant
         assert 0, 'Just don\'t call this.  Not sure what to do at the moment'
 
@@ -180,10 +180,10 @@ class Regression( ExponentialFam ):
         return samples if size > 1 else cls.unpackSingleSample( samples )
 
     @classmethod
-    def sample( cls, x=None, params=None, natParams=None, size=1 ):
+    def sample( cls, x=None, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        A, sigma = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        A, sigma = params if params is not None else cls.natToStandard( *nat_params )
         D = A.shape[ 1 ]
         if( x is None ):
             x = np.array( [ Normal.unpackSingleSample( Normal.sample( params=( np.zeros( D ), np.eye( D ) ), size=1 ) ) for _ in range( size ) ] )
@@ -199,10 +199,10 @@ class Regression( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        A, sigma = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        A, sigma = params if params is not None else cls.natToStandard( *nat_params )
 
         x, y = x
         assert x.shape[ 0 ] == y.shape[ 0 ]
@@ -213,11 +213,11 @@ class Regression( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def toJoint( cls, u=None, params=None, natParams=None ):
+    def toJoint( cls, u=None, params=None, nat_params=None ):
         # Given the parameters for P( y | A, sigma, x, u ),
         # return the natural parameters for P( [ y, x ] | A, sigma, u )
-        assert ( params is None ) ^ ( natParams is None )
-        n1, n2, n3 = natParams if natParams is not None else cls.standardToNat( *params )
+        assert ( params is None ) ^ ( nat_params is None )
+        n1, n2, n3 = nat_params if nat_params is not None else cls.standardToNat( *params )
 
         _n1 = np.block( [ n1, 0.5 * n3.T ], [ 0.5 * n3, n2 ] )
         if( u is None ):
@@ -228,11 +228,11 @@ class Regression( ExponentialFam ):
         return _n1, _n2
 
     @classmethod
-    def toInverse( cls, y, u=None, params=None, natParams=None ):
+    def toInverse( cls, y, u=None, params=None, nat_params=None ):
         # Given the parameters for P( y | A, sigma, x, u ),
         # return the natural parameters for P( x | A, sigma, y, u )
-        assert ( params is None ) ^ ( natParams is None )
-        n1, n2, n3 = natParams if natParams is not None else cls.standardToNat( *params )
+        assert ( params is None ) ^ ( nat_params is None )
+        n1, n2, n3 = nat_params if nat_params is not None else cls.standardToNat( *params )
 
         _n1 = n2
         if( u is None ):

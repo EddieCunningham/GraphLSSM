@@ -284,6 +284,32 @@ class GraphMessagePasser():
 
     ######################################################################
 
+    @property
+    def roots( self ):
+        # Get the number of edges that each node is a parent of
+        parent_of_edge_count = self.pmask.getnnz( axis=1 )
+
+        # Get the number of edges that each node is a child of
+        child_of_edge_count = self.cmask.getnnz( axis=1 )
+
+        # Get the indices of leaves and roots
+        roots = self.nodes[ ( parent_of_edge_count != 0 ) & ( child_of_edge_count == 0 ) ]
+
+        return roots
+
+    @property
+    def leaves( self ):
+        # Get the number of edges that each node is a parent of
+        parent_of_edge_count = self.pmask.getnnz( axis=1 )
+
+        # Get the number of edges that each node is a child of
+        child_of_edge_count = self.cmask.getnnz( axis=1 )
+
+        # Get the indices of leaves and roots
+        leaves = self.nodes[ ( child_of_edge_count != 0 ) & ( parent_of_edge_count == 0 ) ]
+
+        return leaves
+
     def baseCaseNodes( self ):
 
         # Get the number of edges that each node is a parent of
@@ -601,7 +627,7 @@ class GraphMessagePasser():
                 loopy = True
                 break
 
-        if( not loopy ):
+        if( loopy == False ):
             assert np.any( u_semaphore != 0 ) == False
             assert np.any( v_semaphore.data != 0 ) == False
 

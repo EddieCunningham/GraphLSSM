@@ -9,6 +9,15 @@ _HALF_LOG_2_PI = 0.5 * np.log( 2 * np.pi )
 
 class TensorNormal( TensorExponentialFam ):
 
+    ## THIS CLASS IS NOT THE GENERAL CASE.  ASSUMES COVARIANCE TENSOR IS THE KRONECKER PRODUCT
+    # OF MULTIPLE COVARIANCE MATRICES
+    # Originally I thought that you could use different covariance matrices as the parameters
+    # like you can in the matrix normal distibution.  But I don't think you can in the general
+    # case.  The covariance tensor in the general case I don't think has to be the product of
+    # 2d covariance matrices.  In that case, everything gets very computationally expensive
+    # and probably isn't worth analyzing at the moment.
+
+
     # Just for the moment
     priorClass = None
 
@@ -27,9 +36,32 @@ class TensorNormal( TensorExponentialFam ):
 
     ##########################################################################
 
+    @property
+    def constParams( self ):
+        return None
+
     @classmethod
     def dataN( cls, x ):
+        cls.checkShape( x )
         return x.shape[ 0 ]
+
+    @classmethod
+    def unpackSingleSample( cls, x ):
+        # Not going to unpack samples
+        return x
+
+    @classmethod
+    def sampleShapes( cls, Ds ):
+        # ( Sample #, dim )
+        return tuple( [ None for _ in len( Ds ) + 1 ] )
+
+    def isampleShapes( cls, Ds ):
+        return ( None, *Ds )
+
+    @classmethod
+    def checkShape( cls, x ):
+        assert isinstance( x, np.ndarray )
+        assert np.any( np.array( x.shape[ 1: ] ) == 1 ) == False
 
     ##########################################################################
 
@@ -47,16 +79,26 @@ class TensorNormal( TensorExponentialFam ):
         return n1, n2
 
     @classmethod
+    def realStandardToNat( cls, M, covs ):
+        # Avoid this because it is unnecessarily expensive
+        cov_invs = [ np.linalg.inv( cov ) for cov in covs ]
+        n1 = reduce( lambda x, y: np.kron( x, y ), cov_invs ).reshape( M.shape + M.shape )
+        N = len( M.shape )
+        ind1 = string.ascii_letters[ : N ]
+        ind2 = string.ascii_letters[ N : N * 2 ]
+        contract = ind2 + ',' + ind1 + ind2 + '->' + ind1
+        n2 = np.einsum( contract, M, n1 )
+        return -0.5 * n1, n2
+
+    @classmethod
     def natToStandard( cls, n1, n2 ):
         M = n2[ 0 ]
         covs = cls.invs( n1, -0.5 )
         return M, covs
 
-    ##########################################################################
-
-    @property
-    def constParams( self ):
-        return None
+    @classmethod
+    def realNatToStandard( cls, n1, n2 ):
+        assert 0, 'Can\'t get back the original matrices!  Pretty sure that there are multiple solutions'
 
     ##########################################################################
 
@@ -70,55 +112,76 @@ class TensorNormal( TensorExponentialFam ):
         return t1, t2
 
     @classmethod
-    def log_partition( cls, x=None, params=None, natParams=None, split=False ):
+    def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
-        assert ( params is None ) ^ ( natParams is None )
+        assert ( params is None ) ^ ( nat_params is None )
 
-        M, covs = params if params is not None else cls.natToStandard( *natParams )
+        M, covs = params if params is not None else cls.natToStandard( *nat_params )
 
-        totalDim = np.prod( [ cov.shape[ 0 ] for cov in covs ] )
+        total_dim = np.prod( [ cov.shape[ 0 ] for cov in covs ] )
 
-        A1 = 0.5 * sum( [ totalDim / cov.shape[ 0 ] * np.linalg.slogdet( cov )[ 1 ] for cov in covs ] )
+        A1 = 0.5 * sum( [ total_dim / cov.shape[ 0 ] * np.linalg.slogdet( cov )[ 1 ] for cov in covs ] )
         A2 = 0.5 * cls.combine( ( M[ None ], M[ None ] ), cls.invs( covs ) )
-        log_h = totalDim * _HALF_LOG_2_PI
+        log_h = total_dim * _HALF_LOG_2_PI
 
         if( split ):
             return ( A1, A2, log_h )
         return A1 + A2 + log_h
 
+    @classmethod
+    def log_partitionGradient( cls, params=None, nat_params=None, split=False ):
+        # Derivative w.r.t. natural params. Also the expected sufficient stat
+        assert ( params is None ) ^ ( nat_params is None )
+
+        # Luckily this ends up being easy in the general case
+        M, covs = params if params is not None else cls.natToStandard( *nat_params )
+        assert 0, 'Wait until prior to figure out how to add in the covs'
+        d1 = ( M, M, *covs )
+        d2 = M
+
+        return d1, d2
+
+    def _testLogPartitionGradient( self ):
+        assert 0
+
     ##########################################################################
 
     @classmethod
-    def sample( cls, params=None, natParams=None, Ds=None, size=1 ):
-        if( params is None and natParams is None ):
-            assert Ds is not None
-            assert isinstance( Ds, tuple )
-            params = ( np.zeros( Ds ), [ InverseWishart.sample( D=D ) for D in Ds ] )
+    def generate( cls, Ds=[ 2, 3 ], size=1 ):
+        if( np.any( np.array( Ds ) == 1 ) ):
+            assert 0, 'Can\'t have an empty dim'
+        params = ( np.zeros( Ds ),[ np.eye( D ) for D in Ds ] )
+        samples = cls.sample( params=params, size=size )
+        return samples if size > 1 else cls.unpackSingleSample( samples )
 
+    @classmethod
+    def sample( cls, params=None, nat_params=None, size=1 ):
         # Sample from P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        M, covs = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        M, covs = params if params is not None else cls.natToStandard( *nat_params )
 
-        covChols = [ np.linalg.cholesky( cov ) for cov in covs ]
+        cov_chols = [ np.linalg.cholesky( cov ) for cov in covs ]
         shapes = [ cov.shape[ 0 ] for cov in covs ]
         N = len( shapes )
-        totalDim = np.prod( [ size ] + shapes )
+        total_dim = np.prod( [ size ] + shapes )
 
-        X = Normal.generate( D=1, size=totalDim ).reshape( [ size ] + shapes )
+        X = Normal.generate( D=1, size=total_dim ).reshape( [ size ] + shapes )
 
         ind1 = string.ascii_letters[ : N ]
         ind2 = string.ascii_letters[ N : N * 2 ]
         t = string.ascii_letters[ N * 2 ]
         contract = t + ind1 + ',' + ','.join( [ a + b for a, b in zip( ind1, ind2 ) ] ) + '->' + t + ind2
 
-        return M + np.einsum( contract, X, *covChols )
+        ans = M + np.einsum( contract, X, *cov_chols )
+        cls.checkShape( ans )
+        return ans
 
     ##########################################################################
 
     @classmethod
-    def log_likelihoodRavel( cls, x, params=None, natParams=None ):
-        assert ( params is None ) ^ ( natParams is None )
-        M, covs = params if params is not None else cls.natToStandard( *natParams )
+    def log_likelihoodRavel( cls, x, params=None, nat_params=None ):
+        assert ( params is None ) ^ ( nat_params is None )
+        M, covs = params if params is not None else cls.natToStandard( *nat_params )
 
         assert x.shape[ 1: ] == M.shape
 
@@ -130,21 +193,22 @@ class TensorNormal( TensorExponentialFam ):
         return ans
 
     @classmethod
-    def log_likelihood( cls, x, params=None, natParams=None ):
+    def log_likelihood( cls, x, params=None, nat_params=None ):
         # Compute P( x | Ѳ; α )
-        assert ( params is None ) ^ ( natParams is None )
-        M, covs = params if params is not None else cls.natToStandard( *natParams )
+        assert ( params is None ) ^ ( nat_params is None )
+        M, covs = params if params is not None else cls.natToStandard( *nat_params )
 
-        totalDim = np.prod( [ cov.shape[ 0 ] for cov in covs ] )
-        covInvs = cls.invs( covs )
+        total_dim = np.prod( [ cov.shape[ 0 ] for cov in covs ] )
+        cov_invs = cls.invs( covs )
 
         assert x.shape[ 1: ] == M.shape
         dataN = cls.dataN( x )
 
-        statNat = -0.5 * cls.combine( ( x - M, x - M ), covInvs )
-        part = -0.5 * sum( [ totalDim / cov.shape[ 0 ] * np.linalg.slogdet( cov )[ 1 ] for cov in covs ] ) + \
-               - totalDim * _HALF_LOG_2_PI
-        return statNat + part * dataN
+        stat_nat = -0.5 * cls.combine( ( x - M, x - M ), cov_invs )
+        part = -0.5 * sum( [ total_dim / cov.shape[ 0 ] * np.linalg.slogdet( cov )[ 1 ] for cov in covs ] ) + \
+               - total_dim * _HALF_LOG_2_PI
+        ans = stat_nat + part * dataN
+        return ans
 
     def ilog_likelihood( self, x, expFam=False, ravel=False ):
         if( ravel ):
