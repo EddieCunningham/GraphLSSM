@@ -19,7 +19,7 @@ class TransitionDirichletPrior( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         if( isinstance( x, tuple ) ):
             assert len( x ) == 1
             x = x[ 0 ]

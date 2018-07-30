@@ -1,13 +1,16 @@
 import numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
-from scipy.stats import dirichlet
-from scipy.special import gammaln, digamma
-from GenModels.GM.Distributions.Categorical import Categorical
+from scipy.special import gammaln
+from GenModels.GM.Distributions import Dirichlet, TensorTransition
+import itertools
 
-class Dirichlet( ExponentialFam ):
+__all__ = [ 'TensorTransitionDirichletPrior' ]
+
+class TensorTransitionDirichletPrior( ExponentialFam ):
 
     def __init__( self, alpha=None, prior=None, hypers=None ):
-        super( Dirichlet, self ).__init__( alpha, prior=prior, hypers=hypers )
+        super( TensorTransitionDirichletPrior, self ).__init__( alpha, prior=prior, hypers=hypers )
+        self.Ds = self.alpha.shape
 
     ##########################################################################
 
@@ -19,11 +22,15 @@ class Dirichlet( ExponentialFam ):
 
     @classmethod
     def dataN( cls, x, constParams=None ):
+        assert constParams is not None
+        Ds = constParams
+        cls.checkShape( x )
         if( isinstance( x, tuple ) ):
             assert len( x ) == 1
-            x = x[ 0 ]
-        cls.checkShape( x )
-        if( x.ndim == 2 ):
+            if( x[ 0 ].ndim > len( Ds ) ):
+                return x[ 0 ].shape[ 0 ]
+            return 1
+        if( x.ndim > len( Ds ) ):
             return x.shape[ 0 ]
         return 1
 
@@ -32,20 +39,20 @@ class Dirichlet( ExponentialFam ):
         return x[ 0 ]
 
     @classmethod
-    def sampleShapes( cls ):
+    def sampleShapes( cls, Ds ):
         # ( Sample #, dim )
-        return ( None, None )
+        return tuple( [ None for _ in len( Ds ) + 1 ] )
 
-    def isampleShapes( cls ):
-        return ( None, self.D )
+    def isampleShapes( cls, Ds ):
+        return ( None, *Ds )
 
     @classmethod
     def checkShape( cls, x ):
         if( isinstance( x, tuple ) ):
             assert len( x ) == 1
-            x = x[ 0 ]
-        assert isinstance( x, np.ndarray ), x
-        assert x.ndim == 2 or x.ndim == 1
+            assert isinstance( x[ 0 ], np.ndarray )
+        else:
+            assert isinstance( x, np.ndarray )
 
     ##########################################################################
 
@@ -61,41 +68,40 @@ class Dirichlet( ExponentialFam ):
 
     @property
     def constParams( self ):
-        return None
+        return self.Ds
 
     ##########################################################################
 
     @classmethod
     def sufficientStats( cls, x, constParams=None ):
         # Compute T( x )
-        if( cls.dataN( x ) > 1 ):
+        Ds = constParams
+        if( isinstance( x, tuple ) or x.ndim > len( Ds ) ):
             t = ( 0, 0 )
             for _x in x:
-                t = np.add( t, cls.sufficientStats( _x ) )
+                t = np.add( t, cls.sufficientStats( _x, constParams=constParams ) )
             return t
 
-        ( t1, ) = Categorical.standardToNat( x )
-        ( t2, ) = Categorical.log_partition( params=( x, ), split=True )
-        return t1, t2
+        t1, = TensorTransition.standardToNat( x )
+        t2, = TensorTransition.log_partition( params=( x, ), split=True )
+        return t1, -t2
 
     @classmethod
     def log_partition( cls, x=None, params=None, nat_params=None, split=False ):
         # Compute A( Ѳ ) - log( h( x ) )
         assert ( params is None ) ^ ( nat_params is None )
-        ( alpha, ) = params if params is not None else cls.natToStandard( *nat_params )
-        A1 = gammaln( alpha ).sum()
-        A2 = -gammaln( alpha.sum() )
-        if( split ):
-            return A1, A2
-        return A1 + A2
+        alpha, = params if params is not None else cls.natToStandard( *nat_params )
+        last_dim = alpha.shape[ -1 ]
+        return sum( [ Dirichlet.log_partition( params=( a, ) ) for a in alpha.reshape( ( -1, last_dim ) ) ] )
 
     @classmethod
     def log_partitionGradient( cls, params=None, nat_params=None, split=False ):
         # Derivative w.r.t. natural params. Also the expected sufficient stat
         assert ( params is None ) ^ ( nat_params is None )
-        n, = nat_params if nat_params is not None else cls.standardToNat( *params )
-        assert np.all( n > 0 )
-        d = digamma( ( n + 1 ) ) - digamma( ( n + 1 ).sum() )
+        alpha, = nat_params if nat_params is not None else cls.standardToNat( *params )
+        last_dim = alpha.shape[ -1 ]
+
+        d = np.vstack( [ Dirichlet.log_partitionGradient( nat_params=( a, ) ) for a in alpha.reshape( ( -1, last_dim ) ) ] )
         return ( d, ) if split == False else ( ( d, ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
@@ -105,22 +111,24 @@ class Dirichlet( ExponentialFam ):
         from autograd import jacobian
 
         n, = self.nat_params
-
         def part( _n ):
-            d = anp.sum( asp.special.gammaln( ( _n + 1 ) ) ) - asp.special.gammaln( anp.sum( _n + 1 ) )
-            return d
+            ans = 0.0
+            last_dim = _n.shape[ -1 ]
+            for __n in _n.reshape( ( -1, last_dim ) ):
+                ans = ans + anp.sum( asp.special.gammaln( ( __n + 1 ) ) ) - asp.special.gammaln( anp.sum( __n + 1 ) )
+            return ans
 
-        d = jacobian( part )( n )
-        dAdn = self.log_partitionGradient( nat_params=self.nat_params )
+        d = self.log_partitionGradient( nat_params=self.nat_params )
+        _d = jacobian( part )( n )
 
-        assert np.allclose( d, dAdn )
+        assert np.allclose( d, _d )
 
     ##########################################################################
 
     @classmethod
-    def generate( cls, D=2, size=1, unpack=True ):
-        params = ( np.ones( D ), )
-        samples = cls.sample( params=params, size=size )
+    def generate( cls, Ds=[ 2, 3, 4 ], size=1, unpack=True ):
+        params = np.ones( Ds )
+        samples = cls.sample( params=( params, ), size=size )
         return samples if size > 1 or unpack == False else cls.unpackSingleSample( samples )
 
     @classmethod
@@ -129,7 +137,13 @@ class Dirichlet( ExponentialFam ):
         assert ( params is None ) ^ ( nat_params is None )
 
         ( alpha, ) = params if params is not None else cls.natToStandard( *nat_params )
-        ans = dirichlet.rvs( alpha=alpha, size=size )
+
+        ans = np.empty( alpha.shape + ( size, ) )
+        for indices in itertools.product( *[ range( s ) for s in alpha.shape[ :-1 ] ] ):
+            ans[ indices ] = Dirichlet.generate( D=alpha.shape[ -1 ], size=size, unpack=False ).T
+
+        ans = np.rollaxis( ans, -1 )
+
         cls.checkShape( ans )
         return ans
 
@@ -144,15 +158,10 @@ class Dirichlet( ExponentialFam ):
             assert len( x ) == 1
             x, = x
         assert isinstance( x, np.ndarray )
-        if( x.ndim == 2 ):
-            return sum( [ dirichlet.logpdf( _x, alpha=alpha ) for _x in x ] )
-        assert isinstance( x, np.ndarray ) and x.ndim == 1
-        return dirichlet.logpdf( x, alpha=alpha )
 
-    ##########################################################################
+        if( x.ndim > alpha.ndim ):
+            assert x.ndim == alpha.ndim + 1
+            return sum( [ TensorTransitionDirichletPrior.log_likelihood( _x, params=( alpha, ) ) for _x in x ] )
 
-    @classmethod
-    def mode( cls, params=None, nat_params=None ):
-        assert ( params is None ) ^ ( nat_params is None )
-        ( n, ) = nat_params if nat_params is not None else cls.standardToNat( *params )
-        return ( n / n.sum(), )
+        last_dim = alpha.shape[ -1 ]
+        return sum( [ Dirichlet.log_likelihood( _x, params=( a, ) ) for _x, a in zip( x.reshape( ( -1, last_dim ) ), alpha.reshape( ( -1, last_dim ) ) ) ] )

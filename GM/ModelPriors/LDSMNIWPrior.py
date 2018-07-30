@@ -72,7 +72,7 @@ class LDSMNIWPrior( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         A, sigma, C, R, mu0, sigma0 = x
         if( isinstance( mu0, np.ndarray ) and mu0.ndim == 2 ):
             assert A.ndim == 3

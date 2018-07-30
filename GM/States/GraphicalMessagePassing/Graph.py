@@ -151,6 +151,7 @@ class DataGraph( Graph ):
     def __init__( self ):
         super().__init__()
         self.data = {}
+        self.possible_latent_states = {}
 
     ######################################################################
 
@@ -187,3 +188,10 @@ class DataGraph( Graph ):
         else:
             for node, data in zip( nodes, datum ):
                 self.data[ node ] = data
+
+    def addPossibleLatentStates( self, nodes, possible_states ):
+        if( isinstance( nodes, int ) ):
+            self.possible_latent_states[ nodes ] = possible_states
+        else:
+            for node, states in zip( nodes, possible_states ):
+                self.possible_latent_states[ node ] = states

@@ -36,7 +36,7 @@ class MatrixNormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         cls.checkShape( x )
         A, sigma = x
         if( A.ndim == 3 ):

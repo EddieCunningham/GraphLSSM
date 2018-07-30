@@ -17,14 +17,14 @@ def loadGraphs( graphs, feedback_sets=None, run=True ):
         assert len( graphs ) == len( feedback_sets )
 
     msg = GraphMessagePasser()
-    msg.updateParams( parent_masks, child_masks, feedback_sets=feedback_sets )
+    msg.updateGraphs( parent_masks, child_masks, feedback_sets=feedback_sets )
     return msg
 
 def nonFBSTest():
     graphs = [ graph1(), graph2(), graph3(), graph4(), graph5(), graph6() ]
 
     msg = GraphMessagePasser()
-    msg.updateParamsFromGraphs( graphs )
+    msg.updateGraphs( graphs )
     msg.draw( render=True )
 
     def nothing( a, b ):
@@ -49,11 +49,11 @@ def fbsTests():
                cycleGraph9(),
                cycleGraph10(),
                cycleGraph11() ]
-    graphs = [ cycleGraph3() ]
+    # graphs = [ cycleGraph3() ]
 
     msg = GraphMessagePasserFBS()
-    msg.updateParamsFromGraphs( graphs )
-    msg.draw( render=True )
+    msg.updateGraphs( graphs )
+    msg.draw( styles={ 0:dict( style='filled', color='red' ) }, node_to_style_key=dict( [ ( n, 0 ) for n in msg.fbs ] ) )
 
     def nothing( is_base_case, node_list ):
         return
@@ -83,6 +83,5 @@ def fbsTests():
     print( 'Done with the improved fbs message passing tests!' )
 
 def messagePassingTest():
-
     nonFBSTest()
     fbsTests()

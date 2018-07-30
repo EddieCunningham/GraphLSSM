@@ -33,7 +33,7 @@ class NormalInverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         cls.checkShape( x )
         mu, sigma = x
         if( mu.ndim == 2 ):

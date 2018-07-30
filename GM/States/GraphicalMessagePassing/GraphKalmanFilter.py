@@ -14,7 +14,7 @@ class _kalmanFilterMixin():
     def genFilterProbs( self ):
         pass
 
-    def updateParamsFromGraphs( self, ys, initial_dist, transition_dist, emission_dist, graphs ):
+    def updateParams( self, ys, initial_dist, transition_dist, emission_dist, graphs ):
         pass
 
     def transitionProb( self, child ):

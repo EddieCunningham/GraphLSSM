@@ -35,38 +35,85 @@ class _fowardBackwardMixin():
 
     ######################################################################
 
-    def updateParamsFromGraphs( self, initial_dist, transition_dist, emission_dist, data_graphs ):
-        super( _fowardBackwardMixin, self ).updateParamsFromGraphs( data_graphs )
-        self.K = initial_dist.shape[ 0 ]
-        assert initial_dist.ndim == 1
-        assert initial_dist.shape == ( self.K, )
-        for _transition_dist in transition_dist:
-            assert np.allclose( np.ones( self.K ), _transition_dist.sum( axis=-1 ) )
-        assert emission_dist.shape[ 0 ] == self.K
-        assert np.isclose( 1.0, initial_dist.sum() )
-        assert np.allclose( np.ones( self.K ), emission_dist.sum( axis=1 ) )
-        self.pi0 = np.log( initial_dist )
-        self.pis = {}
-        for dist in transition_dist:
+    def parameterCheck( self, log_initial_dist, log_transition_dist, log_emission_dist ):
+        K = log_initial_dist.shape[ 0 ]
+        assert log_initial_dist.ndim == 1
+        assert log_initial_dist.shape == ( K, )
+        for _transition_dist in log_transition_dist.values():
+            assert np.allclose( np.ones( K ), np.exp( _transition_dist ).sum( axis=-1 ) ), _transition_dist.sum( axis=-1 )
+        assert log_emission_dist.shape[ 0 ] == K
+        assert np.isclose( 1.0, np.exp( log_initial_dist ).sum() )
+        assert np.allclose( np.ones( K ), np.exp( log_emission_dist ).sum( axis=1 ) )
+        pis = set()
+        for dist in log_transition_dist.values():
             ndim = dist.ndim
-            assert ndim not in self.pis
-            self.pis[ ndim ] = np.log( dist )
+            assert ndim not in pis
+            pis.add( ndim )
 
-        self.emission_dist = np.log( emission_dist )
+    def preprocessData( self, data_graphs, only_load=False ):
+
+        super( _fowardBackwardMixin, self ).updateGraphs( data_graphs )
+
+        self.possible_latent_states = {}
+
+        total_nodes = 0
+        for data_graph in data_graphs:
+            for node, state in data_graph.possible_latent_states.items():
+                self.possible_latent_states[ total_nodes + node ] = state
+            total_nodes += len( data_graph.nodes )
 
         ys = []
         for graph in data_graphs:
             ys.extend( [ graph.data[ node ] if graph.data[ node ] is not None else np.nan for node in graph.nodes ] )
 
-        ys = np.array( ys ).T
-        self.L = np.array( [ self.emission_dist[ :, y ] for y in ys ] ).sum( axis=0 ).T
+        self.ys = ys
+
+        if( hasattr( self, 'emission_dist' ) ):
+            ys = np.array( ys ).T
+            self.L = np.array( [ self.emission_dist[ :, y ] for y in ys ] ).sum( axis=0 ).T
+
+    def updateParams( self, initial_dist, transition_dist, emission_dist, data_graphs=None, compute_marginal=True ):
+
+        log_initial_dist = np.log( initial_dist )
+        log_transition_dist = {}
+        log_emission_dist = np.log( emission_dist )
+        for dist in transition_dist:
+            ndim = dist.ndim
+            log_transition_dist[ ndim ] = np.log( dist )
+
+        self.updateNatParams( log_initial_dist, log_transition_dist, log_emission_dist, data_graphs=data_graphs, compute_marginal=compute_marginal )
+
+    def updateNatParams( self, log_initial_dist, log_transition_dist, log_emission_dist, data_graphs=None, compute_marginal=True ):
+
+        self.parameterCheck( log_initial_dist, log_transition_dist, log_emission_dist )
+
+        self.K = log_initial_dist.shape[ 0 ]
+        self.pi0 = log_initial_dist
+        self.pis = {}
+        for log_dist in log_transition_dist.values():
+            ndim = log_dist.ndim
+            self.pis[ ndim ] = log_dist
+
+        self.emission_dist = log_emission_dist
+
+        if( data_graphs is not None ):
+            self.preprocessData( data_graphs )
 
     ######################################################################
 
     def transitionProb( self, child ):
         parents, parent_order = self.getParents( child, get_order=True )
         ndim = len( parents ) + 1
-        pi = self.pis[ ndim ]
+        pi = np.copy( self.pis[ ndim ] )
+
+        # If we know the latent state for child, then ensure that we
+        # transition there
+        if( int( child ) in self.possible_latent_states ):
+            states = self.possible_latent_states[ child ]
+            impossible_axes = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
+            pi[ ..., impossible_axes ] = np.NINF
+            pi[ ..., states ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+
         # Reshape pi's axes to match parent order
         assert len( parents ) + 1 == pi.ndim
         assert parent_order.shape[ 0 ] == parents.shape[ 0 ]
@@ -196,33 +243,29 @@ class GraphCategoricalForwardBackward( _fowardBackwardMixin, GraphFilter ):
 
 class GraphCategoricalForwardBackwardFBS( _fowardBackwardMixin, GraphFilterFBS ):
 
-    def updateParamsFromGraphs( self, initial_dist, transition_dist, emission_dist, data_graphs ):
-        super( _fowardBackwardMixin, self ).updateParamsFromGraphs( data_graphs )
-        self.K = initial_dist.shape[ 0 ]
-        assert initial_dist.ndim == 1
-        assert initial_dist.shape == ( self.K, )
-        for _transition_dist in transition_dist:
-            assert np.allclose( np.ones( self.K ), _transition_dist.sum( axis=-1 ) )
-        assert emission_dist.shape[ 0 ] == self.K
-        assert np.isclose( 1.0, initial_dist.sum() )
-        assert np.allclose( np.ones( self.K ), emission_dist.sum( axis=1 ) )
-        self.pi0 = np.log( initial_dist )
-        self.pis = {}
-        for dist in transition_dist:
-            ndim = dist.ndim
-            assert ndim not in self.pis
-            self.pis[ ndim ] = np.log( dist )
+    def preprocessData( self, data_graphs, only_load=False ):
 
-        self.emission_dist = np.log( emission_dist )
+        super().updateGraphs( data_graphs )
+        # super( _fowardBackwardMixin, self ).updateParams( data_graphs )
 
-        ys = []
-        for graph, fbs in data_graphs:
-            ys.extend( [ graph.data[ node ] if graph.data[ node ] is not None else np.nan for node in graph.nodes ] )
+        self.possible_latent_states = {}
 
-        self.ys = ys
+        total_nodes = 0
+        for data_graph, fbs in data_graphs:
+            for node, state in data_graph.possible_latent_states.items():
+                self.possible_latent_states[ total_nodes + node ] = state
+            total_nodes += len( data_graph.nodes )
 
-        ys = np.array( ys ).T
-        self.L = np.array( [ self.emission_dist[ :, y ] for y in ys ] ).sum( axis=0 ).T
+        if( only_load == False ):
+            ys = []
+            for graph, fbs in data_graphs:
+                ys.extend( [ graph.data[ node ] if graph.data[ node ] is not None else np.nan for node in graph.nodes ] )
+
+            self.ys = ys
+
+            if( hasattr( self, 'emission_dist' ) ):
+                ys = np.array( ys ).T
+                self.L = np.array( [ self.emission_dist[ :, y ] for y in ys ] ).sum( axis=0 ).T
 
     ######################################################################
 
@@ -248,23 +291,33 @@ class GraphCategoricalForwardBackwardFBS( _fowardBackwardMixin, GraphFilterFBS )
 
     ######################################################################
 
-    def transitionProb( self, node, is_partial_graph_index=False ):
-        parents, parent_order = self.getFullParents( node, get_order=True, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True )
+    def transitionProb( self, child, is_partial_graph_index=False ):
+        parents, parent_order = self.getFullParents( child, get_order=True, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True )
         ndim = len( parents ) + 1
-        pi = self.pis[ ndim ]
+        pi = np.copy( self.pis[ ndim ] )
         # Reshape pi's axes to match parent order
         assert len( parents ) + 1 == pi.ndim
         assert parent_order.shape[ 0 ] == parents.shape[ 0 ]
 
+        # Sort the parent dimensions by parent order
         pi = np.moveaxis( pi, np.arange( ndim ), np.hstack( ( parent_order, ndim - 1 ) ) )
 
-        # Check if there are nodes in [ node, *parents ] that are in the fbs.
+        # If we know the latent state for child, then ensure that we
+        # transition there
+        node_full = self.partialGraphIndexToFullGraphIndex( child ) if is_partial_graph_index == True else child
+        if( int( node_full ) in self.possible_latent_states ):
+            states = self.possible_latent_states[ int( node_full ) ]
+            impossible_axes = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
+            pi[ ..., impossible_axes ] = np.NINF
+            pi[ ..., states ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+
+        # Check if there are nodes in [ child, *parents ] that are in the fbs.
         # If there are, then move their axes
         fbsOffset = lambda x: self.fbsIndex( x, is_partial_graph_index=True, within_graph=True ) + 1
         fbsIndices = [ fbsOffset( parent ) for parent in parents if self.inFeedbackSet( parent, is_partial_graph_index=True ) ]
 
-        if( self.inFeedbackSet( node, is_partial_graph_index=is_partial_graph_index ) ):
-            fbsIndices.append( self.fbsIndex( node, is_partial_graph_index=is_partial_graph_index, within_graph=True ) + 1 )
+        if( self.inFeedbackSet( child, is_partial_graph_index=is_partial_graph_index ) ):
+            fbsIndices.append( self.fbsIndex( child, is_partial_graph_index=is_partial_graph_index, within_graph=True ) + 1 )
 
         if( len( fbsIndices ) > 0 ):
             expandBy = max( fbsIndices )
@@ -276,9 +329,9 @@ class GraphCategoricalForwardBackwardFBS( _fowardBackwardMixin, GraphFilterFBS )
                 if( self.inFeedbackSet( parent, is_partial_graph_index=True ) ):
                     pi = np.swapaxes( pi, i, fbsOffset( parent ) + ndim - 1 )
 
-            if( self.inFeedbackSet( node, is_partial_graph_index=is_partial_graph_index ) ):
-                # If the node is in the fbs, then move it to the appropriate axis
-                pi = np.swapaxes( pi, ndim - 1, fbsOffset( node ) + ndim - 1 )
+            if( self.inFeedbackSet( child, is_partial_graph_index=is_partial_graph_index ) ):
+                # If the child is in the fbs, then move it to the appropriate axis
+                pi = np.swapaxes( pi, ndim - 1, fbsOffset( child ) + ndim - 1 )
 
             return fbsData( pi, ndim )
         return fbsData( pi, -1 )

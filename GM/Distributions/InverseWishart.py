@@ -25,7 +25,7 @@ class InverseWishart( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         cls.checkShape( x )
         if( x.ndim == 3 ):
             return x.shape[ 0 ]

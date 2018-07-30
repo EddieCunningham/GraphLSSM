@@ -37,7 +37,7 @@ class Normal( ExponentialFam ):
         return None
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         cls.checkShape( x )
         if( x.ndim == 2 ):
             return x.shape[ 0 ]

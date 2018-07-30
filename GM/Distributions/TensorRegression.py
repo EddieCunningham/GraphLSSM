@@ -29,7 +29,7 @@ class TensorRegression( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         xs, ys = x
         return ys.shape[ 0 ]
 

@@ -67,7 +67,7 @@ def testGraphCategoricalForwardBackwardNoFBS():
 
     # Create the message passer and initialize
     msg = GraphCategoricalForwardBackward()
-    msg.updateParamsFromGraphs( initial_dists, transition_dists, emission_dist, data_graphs )
+    msg.updateParams( initial_dists, transition_dists, emission_dist, data_graphs )
 
     # Draw the graphs
     msg.draw()
@@ -169,7 +169,7 @@ def testGraphCategoricalForwardBackward():
 
     # Create the message passer and initialize
     msg = GraphCategoricalForwardBackwardFBS()
-    msg.updateParamsFromGraphs( initial_dists, transition_dists, emission_dist, data_graphs )
+    msg.updateParams( initial_dists, transition_dists, emission_dist, data_graphs )
 
     # Draw the graphs
     msg.draw()

@@ -19,7 +19,7 @@ class TensorCategorical( TensorExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         return x.shape[ 0 ]
 
     ##########################################################################

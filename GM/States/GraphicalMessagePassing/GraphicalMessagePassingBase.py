@@ -40,7 +40,7 @@ class GraphMessagePasser():
             graph_assigments.append( n_rows )
         return coo_matrix( ( data, ( row, col ) ), shape=( n_rows, n_cols ), dtype=int ), graph_assigments
 
-    def updateParamsFromGraphs( self, graphs ):
+    def updateGraphs( self, graphs ):
 
         parent_masks = []
         child_masks = []
@@ -55,9 +55,9 @@ class GraphMessagePasser():
             parent_masks.append( p_mask )
             child_masks.append( c_mask )
 
-        self.updateParams( parent_masks, child_masks )
+        self.updateMasks( parent_masks, child_masks )
 
-    def updateParams( self, parent_masks, child_masks ):
+    def updateMasks( self, parent_masks, child_masks ):
 
         assert len( parent_masks ) == len( child_masks )
         for child_mask, parent_mask in zip( child_masks, parent_masks ):
@@ -566,7 +566,7 @@ class GraphMessagePasser():
 
     ######################################################################
 
-    def upDown( self, uWork, vWork, enable_loopy=True, loopyHasConverged=None, **kwargs ):
+    def upDown( self, uWork, vWork, enable_loopy=False, loopyHasConverged=None, **kwargs ):
         # Run the up down algorithm for latent state space models
 
         u_done, v_done = self.progressInit()
@@ -673,7 +673,7 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
             return np.array( [] ), np.array( [] )
         return np.concatenate( big_fbs ), big_fbs
 
-    def updateParamsFromGraphs( self, graphs ):
+    def updateGraphs( self, graphs ):
 
         parent_masks = []
         child_masks = []
@@ -690,9 +690,9 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
             child_masks.append( c_mask )
             feedback_sets.append( fbs )
 
-        self.updateParams( parent_masks, child_masks, feedback_sets=feedback_sets )
+        self.updateMasks( parent_masks, child_masks, feedback_sets=feedback_sets )
 
-    def updateParams( self, parent_masks, child_masks, feedback_sets=None ):
+    def updateMasks( self, parent_masks, child_masks, feedback_sets=None ):
 
         # The main idea with this class is to have 2 different graphs.  The full
         # graph will cycles, and a graph without the feedback nodes which will
@@ -702,7 +702,7 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
 
         # This is the full directed graph.  It might have directed cycles
         self.full_graph = GraphMessagePasser()
-        self.full_graph.updateParams( parent_masks, child_masks )
+        self.full_graph.updateMasks( parent_masks, child_masks )
 
         if( feedback_sets is not None ):
             assert len( parent_masks ) == len( child_masks ) == len( feedback_sets )
@@ -766,7 +766,7 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
         # This is the full graph without the feedback set nodes.  It will
         # be a directed acyclic graph
         self.partial_graph = GraphMessagePasser()
-        self.partial_graph.updateParams( [ parital_pmask ], [ parital_cmask ] )
+        self.partial_graph.updateMasks( [ parital_pmask ], [ parital_cmask ] )
 
     ######################################################################
 
@@ -1144,7 +1144,7 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
 
     ######################################################################
 
-    def upDown( self, uWork, vWork, enable_loopy=True, loopyHasConverged=None, **kwargs ):
+    def upDown( self, uWork, vWork, enable_loopy=False, loopyHasConverged=None, **kwargs ):
         # Message passing is from the partial graph!
         return self.partial_graph.upDown( uWork, vWork, enable_loopy=enable_loopy, loopyHasConverged=loopyHasConverged, **kwargs )
 

@@ -33,7 +33,7 @@ def scoreTest( dist, **kwargs ):
     return
     # Fisher info matrix not implemented
     x = dist.isample( **kwargs )
-    stepSize = 0.1
+    step_size = 0.1
 
     for _ in range( 50 ):
 
@@ -78,30 +78,30 @@ def tensorParamNaturalTest( self ):
 
 def likelihoodNoPartitionTestExpFam( dist, **kwargs ):
     x = dist.isample( size=10, **kwargs )
-    xOld = x
+    x_old = x
 
     ans1 = dist.ilog_likelihood( x, expFam=True )
-    trueAns1 = dist.ilog_likelihood( x )
+    true_ans1 = dist.ilog_likelihood( x )
 
     x = dist.isample( size=10, **kwargs )
     ans2 = dist.ilog_likelihood( x, expFam=True )
-    trueAns2 = dist.ilog_likelihood( x )
+    true_ans2 = dist.ilog_likelihood( x )
 
-    if( not np.isclose( ans1 - ans2, trueAns1 - trueAns2, atol=1e-2 ) ):
+    if( not np.isclose( ans1 - ans2, true_ans1 - true_ans2, atol=1e-2 ) ):
         # Sometimes when the sufficient stats are really big numbers,
         # the test will fail even though the math is correct.
         # Using a really large tolerance because of numerical instabilities
         print( '\nx', x )
-        print( '\nxOld', xOld )
-        print( '\ndiff', ( ans1 - ans2 ) - ( trueAns1 - trueAns2 ) )
+        print( '\nxOld', x_old )
+        print( '\ndiff', ( ans1 - ans2 ) - ( true_ans1 - true_ans2 ) )
         print( '\nans1', ans1 )
         print( '\nans2', ans2 )
-        print( '\ntrueAns1', trueAns1 )
-        print( '\ntrueAns2', trueAns2 )
+        print( '\ntrueAns1', true_ans1 )
+        print( '\ntrueAns2', true_ans2 )
 
         print( '\nnat_params', dist.nat_params )
         stats1 = dist.sufficientStats( x, constParams=dist.constParams )
-        stats2 = dist.sufficientStats( xOld, constParams=dist.constParams )
+        stats2 = dist.sufficientStats( x_old, constParams=dist.constParams )
         print( '\nstats1', stats1 )
         print( '\nstats2', stats2 )
         total = 0.0
@@ -111,7 +111,7 @@ def likelihoodNoPartitionTestExpFam( dist, **kwargs ):
         print( '->', total )
         assert 0, 'Failed test'
 
-    print( 'Passed likelihood no partition test for', type( dist ), '.  Diff was', ( ans1 - ans2 ) - ( trueAns1 - trueAns2 ) )
+    print( 'Passed likelihood no partition test for', type( dist ), '.  Diff was', ( ans1 - ans2 ) - ( true_ans1 - true_ans2 ) )
 
 def likelihoodTestExpFam( dist, **kwargs ):
     x = dist.isample( size=10, **kwargs )
@@ -174,7 +174,9 @@ def testForDistWithPrior( dist, tensor=False, fromStats=False, **kwargs ):
 def standardTests():
 
     D = 2
-    D2 = 7
+    D2 = 3
+    D3 = 4
+    D4 = 5
 
     iwParams = {
         'psi': InverseWishart.generate( D=D ),
@@ -207,6 +209,10 @@ def standardTests():
         'alpha': np.random.random( ( D, D2 ) ) + 1
     }
 
+    tensorTransDirParams = {
+        'alpha': np.random.random( ( D, D2 ) ) + 1
+    }
+
     niw = NormalInverseWishart( **niwParams )
     norm = Normal( prior=niw )
     iw = InverseWishart( **iwParams )
@@ -218,8 +224,11 @@ def standardTests():
     dirichlet = Dirichlet( **dirParams )
     cat = Categorical( prior=dirichlet )
 
-    transDir = TransitionDirichletPrior( **transDirParams )
-    trans = Transition( prior=transDir )
+    trans_dirichlet = TransitionDirichletPrior( **transDirParams )
+    trans = Transition( prior=trans_dirichlet )
+
+    tensor_trans_dirichlet = TensorTransitionDirichletPrior( **tensorTransDirParams )
+    tensor_trans = TensorTransition( prior=tensor_trans_dirichlet )
 
     testForDistWithPrior( norm )
     testsForDistWithoutPrior( iw )
@@ -229,8 +238,10 @@ def standardTests():
     testsForDistWithoutPrior( mniw )
     testForDistWithPrior( cat )
     testsForDistWithoutPrior( niw )
-    testsForDistWithoutPrior( transDir )
+    testsForDistWithoutPrior( trans_dirichlet )
     testForDistWithPrior( trans )
+    testForDistWithPrior( tensor_trans )
+    testsForDistWithoutPrior( tensor_trans_dirichlet )
 
     print( 'Done with the regular exp fam distribution tests')
 
@@ -346,9 +357,9 @@ def tensorNormalMarginalizationTest():
 
 def exponentialFamilyTest():
 
-    # standardTests()
-    tensorTests()
-    tensorNormalMarginalizationTest()
+    standardTests()
+    # tensorTests()
+    # tensorNormalMarginalizationTest()
     assert 0
     # stateAndModelTests()
     print( 'Passed all of the exp fam tests!' )

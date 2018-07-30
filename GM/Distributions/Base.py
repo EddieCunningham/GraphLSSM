@@ -21,7 +21,7 @@ class Distribution( ABC, _GibbsMixin, _MetropolisHastingMixin ):
             assert isinstance( prior, self.priorClass )
             self.prior = prior
         elif( hypers is not None ):
-            self.prior = self.priorClass( *hypers )
+            self.prior = self.priorClass( **hypers )
 
         # Set the parameters
         if( prior is None and hypers is None ):
@@ -50,7 +50,7 @@ class Distribution( ABC, _GibbsMixin, _MetropolisHastingMixin ):
 
     @classmethod
     @abstractmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         # This is necessary to know how to tell the size of an output
         pass
 
@@ -507,7 +507,7 @@ class ExponentialFam( Conjugate ):
         if( x is not None ):
             cls.checkShape( x )
             stats = cls.sufficientStats( x, constParams=constParams )
-            dataN = cls.dataN( x )
+            dataN = cls.dataN( x, constParams=constParams )
             stats = stats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( stats ) ) ] )
 
         return [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
@@ -526,7 +526,7 @@ class ExponentialFam( Conjugate ):
         # Assume that these are variational parameters
         priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
 
-        dataN = cls.dataN( ys, conditionOnY=True, checkY=True )
+        dataN = cls.dataN( ys, conditionOnY=True, checkY=True, constParams=constParams )
         expectedStats = expectedStats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( expectedStats ) ) ] )
 
         ans = [ np.add( s, p ) for s, p in zip( expectedStats, priorNatParams ) ]
@@ -559,7 +559,7 @@ class ExponentialFam( Conjugate ):
         nat_params = nat_params if nat_params is not None else cls.standardToNat( *params )
         cls.checkShape( x )
         stats = cls.sufficientStats( x, constParams=constParams )
-        dataN = cls.dataN( x )
+        dataN = cls.dataN( x, constParams=constParams )
         part = cls.log_partition( x, nat_params=nat_params ) * dataN
         assert isinstance( part, Iterable ) == False
 
@@ -655,7 +655,7 @@ class ExponentialFam( Conjugate ):
             cls.checkShape( x )
         postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams, stats=stats )
 
-        assert cls.priorClass.dataN( params ) == 1
+        assert cls.priorClass.dataN( params, constParams=constParams ) == 1
         return cls.priorClass.log_likelihood( params, nat_params=postNatParams )
 
     def ilog_posterior( self, x=None, expFam=False, stats=None ):

@@ -31,7 +31,7 @@ class Regression( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         cls.checkShape( x )
         xs, ys = x
         if( xs.ndim == 2 ):

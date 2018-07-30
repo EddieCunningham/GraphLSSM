@@ -27,7 +27,7 @@ class Transition( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         cls.checkShape( x )
         x, y = x
         return x.shape[ 0 ]

@@ -17,7 +17,6 @@ class TensorNormal( TensorExponentialFam ):
     # 2d covariance matrices.  In that case, everything gets very computationally expensive
     # and probably isn't worth analyzing at the moment.
 
-
     # Just for the moment
     priorClass = None
 
@@ -41,7 +40,7 @@ class TensorNormal( TensorExponentialFam ):
         return None
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         cls.checkShape( x )
         return x.shape[ 0 ]
 

@@ -33,7 +33,7 @@ class HMMDirichletPrior( ExponentialFam ):
     ##########################################################################
 
     @classmethod
-    def dataN( cls, x ):
+    def dataN( cls, x, constParams=None ):
         pi_0, pi, L = x
         if( pi_0.ndim == 1 ):
             return 1

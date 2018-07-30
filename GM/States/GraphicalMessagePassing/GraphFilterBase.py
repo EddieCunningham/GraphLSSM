@@ -752,7 +752,7 @@ class __FBSFilterMixin():
         siblings = self.getFullSiblings( node, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True )
         up_edge = self.getUpEdges( node, is_partial_graph_index=is_partial_graph_index, use_partial_graph=False )
 
-        # Down each child
+        # Down each sibling
         sigling_bs = [ self.b( U, V, s ) for s in siblings ]
 
         # Down this node
@@ -1060,8 +1060,10 @@ class __FBSFilterMixin():
                 jpc = self.jointParentChildSingleNode( U, V, node, is_partial_graph_index=False )
                 jp = self.jointParentsSingleNode( U, V, node, is_partial_graph_index=False )
                 _ans = self.multiplyTerms( terms=( jpc, -jp ) )
-
                 ans.append( ( node, _ans ) )
+            else:
+                smoothed = self.nodeSmoothed( U, V, [ node ] )[ 0 ][ 1 ]
+                ans.append( ( node, smoothed ) )
 
         return ans
 
