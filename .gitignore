@@ -4,3 +4,6 @@
 *.gv
 *.pdf
 *.ipynb_checkpoints*
+*Pedigree_JSON*
+*pedigreeData*
+*Proof*
