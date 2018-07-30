@@ -130,8 +130,8 @@ def testGraphCategoricalForwardBackward():
                cycleGraph8(),
                cycleGraph9(),
                cycleGraph10(),
-               cycleGraph11() ]
-    # graphs = [ cycleGraph11() ]
+               cycleGraph11(),
+               cycleGraph12() ]
 
     d_latent = 2
     d_obs = 5
@@ -172,8 +172,8 @@ def testGraphCategoricalForwardBackward():
     msg.updateParams( initial_dists, transition_dists, emission_dist, data_graphs )
 
     # Draw the graphs
-    msg.draw()
-    # msg.draw( use_partial=True )
+    # msg.draw( styles={ 0:dict( style='filled', color='red' ) }, node_to_style_key=dict( [ ( n, 0 ) for n in msg.fbs ] ) )
+    msg.draw( use_partial=True )
 
     # Filter
     U, V = msg.filter()
@@ -259,6 +259,6 @@ def testGraphCategoricalForwardBackward():
         print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
 
 def graphMarginalizationTest():
-    testGraphCategoricalForwardBackwardNoFBS()
+    # testGraphCategoricalForwardBackwardNoFBS()
     testGraphCategoricalForwardBackward()
-    # assert 0
+    assert 0

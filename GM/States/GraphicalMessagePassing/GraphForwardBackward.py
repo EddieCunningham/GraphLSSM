@@ -70,7 +70,7 @@ class _fowardBackwardMixin():
 
         if( hasattr( self, 'emission_dist' ) ):
             ys = np.array( ys ).T
-            self.L = np.array( [ self.emission_dist[ :, y ] for y in ys ] ).sum( axis=0 ).T
+            self.L = np.array( [ self.emission_dist[ :, y ] if not np.any( np.isnan( y ) ) else np.zeros_like( self.emission_dist[ :, 0 ] )for y in ys ] ).sum( axis=0 ).T
 
     def updateParams( self, initial_dist, transition_dist, emission_dist, data_graphs=None, compute_marginal=True ):
 
@@ -154,6 +154,7 @@ class _fowardBackwardMixin():
         # and sum.  Doing it this way because np.einsum doesn't work
         # for matrix multiplication in log space - we can't do np.einsum
         # but add instead of multiply over indices
+
         ans = np.zeros( shape )
         for ax, term in zip( axes, terms ):
 
@@ -265,7 +266,7 @@ class GraphCategoricalForwardBackwardFBS( _fowardBackwardMixin, GraphFilterFBS )
 
             if( hasattr( self, 'emission_dist' ) ):
                 ys = np.array( ys ).T
-                self.L = np.array( [ self.emission_dist[ :, y ] for y in ys ] ).sum( axis=0 ).T
+                self.L = np.array( [ self.emission_dist[ :, y ] if not np.any( np.isnan( y ) ) else np.zeros_like( self.emission_dist[ :, 0 ] )for y in ys ] ).sum( axis=0 ).T
 
     ######################################################################
 

@@ -933,10 +933,12 @@ def convertToOldFormat( graph ):
     return old_format
 
 def computeFeedbackSet( graph ):
+    # THIS IS WRONG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # This algorithm on cycleGraph12 misses a fbs node
     assert isinstance( graph, Graph )
 
     old_graph = convertToOldFormat( graph )
-    return np.array( identifyCycles( old_graph ) )
+    return np.array( [ n._id for n in identifyCycles( old_graph ) ] )
 
 ######################################################################
 

@@ -119,7 +119,7 @@ class Graph():
 
     ######################################################################
 
-    def draw( self, render=True, horizontal=False, styles={}, node_to_style_key={}, edge_to_style_key={}, file_format='png', output_folder='.', output_name='graph' ):
+    def draw( self, render=True, horizontal=False, labels=True, styles={}, node_to_style_key={}, edge_to_style_key={}, file_format='png', output_folder='.', output_name='graph' ):
 
         getEdgeStyle = lambda ne: styles[ edge_to_style_key[ ne ] ] if ne in edge_to_style_key else self.node_style
 
@@ -133,10 +133,16 @@ class Graph():
             for c in children:
                 d.edge( '%d'%( e ), '%d '%( c ), **getEdgeStyle( ( e, c ) ) )
 
-            d.node( '%d'%( e ), **self.edge_style )
+            if( labels == True ):
+                d.node( '%d'%( e ), **self.edge_style )
+            else:
+                d.node( **self.edge_style )
 
         for n, style_key in node_to_style_key.items():
-            d.node( '%d '%( n ), **styles[ style_key ] )
+            if( labels == True ):
+                d.node( '%d '%( n ), **styles[ style_key ] )
+            else:
+                d.node( **styles[ style_key ] )
 
         if( render ):
             d.render( cleanup=True )

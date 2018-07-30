@@ -712,7 +712,8 @@ class __FBSFilterMixin():
 
         newV = []
         for node, edge in zip( nodes, edges ):
-            if( self.nChildren( node, is_partial_graph_index=True, use_partial_graph=True ) == 0 ):
+            if( is_base_case ):
+            # if( self.nChildren( node, is_partial_graph_index=True, use_partial_graph=True ) == 0 ):
                 assert edge == None
                 v = self.vBaseCase( node )
             else:
@@ -952,7 +953,7 @@ class __FBSFilterMixin():
                 method = 'compute'
 
         # If all of the parents are in the fbs and so is node, then use nodeJoint and integrate out the correct nodes.
-        if( len( [ 1 for p in self.getFullParents( node, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True ) if not self.inFeedbackSet( p, is_partial_graph_index=True ) ] ) == 0 and not_in_fbs == False ):
+        if( len( [ 1 for p in self.getFullParents( node, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True ) if not self.inFeedbackSet( p, is_partial_graph_index=True ) ] ) == 0 ):
             if( not_in_fbs ):
                 node_partial = self.fullGraphIndexToPartialGraphIndex( node ) if is_partial_graph_index == False else node
             else:
@@ -987,7 +988,11 @@ class __FBSFilterMixin():
 
         # Keep the axis that node is on
         if( not_in_fbs ):
-            keep_axes.append( n_parents )
+            n_fbs_parents = len( [ 1 for p in self.getFullParents( node, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True ) if self.inFeedbackSet( p, is_partial_graph_index=True ) ] )
+            if( n_fbs_parents == n_parents ):
+                keep_axes.append( 0 )
+            else:
+                keep_axes.append( n_parents )
         else:
             keep_axes.append( joint_fbs.fbs_axis + self.fbsIndex( node, is_partial_graph_index=is_partial_graph_index, within_graph=True ) )
         keep_axes = np.array( keep_axes )

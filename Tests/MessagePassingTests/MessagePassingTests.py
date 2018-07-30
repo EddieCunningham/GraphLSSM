@@ -48,8 +48,9 @@ def fbsTests():
                cycleGraph8(),
                cycleGraph9(),
                cycleGraph10(),
-               cycleGraph11() ]
-    # graphs = [ cycleGraph3() ]
+               cycleGraph11(),
+               cycleGraph12() ]
+    # graphs = [ cycleGraph12() ]
 
     msg = GraphMessagePasserFBS()
     msg.updateGraphs( graphs )
