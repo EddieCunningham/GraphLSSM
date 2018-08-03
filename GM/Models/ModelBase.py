@@ -62,7 +62,7 @@ class _EMMixin():
             alphas, betas = self.state.EStep( ys=ys, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
             self.state.nat_params = self.state.MStep( ys, alphas, betas )
 
-            marginal = self.state.lastNormalizer
+            marginal = self.state.last_normalizer
             if( np.isclose( marginal, lastMarginal ) ):
                 break
 
@@ -74,28 +74,28 @@ class _CoordinateAscentVIMixin():
 
     def cavi( self, ys, maxIters=1000, verbose=False ):
 
-        lastElbo = 9999
+        last_elbo = 9999
 
         for i in verboseRange( maxIters, verbose ):
 
             if( i > 0 ):
-                self.state.prior.mfNatParams = priorMFNatParams
+                self.state.prior.mf_nat_params = prior_mf_nat_params
 
-            self.state.mfNatParams = self.state.iexpectedNatParams( useMeanField=True )
-            priorMFNatParams, normalizer = self.state.variationalPosteriorPriorNatParams( ys=ys,
-                                                                                          nat_params=self.state.mfNatParams,
-                                                                                          priorNatParams=self.state.prior.nat_params,
-                                                                                          returnNormalizer=True )
+            self.state.mf_nat_params = self.state.iexpectedNatParams( use_mean_field=True )
+            prior_mf_nat_params, normalizer = self.state.variationalPosteriorPriorNatParams( ys=ys,
+                                                                                             nat_params=self.state.mf_nat_params,
+                                                                                             prior_nat_params=self.state.prior.nat_params,
+                                                                                             return_normalizer=True )
 
             # The ELBO computation is only valid right after the variational E step
             elbo = self.state.ELBO( normalizer=normalizer,
-                                    priorMFNatParams=self.state.prior.mfNatParams,
-                                    priorNatParams=self.state.prior.nat_params )
+                                    prior_mf_nat_params=self.state.prior.mf_nat_params,
+                                    prior_nat_params=self.state.prior.nat_params )
 
-            if( np.isclose( lastElbo, elbo ) ):
+            if( np.isclose( last_elbo, elbo ) ):
                 break
 
-            lastElbo = elbo
+            last_elbo = elbo
 
 ##########################################################################
 

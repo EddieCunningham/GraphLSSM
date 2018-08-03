@@ -114,7 +114,7 @@ class _filterMixin():
             nVals = 1 if edges is None else len( edges )
             ans = []
             for _ in range( nVals ):
-                ans.append( np.zeros( self.K ) )
+                ans.append( np.array( [] ) )
 
         assert sum( [ 0 if ~np.any( np.isnan( v ) ) else 1 for v in ans ] ) == 0, ans
 
@@ -562,7 +562,7 @@ class __FBSFilterMixin():
             nVals = 1 if edges is None else len( edges )
             ans = []
             for _ in range( nVals ):
-                ans.append( fbsData( np.zeros( self.K ), -1 ) )
+                ans.append( fbsData( np.array( [] ), -1 ) )
 
         for v in ans:
             data = v.data

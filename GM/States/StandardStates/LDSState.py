@@ -200,18 +200,18 @@ class LDSState( StableKalmanFilter, StateBase ):
     ##########################################################################
 
     @classmethod
-    def posteriorPriorNatParams( cls, x=None, constParams=None, priorParams=None, priorNatParams=None, stats=None ):
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
+    def posteriorPriorNatParams( cls, x=None, constParams=None, prior_params=None, prior_nat_params=None, stats=None ):
+        assert ( prior_params is None ) ^ ( prior_nat_params is None )
         assert ( x is None ) ^ ( stats is None )
 
-        priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
+        prior_nat_params = prior_nat_params if prior_nat_params is not None else cls.priorClass.standardToNat( *prior_params )
 
         if( x is not None ):
             t1, t2, t3, t4, t5, t6, t7, t8 = cls.sufficientStats( x, constParams=constParams )
             transFactor, emissionFactor, initFactor = cls.partitionFactors( x )
             stats = [ t1, t2, t3, t4, t5, t6, t7, t8, transFactor, transFactor, emissionFactor, emissionFactor, initFactor, initFactor, initFactor ]
 
-            for s, p in zip( stats, priorNatParams ):
+            for s, p in zip( stats, prior_nat_params ):
                 if( isinstance( s, np.ndarray ) ):
                     assert isinstance( p, np.ndarray )
                     assert s.shape == p.shape
@@ -223,7 +223,7 @@ class LDSState( StableKalmanFilter, StateBase ):
         #     print()
         #     print()
 
-        pnp = [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
+        pnp = [ np.add( s, p ) for s, p in zip( stats, prior_nat_params ) ]
 
         # pp = cls.priorClass.natToStandard( *pnp )
         # for p in pp:
@@ -235,13 +235,13 @@ class LDSState( StableKalmanFilter, StateBase ):
     ##########################################################################
 
     @classmethod
-    def log_posteriorExpFam( cls, x, params=None, nat_params=None, constParams=None, priorParams=None, priorNatParams=None, stats=None ):
-        assert ( params is None ) ^ ( nat_params is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+    def log_posteriorExpFam( cls, x, params=None, nat_params=None, constParams=None, prior_params=None, prior_nat_params=None, stats=None ):
+        assert ( params is None ) ^ ( nat_params is None ) and ( prior_params is None ) ^ ( prior_nat_params is None )
         assert ( x is None ) ^ ( stats is None )
 
         if( x is not None ):
             cls.checkShape( x )
-        postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams, stats=stats )
+        postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, prior_params=prior_params, prior_nat_params=prior_nat_params, stats=stats )
 
         params = params if params is not None else cls.natToStandard( *nat_params )
         cls.priorClass.checkShape( params )
@@ -741,7 +741,7 @@ class LDSState( StableKalmanFilter, StateBase ):
 
         alphas, betas = zip( *[ work( _ys, _u ) for _ys, _u in it ] )
 
-        self.lastNormalizer = self.ilog_marginal( ys, alphas=alphas, betas=betas )
+        self.last_normalizer = self.ilog_marginal( ys, alphas=alphas, betas=betas )
         return alphas, betas
 
     ######################################################################
@@ -823,36 +823,36 @@ class LDSState( StableKalmanFilter, StateBase ):
     ######################################################################
 
     @classmethod
-    def variationalPosteriorPriorNatParams( cls, ys=None, u=None, constParams=None, params=None, nat_params=None, priorParams=None, priorNatParams=None, returnNormalizer=False ):
+    def variationalPosteriorPriorNatParams( cls, ys=None, u=None, constParams=None, params=None, nat_params=None, prior_params=None, prior_nat_params=None, return_normalizer=False ):
         assert ( params is None ) ^ ( nat_params is None )
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( prior_params is None ) ^ ( prior_nat_params is None )
 
         # Because this will only be used to do variational inference,
         # make sure that the observed data is passed in
         assert ys is not None
 
-        expectedStats, normalizer = cls.expectedSufficientStats( ys=ys, u=u, params=params, nat_params=nat_params, returnNormalizer=True )
+        expectedStats, normalizer = cls.expectedSufficientStats( ys=ys, u=u, params=params, nat_params=nat_params, return_normalizer=True )
 
         # Assume that these are variational parameters
-        priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
+        prior_nat_params = prior_nat_params if prior_nat_params is not None else cls.priorClass.standardToNat( *prior_params )
 
         dataN = cls.dataN( ys, conditionOnY=True, checkY=True )
-        expectedStats = expectedStats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( expectedStats ) ) ] )
+        expectedStats = expectedStats + tuple( [ dataN for _ in range( len( prior_nat_params ) - len( expectedStats ) ) ] )
 
-        ans = [ np.add( s, p ) for s, p in zip( expectedStats, priorNatParams ) ]
-        return ans if returnNormalizer == False else ( ans, normalizer )
+        ans = [ np.add( s, p ) for s, p in zip( expectedStats, prior_nat_params ) ]
+        return ans if return_normalizer == False else ( ans, normalizer )
 
     @classmethod
-    def expectedSufficientStats( cls, ys=None, u=None, params=None, nat_params=None, returnNormalizer=False, **kwargs ):
+    def expectedSufficientStats( cls, ys=None, u=None, params=None, nat_params=None, return_normalizer=False, **kwargs ):
         assert ( params is None ) ^ ( nat_params is None )
         params = params if params is not None else cls.natToStandard( *nat_params )
         for p in params:
             print( p )
             print()
         dummy = cls( *params )
-        return dummy.iexpectedSufficientStats( ys=ys, u=u, returnNormalizer=returnNormalizer, **kwargs )
+        return dummy.iexpectedSufficientStats( ys=ys, u=u, return_normalizer=return_normalizer, **kwargs )
 
-    def iexpectedSufficientStats( self, ys=None, u=None, preprocessKwargs={}, filterKwargs={}, returnNormalizer=False ):
+    def iexpectedSufficientStats( self, ys=None, u=None, preprocessKwargs={}, filterKwargs={}, return_normalizer=False ):
 
         if( ys is None ):
             return super( StateBase, self ).iexpectedSufficientStats()
@@ -860,6 +860,6 @@ class LDSState( StableKalmanFilter, StateBase ):
         alphas, betas = self.EStep( ys=ys, u=u, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
         stats = self.conditionedExpectedSufficientStats( ys, u, alphas, betas )
 
-        if( returnNormalizer ):
-            return stats, self.lastNormalizer
+        if( return_normalizer ):
+            return stats, self.last_normalizer
         return stats

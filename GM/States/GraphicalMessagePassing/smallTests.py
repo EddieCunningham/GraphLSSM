@@ -11,7 +11,7 @@ def multiplyTruth( terms, K ):
     axes = [ [ i for i, s in enumerate( t.shape ) if s != 1 ] for t in terms ]
     squeezedTerms = [ t.squeeze() for t in terms ]
     ndim = max( [ max( ax ) for ax in axes ] ) + 1
-    ans, returnAxes = GraphCategoricalForwardBackward.multiplyTerms_old( squeezedTerms, axes, ndim )
+    ans, returnAxes = GraphHMM.multiplyTerms_old( squeezedTerms, axes, ndim )
 
     newShape = np.ones( ndim, dtype=int )
     newShape[ returnAxes ] = K
@@ -29,7 +29,7 @@ def multiplyTest():
               term3,
               term4 ]
 
-    mult1, ax1 = GraphCategoricalForwardBackward.multiplyTerms( terms )
+    mult1, ax1 = GraphHMM.multiplyTerms( terms )
 
     term1 = ( np.random.random( ( 1, 1, 1, 1, 1, K, 1, 1       ) ) , 5 )
     term2 = ( np.random.random( ( K, 1, 1, 1, 1, K, 1, K, K, K ) ) , 5 )
@@ -40,7 +40,7 @@ def multiplyTest():
               term3,
               term4 ]
 
-    mult2, ax2 = GraphCategoricalForwardBackward.multiplyTerms( terms )
+    mult2, ax2 = GraphHMM.multiplyTerms( terms )
 
     print( mult1.shape, ax1 )
     print( mult2.shape, ax2 )
@@ -60,11 +60,11 @@ def axesExtentionTest():
     d = np.random.random( ( K1, K2,  1,  1,  1, K3,  1 ) )
     e = np.random.random( ( K1, K2,  1,  1,  1, K3,  1, 1, 1, 1, 1, 1, 1, 1, 1, K1 ) )
 
-    a = GraphCategoricalForwardBackward.extendAxes( a, 0, 5 )
-    b = GraphCategoricalForwardBackward.extendAxes( b, 1, 5 )
-    c = GraphCategoricalForwardBackward.extendAxes( c, 2, 5 )
-    d = GraphCategoricalForwardBackward.extendAxes( d, 3, 5 )
-    e = GraphCategoricalForwardBackward.extendAxes( e, 4, 5 )
+    a = GraphHMM.extendAxes( a, 0, 5 )
+    b = GraphHMM.extendAxes( b, 1, 5 )
+    c = GraphHMM.extendAxes( c, 2, 5 )
+    d = GraphHMM.extendAxes( d, 3, 5 )
+    e = GraphHMM.extendAxes( e, 4, 5 )
 
     print( 'a', a.shape )
     print( 'b', b.shape )
@@ -72,7 +72,7 @@ def axesExtentionTest():
     print( 'd', d.shape )
     print( 'e', e.shape )
 
-    mult = GraphCategoricalForwardBackward.multiplyTerms( [ a, b, c, d, e ] )
+    mult = GraphHMM.multiplyTerms( [ a, b, c, d, e ] )
     print( 'mult.shape', mult.shape )
 
 def integrateTest():
@@ -87,16 +87,16 @@ def integrateTest():
     d = np.random.random( ( K1, K2,  1,  1,  1, K3,  1 ) )
     e = np.random.random( ( K1, K2,  1,  1,  1, K3,  1, 1, 1, 1, 1, 1, 1, 1, 1, K1 ) )
 
-    a = GraphCategoricalForwardBackward.extendAxes( a, 0, 5 )
-    b = GraphCategoricalForwardBackward.extendAxes( b, 1, 5 )
-    c = GraphCategoricalForwardBackward.extendAxes( c, 2, 5 )
-    d = GraphCategoricalForwardBackward.extendAxes( d, 3, 5 )
-    e = GraphCategoricalForwardBackward.extendAxes( e, 4, 5 )
+    a = GraphHMM.extendAxes( a, 0, 5 )
+    b = GraphHMM.extendAxes( b, 1, 5 )
+    c = GraphHMM.extendAxes( c, 2, 5 )
+    d = GraphHMM.extendAxes( d, 3, 5 )
+    e = GraphHMM.extendAxes( e, 4, 5 )
 
-    mult = GraphCategoricalForwardBackward.multiplyTerms( [ a, b, c, d, e ] )
+    mult = GraphHMM.multiplyTerms( [ a, b, c, d, e ] )
     print( mult.shape )
 
-    integrated = GraphCategoricalForwardBackward.integrate( mult, axes=[ 0, 1, -1 ] )
+    integrated = GraphHMM.integrate( mult, axes=[ 0, 1, -1 ] )
     print( integrated.shape )
 
 multiplyTest()

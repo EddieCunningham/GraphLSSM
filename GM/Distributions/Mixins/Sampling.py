@@ -5,14 +5,14 @@ __all__ = [ '_GibbsMixin', '_MetropolisHastingMixin' ]
 class _GibbsMixin():
 
     @classmethod
-    def gibbsJointSample( cls, priorParams, burnIn=5000, skip=100, size=1, verbose=True ):
-        params = cls.paramSample( priorParams )
+    def gibbsJointSample( cls, prior_params, burnIn=5000, skip=100, size=1, verbose=True ):
+        params = cls.paramSample( prior_params )
         it = range( burnIn )
         if( verbose == True ):
             it = tqdm.tqdm( it, desc='Burn in' )
         for _ in it:
             x = cls.sample( params )
-            params = cls.posteriorSample( x, priorParams )
+            params = cls.posteriorSample( x, prior_params )
 
         xResult = [ None for _ in range( size ) ]
         pResult = [ None for _ in range( size ) ]
@@ -23,12 +23,12 @@ class _GibbsMixin():
 
         for i in it:
             x = cls.sample( params )
-            params = cls.posteriorSample( x, priorParams )
+            params = cls.posteriorSample( x, prior_params )
             xResult[ i ] = x
             pResult[ i ] = params
             for _ in range( skip ):
                 x = cls.sample( params )
-                params = cls.posteriorSample( x, priorParams )
+                params = cls.posteriorSample( x, prior_params )
 
         return np.array( xResult ), np.array( pResult )
 

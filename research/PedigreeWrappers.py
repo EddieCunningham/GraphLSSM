@@ -1,19 +1,21 @@
-from GenModels.GM.States.GraphicalMessagePassing import DataGraph, GraphCategoricalForwardBackwardFBS
+from GenModels.GM.States.GraphicalMessagePassing import DataGraph, GroupGraph, GraphHMMFBS, GraphHMMFBSMultiGroups
 import numpy as np
 from functools import reduce
 from scipy.sparse import coo_matrix
 from collections import Iterable
 from GenModels.GM.Utility import fbsData
+import copy
 
 ######################################################################
 
-class Pedigree( DataGraph ):
+class _pedigreeMixin():
 
     def __init__( self ):
         super().__init__()
         self.attrs = {}
+        self.studyID = None
 
-    def updateNodeAttrs( self, nodes, attrs ):
+    def setNodeAttrs( self, nodes, attrs ):
         if( isinstance( nodes, int ) ):
             if( nodes not in self.attrs ):
                 self.attrs[ nodes ] = {}
@@ -24,9 +26,36 @@ class Pedigree( DataGraph ):
                     self.attrs[ node ] = {}
                 self.attrs[ node ].update( attr )
 
+class Pedigree( _pedigreeMixin, DataGraph ):
+    pass
+
+class PedigreeSexMatters( _pedigreeMixin, GroupGraph ):
+
+    @staticmethod
+    def fromPedigree( pedigree, deep_copy=False ):
+        deepcopy = copy.deepcopy if deep_copy else lambda x: x
+        new_pedigree = PedigreeSexMatters()
+        new_pedigree.nodes = deepcopy( pedigree.nodes )
+        new_pedigree.edge_children = deepcopy( pedigree.edge_children )
+        new_pedigree.edge_parents = deepcopy( pedigree.edge_parents )
+        new_pedigree.data = deepcopy( pedigree.data )
+        new_pedigree.possible_latent_states = deepcopy( pedigree.possible_latent_states )
+        new_pedigree.attrs = deepcopy( pedigree.attrs )
+        sex_to_index = lambda x: [ 'female', 'male', 'unknown' ].index( x )
+        for node, attr in pedigree.attrs.items():
+            new_pedigree.setGroups( nodes, sex_to_index( attr[ 'sex' ] ) )
+
+        return new_pedigree
+
+    def setNodeAttrs( self, nodes, attrs ):
+        super().setNodeAttrs( nodes, attrs )
+
+        sex_to_index = lambda x: [ 'female', 'male', 'unknown' ].index( x )
+        self.setGroups( nodes, sex_to_index( attrs[ 'sex' ] ) )
+
 ######################################################################
 
-class PedigreeHMMFilter( GraphCategoricalForwardBackwardFBS ):
+class _pedigreeFilterMixin():
 
     def preprocessData( self, data_graphs, only_load=False ):
         super().preprocessData( data_graphs, only_load=only_load )
@@ -82,3 +111,11 @@ class PedigreeHMMFilter( GraphCategoricalForwardBackwardFBS ):
         kwargs.update( dict( styles=styles, node_to_style_key=node_to_style_key) )
 
         return self.toGraph().draw( render=render, **kwargs )
+
+######################################################################
+
+class PedigreeHMMFilter( _pedigreeFilterMixin, GraphHMMFBS ):
+    pass
+
+class PedigreeHMMFilterSexMatters( _pedigreeFilterMixin, GraphHMMFBSMultiGroups ):
+    pass

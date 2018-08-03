@@ -1,5 +1,5 @@
 from GenModels.GM.States.StandardStates.StateBase import StateBase
-from GenModels.GM.States.MessagePassing.ForwardBackward import *
+from GenModels.GM.States.MessagePassing.HMM import *
 from GenModels.GM.Distributions import Categorical, Transition, Dirichlet, TransitionDirichletPrior
 import numpy as np
 
@@ -9,7 +9,7 @@ def definePrior():
     from GenModels.GM.ModelPriors.HMMDirichletPrior import HMMDirichletPrior
     HMMState.priorClass = HMMDirichletPrior
 
-class HMMState( CategoricalForwardBackward, StateBase ):
+class HMMState( CategoricalHMM, StateBase ):
 
     priorClass = None
 

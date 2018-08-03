@@ -2,7 +2,7 @@ import graphviz
 from scipy.sparse import coo_matrix
 import os
 
-__all__ = [ 'Graph', 'DataGraph' ]
+__all__ = [ 'Graph', 'DataGraph', 'GroupGraph' ]
 
 class Graph():
     # This class is how we make sparse matrices
@@ -188,16 +188,32 @@ class DataGraph( Graph ):
         self.edge_children.append( children )
         self.edge_parents.append( parents )
 
-    def updateNodeData( self, nodes, datum ):
+    def setNodeData( self, nodes, datum ):
         if( isinstance( nodes, int ) ):
             self.data[ nodes ] = datum
         else:
             for node, data in zip( nodes, datum ):
                 self.data[ node ] = data
 
-    def addPossibleLatentStates( self, nodes, possible_states ):
+    def setPossibleLatentStates( self, nodes, possible_states ):
         if( isinstance( nodes, int ) ):
             self.possible_latent_states[ nodes ] = possible_states
         else:
             for node, states in zip( nodes, possible_states ):
                 self.possible_latent_states[ node ] = states
+
+##########################################################################
+
+class GroupGraph( DataGraph ):
+    # Same as data graph, but can specify group for each node
+
+    def __init__( self ):
+        super().__init__()
+        self.groups = {}
+
+    def setGroups( self, nodes, groups ):
+        if( isinstance( nodes, int ) ):
+            self.groups[ nodes ] = groups
+        else:
+            for node, group in zip( nodes, groups ):
+                self.groups[ node ] = group

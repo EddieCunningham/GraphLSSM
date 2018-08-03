@@ -23,6 +23,14 @@ class TensorTransition( ExponentialFam ):
     def pi( self ):
         return self._params[ 0 ]
 
+    @property
+    def nat_pi( self ):
+        return self._nat_params[ 0 ]
+
+    @property
+    def mf_nat_pi( self ):
+        return self._mf_nat_params[ 0 ]
+
     ##########################################################################
 
     @classmethod

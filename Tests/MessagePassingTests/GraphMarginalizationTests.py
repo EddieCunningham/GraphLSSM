@@ -27,7 +27,7 @@ def graphToDataGraph( graphs, dataPerNode, with_fbs=False ):
             data_graphs.append( data_graph )
     return data_graphs
 
-def testGraphCategoricalForwardBackwardNoFBS():
+def testGraphHMMNoFBS():
 
 
     d_latent = 2
@@ -66,7 +66,7 @@ def testGraphCategoricalForwardBackwardNoFBS():
     emission_dist = Dirichlet.generate( D=d_obs, size=d_latent )
 
     # Create the message passer and initialize
-    msg = GraphCategoricalForwardBackward()
+    msg = GraphHMM()
     msg.updateParams( initial_dists, transition_dists, emission_dist, data_graphs )
 
     # Draw the graphs
@@ -110,9 +110,9 @@ def testGraphCategoricalForwardBackwardNoFBS():
         reduced = np.abs( np.logaddexp.reduce( probs, axis=-1 ) ).sum()
         print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', reduced )
 
-    print( 'Done with the testGraphCategoricalForwardBackwardNoFBS test!!\n' )
+    print( 'Done with the testGraphHMMNoFBS test!!\n' )
 
-def testGraphCategoricalForwardBackward():
+def testGraphHMM():
 
     np.random.seed( 2 )
 
@@ -168,7 +168,7 @@ def testGraphCategoricalForwardBackward():
     emission_dist = Dirichlet.generate( D=d_obs, size=d_latent )
 
     # Create the message passer and initialize
-    msg = GraphCategoricalForwardBackwardFBS()
+    msg = GraphHMMFBS()
     msg.updateParams( initial_dists, transition_dists, emission_dist, data_graphs )
 
     # Draw the graphs
@@ -259,6 +259,6 @@ def testGraphCategoricalForwardBackward():
         print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
 
 def graphMarginalizationTest():
-    # testGraphCategoricalForwardBackwardNoFBS()
-    testGraphCategoricalForwardBackward()
-    assert 0
+    testGraphHMMNoFBS()
+    testGraphHMM()
+    # assert 0

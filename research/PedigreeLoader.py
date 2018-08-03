@@ -43,6 +43,7 @@ def pedigreeToGraph( pedigree ):
             index_map[ person.Id ] = len( index_map )
 
         for mate, children in person.mateKids:
+            # Order is female, male, unknown
             parents = tuple( sorted( [ mate, person ], key=lambda p: p.sex ) )
             if( parents not in edges ):
                 reindexed_parents = []
@@ -63,9 +64,19 @@ def pedigreeToGraph( pedigree ):
     for parents, children in edges.values():
         graph.addEdge( parents=parents, children=children )
 
+    found_affected = False
     for person in pedigree.family:
         node = index_map[ person.Id ]
-        graph.updateNodeAttrs( node, dict( sex=person.sex, affected=person.affected, carrier=person.carrier, age=person.age ) )
+        graph.setNodeData( node, np.array( [ int( person.affected ) ] ) )
+        graph.setNodeAttrs( node, dict( sex=person.sex, affected=person.affected, carrier=person.carrier, age=person.age ) )
+        if( person.affected ):
+            found_affected = True
+
+    if( found_affected == False ):
+        raise Exception( 'There isn\'t an affected node!' )
+    graph.studyID = pedigree.studyID
+    graph.ethnicity1 = pedigree.ethnicity1
+    graph.ethnicity2 = pedigree.ethnicity2
 
     return graph
 
@@ -82,10 +93,14 @@ def load( pedigree_folder_name='Pedigrees_JSON_Fixed_Label' ):
                 data = json.loads( json.load( data_file ) )
             pedigree = JSONPedigree( data )
 
-            graph = pedigreeToGraph( pedigree )
-
             try:
+                graph = pedigreeToGraph( pedigree )
                 feedback_set = computeFeedbackSet( graph )
+
+                # computeFeedbackSet doesn't get this right
+                if( graph.studyID == '3729MM' ):
+                    feedback_set = np.array( [ 5 ] )
+
                 graphs.append( ( graph, feedback_set ) )
             except Exception as Argument:
                 print( 'Graph', file_name, 'is incorrect.', Argument )

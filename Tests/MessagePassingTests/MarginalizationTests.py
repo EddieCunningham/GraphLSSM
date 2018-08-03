@@ -8,14 +8,14 @@ __all__ = [ 'marginalizationTest' ]
 
 ######################################################################
 
-def testCategoricalForwardBackward():
+def testCategoricalHMM():
 
     T = 400
     D_latent = 22
     D_obs = 31
     measurements = 2
 
-    mp = CategoricalForwardBackward()
+    mp = CategoricalHMM()
 
     initialDist = Dirichlet.generate( D=D_latent )
     transDist = TransitionDirichletPrior.generate( D_in=D_latent, D_out=D_latent )
@@ -55,14 +55,14 @@ def testCategoricalForwardBackward():
 
     print( 'Passed the categorical forward backward marginal test!\n\n' )
 
-def testCategoricalForwardBackwardWithKnownStates():
+def testCategoricalHMMWithKnownStates():
 
     T = 50
     K = 3
     obsDim = 2
     D = 3
 
-    mp = CategoricalForwardBackward()
+    mp = CategoricalHMM()
 
     initialDist = Dirichlet.generate( D=K )
     transDist = TransitionDirichletPrior.generate( D_in=K, D_out=K )
@@ -114,14 +114,14 @@ def testCategoricalForwardBackwardWithKnownStates():
 
 ######################################################################
 
-def testGaussianForwardBackward():
+def testGaussianHMM():
 
     T = 100
     K = 20
     obsDim = 40
     D = 4
 
-    mp = GaussianForwardBackward()
+    mp = GaussianHMM()
 
     initialDist = Dirichlet.generate( D=K )
     transDist = TransitionDirichletPrior.generate( D_in=K, D_out=K )
@@ -172,13 +172,13 @@ def testGaussianForwardBackward():
 
 ######################################################################
 
-def testSLDSForwardBackward():
+def testSLDSHMM():
 
     T = 100
     D_latent = 20
     D_obs = 8
 
-    mp = SLDSForwardBackward()
+    mp = SLDSHMM()
 
     xs = np.random.random( ( T, D_latent ) )
 
@@ -426,10 +426,10 @@ def testStableKalmanFilter():
 
 def marginalizationTest():
 
-    testCategoricalForwardBackward()
-    testCategoricalForwardBackwardWithKnownStates()
-    testGaussianForwardBackward()
-    testSLDSForwardBackward()
+    testCategoricalHMM()
+    testCategoricalHMMWithKnownStates()
+    testGaussianHMM()
+    testSLDSHMM()
     testKalmanFilter()
     testSwitchingKalmanFilter()
     testStableKalmanFilter()

@@ -23,14 +23,14 @@ class StateBase( ExponentialFam ):
 
     @property
     def nat_params( self ):
-        if( self.standardChanged ):
+        if( self.standard_changed ):
             self._nat_params = self.standardToNat( *self.params )
-            self.standardChanged = False
+            self.standard_changed = False
         return self._nat_params
 
     @params.setter
     def params( self, val ):
-        self.standardChanged = True
+        self.standard_changed = True
         self.naturalChanged = False
         self.updateParams( *val )
         self._params = val
@@ -38,7 +38,7 @@ class StateBase( ExponentialFam ):
     @nat_params.setter
     def nat_params( self, val ):
         self.naturalChanged = True
-        self.standardChanged = False
+        self.standard_changed = False
         self.updateNatParams( *val )
         self._nat_params = val
 
@@ -47,22 +47,22 @@ class StateBase( ExponentialFam ):
     ## natrual mean field params ##
 
     @property
-    def mfParams( self ):
+    def mf_params( self ):
         if( self.mfNaturalChanged ):
-            self._mfParams = self.natToStandard( *self.mfNatParams )
+            self._mf_params = self.natToStandard( *self.mf_nat_params )
             self.mfNaturalChanged = False
-        return self._mfParams
+        return self._mf_params
 
-    @mfParams.setter
-    def mfParams( self, val ):
+    @mf_params.setter
+    def mf_params( self, val ):
         assert 0, 'Don\'t update this way!  All of the message passing algorithms (should) only work with natural params!'
 
     @property
-    def mfNatParams( self ):
-        return self._mfNatParams
+    def mf_nat_params( self ):
+        return self._mf_nat_params
 
-    @mfNatParams.setter
-    def mfNatParams( self, val ):
+    @mf_nat_params.setter
+    def mf_nat_params( self, val ):
         print( '-----------------' )
         print( self )
         for v in val:
@@ -71,20 +71,20 @@ class StateBase( ExponentialFam ):
         print( '-----------------' )
         self.mfNaturalChanged = True
         self.updateNatParams( *val )
-        self._mfNatParams = val
+        self._mf_nat_params = val
 
     ######################################################################
 
     @property
-    def lastNormalizer( self ):
+    def last_normalizer( self ):
         if( self._normalizerValid ):
-            return self._lastNormalizer
+            return self._last_normalizer
         return None
 
-    @lastNormalizer.setter
-    def lastNormalizer( self, val ):
+    @last_normalizer.setter
+    def last_normalizer( self, val ):
         self._normalizerValid = True
-        self._lastNormalizer = val
+        self._last_normalizer = val
 
     ######################################################################
 
@@ -226,13 +226,13 @@ class StateBase( ExponentialFam ):
         pass
 
     @classmethod
-    def expectedSufficientStats( cls, ys=None, params=None, nat_params=None, returnNormalizer=False, **kwargs ):
+    def expectedSufficientStats( cls, ys=None, params=None, nat_params=None, return_normalizer=False, **kwargs ):
         assert ( params is None ) ^ ( nat_params is None )
         params = params if params is not None else cls.natToStandard( *nat_params )
         dummy = cls( *params, paramCheck=False )
-        return dummy.iexpectedSufficientStats( ys=ys, returnNormalizer=returnNormalizer, **kwargs )
+        return dummy.iexpectedSufficientStats( ys=ys, return_normalizer=return_normalizer, **kwargs )
 
-    def iexpectedSufficientStats( self, ys=None, preprocessKwargs={}, filterKwargs={}, returnNormalizer=False ):
+    def iexpectedSufficientStats( self, ys=None, preprocessKwargs={}, filterKwargs={}, return_normalizer=False ):
 
         if( ys is None ):
             return super( StateBase, self ).iexpectedSufficientStats()
@@ -240,8 +240,8 @@ class StateBase( ExponentialFam ):
         alphas, betas = self.EStep( ys=ys, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
         stats = self.conditionedExpectedSufficientStats( ys, alphas, betas )
 
-        if( returnNormalizer ):
-            return stats, self.lastNormalizer
+        if( return_normalizer ):
+            return stats, self.last_normalizer
         return stats
 
     ######################################################################
@@ -520,7 +520,7 @@ class StateBase( ExponentialFam ):
             alphas, betas = zip( *[ work( _ys ) for _ys in ys ] )
             # alphas, betas = work( ys )
 
-        self.lastNormalizer = self.ilog_marginal( ys, alphas=alphas, betas=betas )
+        self.last_normalizer = self.ilog_marginal( ys, alphas=alphas, betas=betas )
         return alphas, betas
 
     @abstractmethod
@@ -531,24 +531,24 @@ class StateBase( ExponentialFam ):
 
     @classmethod
     def ELBO( cls, ys=None,
-                   mfParams=None,
-                   mfNatParams=None,
-                   priorMFParams=None,
-                   priorMFNatParams=None,
-                   priorParams=None,
-                   priorNatParams=None,
+                   mf_params=None,
+                   mf_nat_params=None,
+                   prior_mf_params=None,
+                   prior_mf_nat_params=None,
+                   prior_params=None,
+                   prior_nat_params=None,
                    normalizer=None,
                    **kwargs ):
 
         if( ys is None ):
             assert normalizer is not None
         else:
-            mfParams = mfParams if mfParams is not None else cls.natToStandard( *mfNatParams )
-            dummy = cls( *mfParams, paramCheck=False )
+            mf_params = mf_params if mf_params is not None else cls.natToStandard( *mf_nat_params )
+            dummy = cls( *mf_params, paramCheck=False )
             dummy.EStep( ys=ys, **kwargs )
-            normalizer = dummy.lastNormalizer
+            normalizer = dummy.last_normalizer
 
-        klDiv = cls.priorClass.KLDivergence( params1=priorParams, nat_params1=priorNatParams, params2=priorMFParams, nat_params2=priorMFNatParams )
+        klDiv = cls.priorClass.KLDivergence( params1=prior_params, nat_params1=prior_nat_params, params2=prior_mf_params, nat_params2=prior_mf_nat_params )
 
         return normalizer + klDiv
 
@@ -558,11 +558,11 @@ class StateBase( ExponentialFam ):
         # E_{ q( x, Ѳ ) }[ log_p( Ѳ ) - log_q( Ѳ ) ] = KL divergence between p( Ѳ ) and q( Ѳ )
 
         # Probably want a better way to do this than just creating a dummy state instance
-        dummy = type( self )( *self.mfParams, paramCheck=False )
+        dummy = type( self )( *self.mf_params, paramCheck=False )
         dummy.EStep( ys=ys, **kwargs )
-        normalizer = dummy.lastNormalizer
+        normalizer = dummy.last_normalizer
 
-        klDiv = self.prior.iKLDivergence( otherNatParams=self.prior.mfNatParams )
+        klDiv = self.prior.iKLDivergence( otherNatParams=self.prior.mf_nat_params )
 
         return normalizer + klDiv
 

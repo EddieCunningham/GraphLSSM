@@ -101,7 +101,7 @@ class TensorTransitionDirichletPrior( ExponentialFam ):
         alpha, = nat_params if nat_params is not None else cls.standardToNat( *params )
         last_dim = alpha.shape[ -1 ]
 
-        d = np.vstack( [ Dirichlet.log_partitionGradient( nat_params=( a, ) ) for a in alpha.reshape( ( -1, last_dim ) ) ] )
+        d = np.vstack( [ Dirichlet.log_partitionGradient( nat_params=( a, ) ) for a in alpha.reshape( ( -1, last_dim ) ) ] ).reshape( alpha.shape )
         return ( d, ) if split == False else ( ( d, ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):

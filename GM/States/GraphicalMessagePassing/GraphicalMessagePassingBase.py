@@ -795,11 +795,6 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
         # This is the full graph without the feedback set nodes.  It will
         # be a directed acyclic graph
         self.partial_graph = GraphMessagePasser()
-        # print( 'parital_pmask.shape', parital_pmask.shape )
-        # print( 'parital_pmask', parital_pmask )
-        # print( 'parital_cmask.shape', parital_cmask.shape )
-        # print( 'parital_cmask', parital_cmask )
-        # assert 0
         self.partial_graph.updateMasks( [ parital_pmask ], [ parital_cmask ] )
 
     ######################################################################

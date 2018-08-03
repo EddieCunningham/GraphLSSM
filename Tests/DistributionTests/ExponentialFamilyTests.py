@@ -360,6 +360,6 @@ def exponentialFamilyTest():
     standardTests()
     # tensorTests()
     # tensorNormalMarginalizationTest()
-    assert 0
-    # stateAndModelTests()
+    # assert 0
+    stateAndModelTests()
     print( 'Passed all of the exp fam tests!' )

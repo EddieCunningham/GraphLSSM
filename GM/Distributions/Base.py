@@ -105,12 +105,12 @@ class Distribution( ABC, _GibbsMixin, _MetropolisHastingMixin ):
     ##########################################################################
 
     @classmethod
-    def jointSample( cls, priorParams, size=1 ):
+    def jointSample( cls, prior_params, size=1 ):
         # Sample from P( x, Ѳ; α )
         xs = [ None for _ in range( size ) ]
         thetas = [ None for _ in range( size ) ]
         for i in range( size ):
-            theta = cls.priorClass.unpackSingleSample( cls.paramSample( priorParams=priorParams ) )
+            theta = cls.priorClass.unpackSingleSample( cls.paramSample( prior_params=prior_params ) )
             x = cls.unpackSingleSample( cls.sample( params=theta ) )
             xs[ i ] = x
             thetas[ i ] = theta
@@ -120,9 +120,9 @@ class Distribution( ABC, _GibbsMixin, _MetropolisHastingMixin ):
         return self.jointSample( self.prior.params, size=size )
 
     @classmethod
-    def log_joint( cls, x, params, priorParams ):
+    def log_joint( cls, x, params, prior_params ):
         # Compute P( x, Ѳ; α )
-        return cls.log_likelihood( x, params ) + cls.log_params( params, priorParams )
+        return cls.log_likelihood( x, params ) + cls.log_params( params, prior_params )
 
     def ilog_joint( self, x ):
         return self.log_joint( x, self.params )
@@ -131,7 +131,7 @@ class Distribution( ABC, _GibbsMixin, _MetropolisHastingMixin ):
 
     @classmethod
     @abstractmethod
-    def posteriorSample( cls, x, priorParams, size=1 ):
+    def posteriorSample( cls, x, prior_params, size=1 ):
         # Sample from P( Ѳ | x; α )
         pass
 
@@ -140,7 +140,7 @@ class Distribution( ABC, _GibbsMixin, _MetropolisHastingMixin ):
 
     @classmethod
     @abstractmethod
-    def log_posterior( cls, x, params, priorParams ):
+    def log_posterior( cls, x, params, prior_params ):
         # Compute P( Ѳ | x; α )
         pass
 
@@ -150,17 +150,17 @@ class Distribution( ABC, _GibbsMixin, _MetropolisHastingMixin ):
     ##########################################################################
 
     @classmethod
-    def paramSample( cls, priorParams, size=1 ):
+    def paramSample( cls, prior_params, size=1 ):
         # Sample from P( Ѳ; α )
-        return cls.priorClass.sample( priorParams, size=size )
+        return cls.priorClass.sample( prior_params, size=size )
 
     def iparamSample( self, size=1 ):
         return self.prior.isample( size=size )
 
     @classmethod
-    def log_params( cls, params, priorParams ):
+    def log_params( cls, params, prior_params ):
         # Compute P( Ѳ; α )
-        return cls.priorClass.log_likelihood( params, priorParams )
+        return cls.priorClass.log_likelihood( params, prior_params )
 
     def ilog_params( self ):
         return self.log_params( self.params, self.prior.params )
@@ -168,10 +168,10 @@ class Distribution( ABC, _GibbsMixin, _MetropolisHastingMixin ):
     ##########################################################################
 
     @classmethod
-    def log_marginal( cls, x, params, priorParams ):
+    def log_marginal( cls, x, params, prior_params ):
         likelihood = cls.log_likelihood( x, params )
-        posterior = cls.log_posterior( x, params, priorParams )
-        params = cls.log_params( params, priorParams )
+        posterior = cls.log_posterior( x, params, prior_params )
+        params = cls.log_params( params, prior_params )
         return likelihood + params - posterior
 
     def ilog_marginal( self, x ):
@@ -216,9 +216,9 @@ class ExponentialFam( Conjugate ):
 
     def __init__( self, *params, prior=None, hypers=None ):
 
-        self.standardChanged = False
+        self.standard_changed = False
         self.naturalChanged = False
-        self.mfStandardChanged = False
+        self.mf_standard_changed = False
         self.mfNaturalChanged = False
 
         super( ExponentialFam, self ).__init__( *params, prior=prior, hypers=hypers )
@@ -227,8 +227,8 @@ class ExponentialFam( Conjugate ):
         self.nat_params
 
         # Set the mean field params and natural params
-        self.mfNatParams = self.nat_params
-        self.mfParams
+        self.mf_nat_params = self.nat_params
+        self.mf_params
 
     ##########################################################################
 
@@ -241,49 +241,49 @@ class ExponentialFam( Conjugate ):
 
     @params.setter
     def params( self, val ):
-        self.standardChanged = True
+        self.standard_changed = True
         self.naturalChanged = False
         self._params = val
 
     @property
     def nat_params( self ):
-        if( self.standardChanged ):
+        if( self.standard_changed ):
             self._nat_params = self.standardToNat( *self.params )
-            self.standardChanged = False
+            self.standard_changed = False
         return self._nat_params
 
     @nat_params.setter
     def nat_params( self, val ):
         self.naturalChanged = True
-        self.standardChanged = False
+        self.standard_changed = False
         self._nat_params = val
 
     ##########################################################################
     ## Mean field parameters for variational inference ##
 
     @property
-    def mfParams( self ):
+    def mf_params( self ):
         if( self.mfNaturalChanged ):
-            self._mfParams = self.natToStandard( *self.mfNatParams )
+            self._mf_params = self.natToStandard( *self.mf_nat_params )
             self.mfNaturalChanged = False
-        return self._mfParams
+        return self._mf_params
 
-    @mfParams.setter
-    def mfParams( self, val ):
-        self.mfStandardChanged = True
-        self._mfParams = val
+    @mf_params.setter
+    def mf_params( self, val ):
+        self.mf_standard_changed = True
+        self._mf_params = val
 
     @property
-    def mfNatParams( self ):
-        if( self.mfStandardChanged ):
-            self._mfNatParams = self.standardToNat( *self.mfParams )
-            self.mfStandardChanged = False
-        return self._mfNatParams
+    def mf_nat_params( self ):
+        if( self.mf_standard_changed ):
+            self._mf_nat_params = self.standardToNat( *self.mf_params )
+            self.mf_standard_changed = False
+        return self._mf_nat_params
 
-    @mfNatParams.setter
-    def mfNatParams( self, val ):
+    @mf_nat_params.setter
+    def mf_nat_params( self, val ):
         self.mfNaturalChanged = True
-        self._mfNatParams = val
+        self._mf_nat_params = val
 
     ##########################################################################
 
@@ -315,29 +315,29 @@ class ExponentialFam( Conjugate ):
         pass
 
     def ilog_partition( self, x=None, split=False ):
-        if( self.standardChanged ):
+        if( self.standard_changed ):
             return self.log_partition( x=x, params=self.params, split=split )
         return self.log_partition( x=x, nat_params=self.nat_params, split=split )
 
     ##########################################################################
 
     @classmethod
-    def expectedNatParams( cls, priorParams=None, priorNatParams=None ):
+    def expectedNatParams( cls, prior_params=None, prior_nat_params=None ):
         # This is for when we want to do variational inference.
         # Use the fact that in conjugate models, the conjugate prior
         # t( x ) = ( n, -logZ ) for the child
-        expectedNatParams, exptectedPartition = cls.priorClass.log_partitionGradient( params=priorParams, nat_params=priorNatParams, split=True )
-        return expectedNatParams
+        expected_nat_params, expected_partition = cls.priorClass.log_partitionGradient( params=prior_params, nat_params=prior_nat_params, split=True )
+        return expected_nat_params
 
-    def iexpectedNatParams( self, useMeanField=False ):
-        if( useMeanField == False ):
-            if( self.standardChanged ):
-                return self.expectedNatParams( priorParams=self.prior.params )
-            return self.expectedNatParams( priorNatParams=self.prior.nat_params )
+    def iexpectedNatParams( self, use_mean_field=False ):
+        if( use_mean_field == False ):
+            if( self.standard_changed ):
+                return self.expectedNatParams( prior_params=self.prior.params )
+            return self.expectedNatParams( prior_nat_params=self.prior.nat_params )
         else:
-            if( self.mfStandardChanged ):
-                return self.expectedNatParams( priorParams=self.prior.mfParams )
-            return self.expectedNatParams( priorNatParams=self.prior.mfNatParams )
+            if( self.mf_standard_changed ):
+                return self.expectedNatParams( prior_params=self.prior.mf_params )
+            return self.expectedNatParams( prior_nat_params=self.prior.mf_nat_params )
 
     ##########################################################################
 
@@ -370,13 +370,13 @@ class ExponentialFam( Conjugate ):
         assert ( params is None ) ^ ( nat_params is None )
         nat_params = nat_params if nat_params is not None else cls.standardToNat( *params )
 
-        expectedStats = cls.expectedSufficientStats( nat_params=nat_params )
+        expected_stats = cls.expectedSufficientStats( nat_params=nat_params )
         log_partition = cls.log_partition( nat_params=nat_params )
 
-        return -sum( [ ( s * n ).sum() for s, n in zip( expectedStats, nat_params ) ] ) + log_partition
+        return -sum( [ ( s * n ).sum() for s, n in zip( expected_stats, nat_params ) ] ) + log_partition
 
     def ientropy( self ):
-        if( self.standardChanged ):
+        if( self.standard_changed ):
             return self.entropy( params=self.params )
         return self.entropy( nat_params=self.nat_params )
 
@@ -392,7 +392,7 @@ class ExponentialFam( Conjugate ):
         return [ s - p for s, p in zip( stats, part ) ]
 
     def iscore( self, x ):
-        if( self.standardChanged ):
+        if( self.standard_changed ):
             return self.score( x, params=self.params, constParams=self.constParams )
         return self.score( x, nat_params=self.nat_params, constParams=self.constParams )
 
@@ -431,26 +431,26 @@ class ExponentialFam( Conjugate ):
         nat_params2 = nat_params2 if nat_params2 is not None else cls.standardToNat( *params2 )
         assert len( nat_params1 ) == len( nat_params2 )
 
-        natDiff = []
+        nat_diff = []
         for n1, n2 in zip( nat_params1, nat_params2 ):
             assert n1.shape == n2.shape
-            natDiff.append( n1 - n2 )
+            nat_diff.append( n1 - n2 )
 
         ans = 0.0
-        for n, p in zip( natDiff, cls.log_partitionGradient( nat_params=nat_params1 ) ):
+        for n, p in zip( nat_diff, cls.log_partitionGradient( nat_params=nat_params1 ) ):
             ans += ( n * p ).sum()
 
         ans -= cls.log_partition( nat_params=nat_params1 )
         ans += cls.log_partition( nat_params=nat_params2 )
         return ans
 
-    def iKLDivergence( self, otherParams=None, otherNatParams=None, other=None ):
+    def iKLDivergence( self, other_params=None, other_nat_params=None, other=None ):
         if( other is not None ):
             assert isinstance( other, ExponentialFam )
             return self.KLDivergence( nat_params1=self.nat_params, nat_params2=other.nat_params )
 
-        assert ( otherParams is None ) ^ ( otherNatParams is None )
-        return self.KLDivergence( nat_params1=self.nat_params, params2=otherParams, nat_params2=otherNatParams )
+        assert ( other_params is None ) ^ ( other_nat_params is None )
+        return self.KLDivergence( nat_params1=self.nat_params, params2=other_params, nat_params2=other_nat_params )
 
     ####################################################################################################################################################
 
@@ -460,17 +460,17 @@ class ExponentialFam( Conjugate ):
         assert ( params is None ) ^ ( nat_params is None )
 
     def isample( self, size=1 ):
-        if( self.standardChanged ):
+        if( self.standard_changed ):
             return self.sample( params=self.params, size=size )
         return self.sample( nat_params=self.nat_params, size=size )
 
     ##########################################################################
 
     @classmethod
-    def paramSample( cls, priorParams=None, priorNatParams=None, size=1 ):
+    def paramSample( cls, prior_params=None, prior_nat_params=None, size=1 ):
         # Sample from P( Ѳ; α )
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
-        return cls.priorClass.sample( params=priorParams, nat_params=priorNatParams, size=size )
+        assert ( prior_params is None ) ^ ( prior_nat_params is None )
+        return cls.priorClass.sample( params=prior_params, nat_params=prior_nat_params, size=size )
 
     def iparamSample( self, size=1 ):
         return self.prior.isample( size=size )
@@ -478,78 +478,78 @@ class ExponentialFam( Conjugate ):
     ##########################################################################
 
     @classmethod
-    def jointSample( cls, priorParams=None, priorNatParams=None, size=1 ):
+    def jointSample( cls, prior_params=None, prior_nat_params=None, size=1 ):
         # Sample from P( x, Ѳ; α )
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( prior_params is None ) ^ ( prior_nat_params is None )
         xs = [ None for _ in range( size ) ]
         thetas = [ None for _ in range( size ) ]
         for i in range( size ):
-            theta = cls.priorClass.unpackSingleSample( cls.paramSample( priorParams=priorParams, priorNatParams=priorNatParams ) )
+            theta = cls.priorClass.unpackSingleSample( cls.paramSample( prior_params=prior_params, prior_nat_params=prior_nat_params ) )
             x = cls.unpackSingleSample( cls.sample( params=theta ) )
             xs[ i ] = x
             thetas[ i ] = theta
         return xs, thetas
 
     def ijointSample( self, size=1 ):
-        if( self.prior.standardChanged ):
-            return self.jointSample( priorParams=self.prior.params, size=size )
-        return self.jointSample( priorNatParams=self.prior.nat_params, size=size )
+        if( self.prior.standard_changed ):
+            return self.jointSample( prior_params=self.prior.params, size=size )
+        return self.jointSample( prior_nat_params=self.prior.nat_params, size=size )
 
     ##########################################################################
 
     @classmethod
-    def posteriorPriorNatParams( cls, x=None, constParams=None, priorParams=None, priorNatParams=None, stats=None ):
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
+    def posteriorPriorNatParams( cls, x=None, constParams=None, prior_params=None, prior_nat_params=None, stats=None ):
+        assert ( prior_params is None ) ^ ( prior_nat_params is None )
         assert ( x is None ) ^ ( stats is None )
 
-        priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
+        prior_nat_params = prior_nat_params if prior_nat_params is not None else cls.priorClass.standardToNat( *prior_params )
 
         if( x is not None ):
             cls.checkShape( x )
             stats = cls.sufficientStats( x, constParams=constParams )
-            dataN = cls.dataN( x, constParams=constParams )
-            stats = stats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( stats ) ) ] )
+            data_n = cls.dataN( x, constParams=constParams )
+            stats = stats + tuple( [ data_n for _ in range( len( prior_nat_params ) - len( stats ) ) ] )
 
-        return [ np.add( s, p ) for s, p in zip( stats, priorNatParams ) ]
+        return [ np.add( s, p ) for s, p in zip( stats, prior_nat_params ) ]
 
     @classmethod
-    def variationalPosteriorPriorNatParams( cls, ys=None, constParams=None, params=None, nat_params=None, priorParams=None, priorNatParams=None, returnNormalizer=False ):
+    def variationalPosteriorPriorNatParams( cls, ys=None, constParams=None, params=None, nat_params=None, prior_params=None, prior_nat_params=None, return_normalizer=False ):
         assert ( params is None ) ^ ( nat_params is None )
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( prior_params is None ) ^ ( prior_nat_params is None )
 
         # Because this will only be used to do variational inference,
         # make sure that the observed data is passed in
         assert ys is not None
 
-        expectedStats, normalizer = cls.expectedSufficientStats( ys=ys, params=params, nat_params=nat_params, returnNormalizer=True )
+        expectedStats, normalizer = cls.expectedSufficientStats( ys=ys, params=params, nat_params=nat_params, return_normalizer=True )
 
         # Assume that these are variational parameters
-        priorNatParams = priorNatParams if priorNatParams is not None else cls.priorClass.standardToNat( *priorParams )
+        prior_nat_params = prior_nat_params if prior_nat_params is not None else cls.priorClass.standardToNat( *prior_params )
 
-        dataN = cls.dataN( ys, conditionOnY=True, checkY=True, constParams=constParams )
-        expectedStats = expectedStats + tuple( [ dataN for _ in range( len( priorNatParams ) - len( expectedStats ) ) ] )
+        data_n = cls.dataN( ys, conditionOnY=True, checkY=True, constParams=constParams )
+        expectedStats = expectedStats + tuple( [ data_n for _ in range( len( prior_nat_params ) - len( expectedStats ) ) ] )
 
-        ans = [ np.add( s, p ) for s, p in zip( expectedStats, priorNatParams ) ]
-        return ans if returnNormalizer == False else ( ans, normalizer )
+        ans = [ np.add( s, p ) for s, p in zip( expectedStats, prior_nat_params ) ]
+        return ans if return_normalizer == False else ( ans, normalizer )
 
     ##########################################################################
 
     @classmethod
-    def posteriorSample( cls, x=None, constParams=None, priorParams=None, priorNatParams=None, size=1, stats=None ):
+    def posteriorSample( cls, x=None, constParams=None, prior_params=None, prior_nat_params=None, size=1, stats=None ):
         # Sample from P( Ѳ | x; α )
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( prior_params is None ) ^ ( prior_nat_params is None )
         assert ( x is None ) ^ ( stats is None )
 
         if( x is not None ):
             cls.checkShape( x )
-        postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams, stats=stats )
+        postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, prior_params=prior_params, prior_nat_params=prior_nat_params, stats=stats )
         return cls.priorClass.sample( nat_params=postNatParams, size=size )
 
     def iposteriorSample( self, x=None, stats=None, size=1 ):
         assert ( x is None ) ^ ( stats is None )
-        if( self.prior.standardChanged ):
-            return self.posteriorSample( x=x, constParams=self.constParams, priorParams=self.prior.params, size=size, stats=stats )
-        return self.posteriorSample( x=x, constParams=self.constParams, priorNatParams=self.prior.nat_params, size=size, stats=stats )
+        if( self.prior.standard_changed ):
+            return self.posteriorSample( x=x, constParams=self.constParams, prior_params=self.prior.params, size=size, stats=stats )
+        return self.posteriorSample( x=x, constParams=self.constParams, prior_nat_params=self.prior.nat_params, size=size, stats=stats )
 
     ####################################################################################################################################################
 
@@ -573,19 +573,19 @@ class ExponentialFam( Conjugate ):
     def ilog_likelihood( self, x, expFam=False ):
         if( expFam ):
             return self.log_likelihoodExpFam( x, constParams=self.constParams, nat_params=self.nat_params )
-        if( self.standardChanged ):
+        if( self.standard_changed ):
             return self.log_likelihood( x, params=self.params )
         return self.log_likelihood( x, nat_params=self.nat_params )
 
     ##########################################################################
 
     @classmethod
-    def log_params( cls, params=None, nat_params=None, priorParams=None, priorNatParams=None ):
+    def log_params( cls, params=None, nat_params=None, prior_params=None, prior_nat_params=None ):
         # Compute P( Ѳ; α )
-        assert ( params is None ) ^ ( nat_params is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( params is None ) ^ ( nat_params is None ) and ( prior_params is None ) ^ ( prior_nat_params is None )
         params = params if params is not None else cls.natToStandard( *nat_params )
         cls.priorClass.checkShape( params )
-        return cls.priorClass.log_likelihood( params, params=priorParams, nat_params=priorNatParams )
+        return cls.priorClass.log_likelihood( params, params=prior_params, nat_params=prior_nat_params )
 
     def ilog_params( self, expFam=False ):
         return self.prior.ilog_likelihood( self.params, expFam=expFam )
@@ -593,48 +593,48 @@ class ExponentialFam( Conjugate ):
     ##########################################################################
 
     @classmethod
-    def log_jointExpFam( cls, x, params=None, nat_params=None, constParams=None, priorParams=None, priorNatParams=None ):
-        assert ( params is None ) ^ ( nat_params is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+    def log_jointExpFam( cls, x, params=None, nat_params=None, constParams=None, prior_params=None, prior_nat_params=None ):
+        assert ( params is None ) ^ ( nat_params is None ) and ( prior_params is None ) ^ ( prior_nat_params is None )
 
         cls.checkShape( x )
-        postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
+        postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, prior_params=prior_params, prior_nat_params=prior_nat_params )
 
         params = params if params is not None else cls.natToStandard( *nat_params )
         cls.priorClass.checkShape( params )
         stat = cls.priorClass.sufficientStats( params, constParams=constParams )
-        part = cls.priorClass.log_partition( params, params=priorParams, nat_params=priorNatParams )
+        part = cls.priorClass.log_partition( params, params=prior_params, nat_params=prior_nat_params )
 
         return cls.log_pdf( postNatParams, stat, part )
 
     @classmethod
-    def log_joint( cls, x, params=None, nat_params=None, priorParams=None, priorNatParams=None ):
+    def log_joint( cls, x, params=None, nat_params=None, prior_params=None, prior_nat_params=None ):
         # Compute P( x, Ѳ; α )
-        assert ( params is None ) ^ ( nat_params is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( params is None ) ^ ( nat_params is None ) and ( prior_params is None ) ^ ( prior_nat_params is None )
 
-        return cls.log_params( params=params, nat_params=nat_params, priorParams=priorParams, priorNatParams=priorNatParams ) + \
+        return cls.log_params( params=params, nat_params=nat_params, prior_params=prior_params, prior_nat_params=prior_nat_params ) + \
                cls.log_likelihood( x, params=params, nat_params=nat_params )
 
     def ilog_joint( self, x, expFam=False ):
         if( expFam ):
-            return self.log_jointExpFam( x, params=self.params, constParams=self.constParams, priorNatParams=self.prior.nat_params )
-        if( self.standardChanged ):
-            if( self.prior.standardChanged ):
-                return self.log_joint( x, params=self.params, priorParams=self.prior.params )
-            return self.log_joint( x, params=self.params, priorNatParams=self.prior.nat_params )
-        if( self.prior.standardChanged ):
-            return self.log_joint( x, nat_params=self.nat_params, priorParams=self.prior.params )
-        return self.log_joint( x, nat_params=self.nat_params, priorNatParams=self.prior.nat_params )
+            return self.log_jointExpFam( x, params=self.params, constParams=self.constParams, prior_nat_params=self.prior.nat_params )
+        if( self.standard_changed ):
+            if( self.prior.standard_changed ):
+                return self.log_joint( x, params=self.params, prior_params=self.prior.params )
+            return self.log_joint( x, params=self.params, prior_nat_params=self.prior.nat_params )
+        if( self.prior.standard_changed ):
+            return self.log_joint( x, nat_params=self.nat_params, prior_params=self.prior.params )
+        return self.log_joint( x, nat_params=self.nat_params, prior_nat_params=self.prior.nat_params )
 
     ##########################################################################
 
     @classmethod
-    def log_posteriorExpFam( cls, x, params=None, nat_params=None, constParams=None, priorParams=None, priorNatParams=None, stats=None ):
-        assert ( params is None ) ^ ( nat_params is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+    def log_posteriorExpFam( cls, x, params=None, nat_params=None, constParams=None, prior_params=None, prior_nat_params=None, stats=None ):
+        assert ( params is None ) ^ ( nat_params is None ) and ( prior_params is None ) ^ ( prior_nat_params is None )
         assert ( x is None ) ^ ( stats is None )
 
         if( x is not None ):
             cls.checkShape( x )
-        postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams, stats=stats )
+        postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, prior_params=prior_params, prior_nat_params=prior_nat_params, stats=stats )
 
         params = params if params is not None else cls.natToStandard( *nat_params )
         cls.priorClass.checkShape( params )
@@ -645,15 +645,15 @@ class ExponentialFam( Conjugate ):
         return cls.priorClass.log_pdf( postNatParams, stat, part )
 
     @classmethod
-    def log_posterior( cls, x=None, params=None, nat_params=None, constParams=None, priorParams=None, priorNatParams=None, stats=None ):
+    def log_posterior( cls, x=None, params=None, nat_params=None, constParams=None, prior_params=None, prior_nat_params=None, stats=None ):
         # Compute P( Ѳ | x; α )
-        assert ( params is None ) ^ ( nat_params is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( params is None ) ^ ( nat_params is None ) and ( prior_params is None ) ^ ( prior_nat_params is None )
         assert ( x is None ) ^ ( stats is None )
         params = params if params is not None else cls.natToStandard( *nat_params )
 
         if( x is not None ):
             cls.checkShape( x )
-        postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams, stats=stats )
+        postNatParams = cls.posteriorPriorNatParams( x=x, constParams=constParams, prior_params=prior_params, prior_nat_params=prior_nat_params, stats=stats )
 
         assert cls.priorClass.dataN( params, constParams=constParams ) == 1
         return cls.priorClass.log_likelihood( params, nat_params=postNatParams )
@@ -661,38 +661,38 @@ class ExponentialFam( Conjugate ):
     def ilog_posterior( self, x=None, expFam=False, stats=None ):
         assert ( x is None ) ^ ( stats is None )
         if( expFam ):
-            return self.log_posteriorExpFam( x=x, params=self.params, constParams=self.constParams, priorNatParams=self.prior.nat_params, stats=stats )
-        if( self.standardChanged ):
-            if( self.prior.standardChanged ):
-                return self.log_posterior( x=x, params=self.params, constParams=self.constParams, priorParams=self.prior.params, stats=stats )
-            return self.log_posterior( x=x, params=self.params, constParams=self.constParams, priorNatParams=self.prior.nat_params, stats=stats )
-        if( self.prior.standardChanged ):
-            return self.log_posterior( x=x, nat_params=self.nat_params, constParams=self.constParams, priorParams=self.prior.params, stats=stats )
-        return self.log_posterior( x=x, nat_params=self.nat_params, constParams=self.constParams, priorNatParams=self.prior.nat_params, stats=stats )
+            return self.log_posteriorExpFam( x=x, params=self.params, constParams=self.constParams, prior_nat_params=self.prior.nat_params, stats=stats )
+        if( self.standard_changed ):
+            if( self.prior.standard_changed ):
+                return self.log_posterior( x=x, params=self.params, constParams=self.constParams, prior_params=self.prior.params, stats=stats )
+            return self.log_posterior( x=x, params=self.params, constParams=self.constParams, prior_nat_params=self.prior.nat_params, stats=stats )
+        if( self.prior.standard_changed ):
+            return self.log_posterior( x=x, nat_params=self.nat_params, constParams=self.constParams, prior_params=self.prior.params, stats=stats )
+        return self.log_posterior( x=x, nat_params=self.nat_params, constParams=self.constParams, prior_nat_params=self.prior.nat_params, stats=stats )
 
     ##########################################################################
 
     @classmethod
-    def log_marginal( cls, x, params=None, nat_params=None, constParams=None, priorParams=None, priorNatParams=None ):
+    def log_marginal( cls, x, params=None, nat_params=None, constParams=None, prior_params=None, prior_nat_params=None ):
         # Compute P( x; α )
-        assert ( params is None ) ^ ( nat_params is None ) and ( priorParams is None ) ^ ( priorNatParams is None )
+        assert ( params is None ) ^ ( nat_params is None ) and ( prior_params is None ) ^ ( prior_nat_params is None )
         params = params if params is not None else cls.natToStandard( *nat_params )
 
         cls.checkShape( x )
 
         likelihood = cls.log_likelihood( x, params=params, nat_params=nat_params )
-        posterior = cls.log_posterior( x, params=params, nat_params=nat_params, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
-        params = cls.log_params( params=params, nat_params=nat_params, priorParams=priorParams, priorNatParams=priorNatParams )
+        posterior = cls.log_posterior( x, params=params, nat_params=nat_params, constParams=constParams, prior_params=prior_params, prior_nat_params=prior_nat_params )
+        params = cls.log_params( params=params, nat_params=nat_params, prior_params=prior_params, prior_nat_params=prior_nat_params )
         return likelihood + params - posterior
 
     def ilog_marginal( self, x ):
-        if( self.standardChanged ):
-            if( self.prior.standardChanged ):
-                return self.log_marginal( x, params=self.params, constParams=self.constParams, priorParams=self.prior.params )
-            return self.log_marginal( x, params=self.params, constParams=self.constParams, priorNatParams=self.prior.nat_params )
-        if( self.prior.standardChanged ):
-            return self.log_marginal( x, nat_params=self.nat_params, constParams=self.constParams, priorParams=self.prior.params )
-        return self.log_marginal( x, nat_params=self.nat_params, constParams=self.constParams, priorNatParams=self.prior.nat_params )
+        if( self.standard_changed ):
+            if( self.prior.standard_changed ):
+                return self.log_marginal( x, params=self.params, constParams=self.constParams, prior_params=self.prior.params )
+            return self.log_marginal( x, params=self.params, constParams=self.constParams, prior_nat_params=self.prior.nat_params )
+        if( self.prior.standard_changed ):
+            return self.log_marginal( x, nat_params=self.nat_params, constParams=self.constParams, prior_params=self.prior.params )
+        return self.log_marginal( x, nat_params=self.nat_params, constParams=self.constParams, prior_nat_params=self.prior.nat_params )
 
     ##########################################################################
 
@@ -720,10 +720,10 @@ class ExponentialFam( Conjugate ):
         raise NotImplementedError
 
     @classmethod
-    def MAP( cls, x=None, priorParams=None, priorNatParams=None ):
-        assert ( priorParams is None ) ^ ( priorNatParams is None )
+    def MAP( cls, x=None, prior_params=None, prior_nat_params=None ):
+        assert ( prior_params is None ) ^ ( prior_nat_params is None )
         cls.checkShape( x )
-        postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, priorParams=priorParams, priorNatParams=priorNatParams )
+        postNatParams = cls.posteriorPriorNatParams( x, constParams=constParams, prior_params=prior_params, prior_nat_params=prior_nat_params )
         return cls.priorClass.mode( nat_params=postNatParams )
 
     ##########################################################################

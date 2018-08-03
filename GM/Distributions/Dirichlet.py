@@ -94,7 +94,7 @@ class Dirichlet( ExponentialFam ):
         # Derivative w.r.t. natural params. Also the expected sufficient stat
         assert ( params is None ) ^ ( nat_params is None )
         n, = nat_params if nat_params is not None else cls.standardToNat( *params )
-        assert np.all( n > 0 )
+        assert np.all( n >= 0 ), n
         d = digamma( ( n + 1 ) ) - digamma( ( n + 1 ).sum() )
         return ( d, ) if split == False else ( ( d, ), ( 0, ) )
 

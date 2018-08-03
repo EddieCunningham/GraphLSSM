@@ -3,13 +3,13 @@ import numpy as np
 from functools import reduce
 from GenModels.GM.Distributions import Normal, Categorical, Transition, Regression
 
-__all__ = [ 'CategoricalForwardBackward',
-            'GaussianForwardBackward',
-            'SLDSForwardBackward' ]
+__all__ = [ 'CategoricalHMM',
+            'GaussianHMM',
+            'SLDSHMM' ]
 
 #########################################################################################
 
-class CategoricalForwardBackward( MessagePasser ):
+class CategoricalHMM( MessagePasser ):
     # Categorical emissions.  Everything is done in log space
 
     @property
@@ -108,12 +108,12 @@ class CategoricalForwardBackward( MessagePasser ):
     def forwardStep( self, t, alpha ):
         # Write P( y_1:t-1, x_t-1 ) in terms of [ x_t, x_t-1 ]
         _alpha = np.broadcast_to( alpha, ( self.K, self.K ) )
-        return super( CategoricalForwardBackward, self ).forwardStep( t, _alpha )
+        return super( CategoricalHMM, self ).forwardStep( t, _alpha )
 
     def backwardStep( self, t, beta ):
         # Write P( y_t+2:T | x_t+1 ) in terms of [ x_t+1, x_t ]
         _beta = np.broadcast_to( beta, ( self.K, self.K ) )
-        return super( CategoricalForwardBackward, self ).backwardStep( t, _beta )
+        return super( CategoricalHMM, self ).backwardStep( t, _beta )
 
     ######################################################################
 
@@ -165,7 +165,7 @@ class CategoricalForwardBackward( MessagePasser ):
         else:
             self.chainCuts = None
 
-        return super( CategoricalForwardBackward, self ).forwardFilter()
+        return super( CategoricalHMM, self ).forwardFilter()
 
     ######################################################################
 
@@ -183,7 +183,7 @@ class CategoricalForwardBackward( MessagePasser ):
         else:
             self.chainCuts = None
 
-        return super( CategoricalForwardBackward, self ).backwardFilter()
+        return super( CategoricalHMM, self ).backwardFilter()
 
     ######################################################################
 
@@ -205,7 +205,7 @@ class CategoricalForwardBackward( MessagePasser ):
 
 #########################################################################################
 
-class GaussianForwardBackward( CategoricalForwardBackward ):
+class GaussianHMM( CategoricalHMM ):
     # Gaussian emissions
 
     def parameterCheck( self, initialDist, transDist, mus, sigmas, ys=None ):
@@ -274,7 +274,7 @@ class GaussianForwardBackward( CategoricalForwardBackward ):
 
 #########################################################################################
 
-class SLDSForwardBackward( CategoricalForwardBackward ):
+class SLDSHMM( CategoricalHMM ):
 
     def parameterCheck( self, initialDist, transDist, mu0, sigma0, u, As, sigmas, xs=None ):
 

@@ -51,7 +51,7 @@ def HMMModelTest():
         hmm.fit( ys=ys, method='cavi', maxIters=1000, verbose=False )
         elbo = hmm.state.iELBO( ys )
         print( '\nPrior mean field params' )
-        for p in hmm.state.prior.mfParams:
+        for p in hmm.state.prior.mf_params:
             print( np.round( p, decimals=3 ) )
             print()
         print( 'ELBO', elbo )
@@ -98,7 +98,7 @@ def LDSModelTest():
         lds.fit( ys=ys, u=u, method='cavi', maxIters=1000, verbose=False )
         elbo = lds.state.iELBO( ys )
         print( '\nPrior mean field params' )
-        for p in lds.state.prior.mfParams:
+        for p in lds.state.prior.mf_params:
             print( np.round( p, decimals=3 ) )
             print()
         print( 'ELBO', elbo )

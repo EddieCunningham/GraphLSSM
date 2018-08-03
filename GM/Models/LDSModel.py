@@ -91,7 +91,7 @@ class LDSModel( _InferenceModel ):
             alphas, betas = self.state.EStep( ys=ys, u=u, preprocessKwargs=preprocessKwargs, filterKwargs=filterKwargs )
             self.state.params = self.state.MStep( ys, u, alphas, betas )
 
-            marginal = self.state.lastNormalizer
+            marginal = self.state.last_normalizer
             if( np.isclose( marginal, lastMarginal ) ):
                 break
 
@@ -105,19 +105,19 @@ class LDSModel( _InferenceModel ):
         for i in verboseRange( maxIters, verbose ):
 
             if( i > 0 ):
-                self.state.prior.mfNatParams = priorMFNatParams
+                self.state.prior.mf_nat_params = prior_mf_nat_params
 
-            self.state.mfNatParams = self.state.iexpectedNatParams( useMeanField=True )
-            priorMFNatParams, normalizer = self.state.variationalPosteriorPriorNatParams( ys=ys,
+            self.state.mf_nat_params = self.state.iexpectedNatParams( use_mean_field=True )
+            prior_mf_nat_params, normalizer = self.state.variationalPosteriorPriorNatParams( ys=ys,
                                                                                           u=u,
-                                                                                          nat_params=self.state.mfNatParams,
-                                                                                          priorNatParams=self.state.prior.nat_params,
-                                                                                          returnNormalizer=True )
+                                                                                          nat_params=self.state.mf_nat_params,
+                                                                                          prior_nat_params=self.state.prior.nat_params,
+                                                                                          return_normalizer=True )
 
             # The ELBO computation is only valid right after the variational E step
             elbo = self.state.ELBO( normalizer=normalizer,
-                                    priorMFNatParams=self.state.prior.mfNatParams,
-                                    priorNatParams=self.state.prior.nat_params )
+                                    prior_mf_nat_params=self.state.prior.mf_nat_params,
+                                    prior_nat_params=self.state.prior.nat_params )
 
             if( np.isclose( lastElbo, elbo ) ):
                 break
