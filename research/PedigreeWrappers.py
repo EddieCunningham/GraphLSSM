@@ -57,8 +57,8 @@ class PedigreeSexMatters( _pedigreeMixin, GroupGraph ):
 
 class _pedigreeFilterMixin():
 
-    def preprocessData( self, data_graphs, only_load=False ):
-        super().preprocessData( data_graphs, only_load=only_load )
+    def preprocessData( self, data_graphs ):
+        super().preprocessData( data_graphs )
         self.node_attrs = []
         total_nodes = 0
         for graph, fbs in data_graphs:

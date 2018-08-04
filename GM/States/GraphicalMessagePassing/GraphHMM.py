@@ -51,7 +51,7 @@ class _graphHMMMixin():
             assert ndim not in pis
             pis.add( ndim )
 
-    def preprocessData( self, data_graphs, only_load=False ):
+    def preprocessData( self, data_graphs ):
 
         super( _graphHMMMixin, self ).updateGraphs( data_graphs )
 
@@ -251,7 +251,7 @@ class GraphHMM( _graphHMMMixin, GraphFilter ):
 
 class GraphHMMFBS( _graphHMMMixin, GraphFilterFBS ):
 
-    def preprocessData( self, data_graphs, only_load=False ):
+    def preprocessData( self, data_graphs ):
 
         super().updateGraphs( data_graphs )
 
@@ -484,6 +484,30 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
 
     # This variant lets the user specify which set of parameters to apply to a node
 
+    def genFilterProbs( self ):
+
+        # Initialize U and V
+        U = []
+        for node in self.partial_graph.nodes:
+            group = self.node_groups[ node ]
+            U.append( fbsData( np.zeros( self.Ks[ group ] ), -1 ) )
+
+        V_row = self.partial_graph.pmask.row
+        V_col = self.partial_graph.pmask.col
+        V_data = []
+        for node in self.partial_graph.pmask.row:
+            group = self.node_groups[ node ]
+            V_data.append( fbsData( np.zeros( self.Ks[ group ] ), -1 ) )
+
+        # Invalidate all data elements
+        for node in self.partial_graph.nodes:
+            U[ node ][ : ] = np.nan
+            self.assignV( ( V_row, V_col, V_data ), node, np.nan, keep_shape=True )
+
+        return U, ( V_row, V_col, V_data )
+
+    ######################################################################
+
     def parameterCheck( self, log_initial_dists, log_transition_dists, log_emission_dists ):
 
         assert len( log_initial_dists.keys() ) == len( log_transition_dists.keys() ) and len( log_transition_dists.keys() ) == len( log_emission_dists.keys() )
@@ -497,7 +521,7 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
             assert log_initial_dist.ndim == 1
             assert log_initial_dist.shape == ( K, )
             for _transition_dist in log_transition_dist:
-                assert np.allclose( np.ones( K ), np.exp( _transition_dist ).sum( axis=-1 ) ), _transition_dist.sum( axis=-1 )
+                assert np.allclose( np.ones( _transition_dist.shape[ :-1 ] ), np.exp( _transition_dist ).sum( axis=-1 ) ), _transition_dist.sum( axis=-1 )
             assert log_emission_dist.shape[ 0 ] == K
             assert np.isclose( 1.0, np.exp( log_initial_dist ).sum() )
             assert np.allclose( np.ones( K ), np.exp( log_emission_dist ).sum( axis=1 ) )
@@ -507,7 +531,7 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
                 assert ndim not in pis
                 pis.add( ndim )
 
-    def preprocessData( self, group_graphs, only_load=False ):
+    def preprocessData( self, group_graphs ):
 
         super().updateGraphs( group_graphs )
 
@@ -519,7 +543,7 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
             for node, state in group_graph.possible_latent_states.items():
                 self.possible_latent_states[ total_nodes + node ] = state
 
-            for node, group in group_graphs.groups:
+            for node, group in group_graph.groups.items():
                 self.node_groups[ total_nodes + node ] = group
 
             total_nodes += len( group_graph.nodes )
@@ -527,26 +551,24 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
         # Each node must have an assigned group
         assert len( self.node_groups ) == self.nodes.shape[ 0 ]
 
-        if( only_load == False ):
-            ys = {}
-            for graph, fbs in group_graphs:
-                ys.extend( [ graph.data[ node ] if graph.data[ node ] is not None else np.nan for node in graph.nodes ] )
+        self.ys = []
+        for graph, fbs in group_graphs:
+            self.ys.extend( [ graph.data[ node ] if graph.data[ node ] is not None else np.nan for node in graph.nodes ] )
 
-            self.ys = ys
+        # Don't need to change emission dist because all of the emission stuff
+        # is done here
+        if( hasattr( self, 'emission_dists' ) ):
+            self.L_set = True
+            ys = np.array( self.ys ).T
+            L = []
+            for node, y in zip( self.nodes, ys ):
+                group = self.node_groups[ node ]
+                if( not np.any( np.isnan( y ) ) ):
+                    L.append( self.emission_dists[ group ][ :, y ] )
+                else:
+                    L.append( np.zeros_like( self.emission_dists[ group ][ :, 0 ] ) )
 
-            # Don't need to change emission dist because all of the emission stuff
-            # is done here
-            if( hasattr( self, 'emission_dist' ) ):
-                ys = np.array( ys ).T
-                L = []
-                for node, y in zip( graph.nodes, ys ):
-                    group = self.node_groups[ node ]
-                    if( not np.any( np.isnan( y ) ) ):
-                        L.append( self.emission_dist[ group ][ :, y ] )
-                    else:
-                        L.append( np.zeros_like( self.emission_dist[ group ][ :, 0 ] ) )
-
-                self.L = np.array( L ).sum( axis=0 ).T
+            self.L = np.array( L ).sum( axis=0 ).T
 
     def updateParams( self, initial_dists, transition_dists, emission_dists, group_graphs=None, compute_marginal=True ):
 
@@ -554,23 +576,26 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
         assert isinstance( transition_dists, dict ), 'Make a dict that maps groups to parameters'
         assert isinstance( emission_dists, dict ), 'Make a dict that maps groups to parameters'
 
-        log_initial_dists = {}
-        for group, dist in initial_dists.items():
-            log_initial_dists[ group ] = np.log( dist )
+        # Ignore warning for when an entry of a dist is 0
+        with np.errstate( divide='ignore', invalid='ignore' ):
+            log_initial_dists = {}
+            for group, dist in initial_dists.items():
+                log_initial_dists[ group ] = np.log( dist )
 
-        log_transition_dists = {}
-        for group, dists in transition_dists.items():
-            log_transition_dists[ group ] = [ np.log( dist ) for dist in dists ]
+            log_transition_dists = {}
+            for group, dists in transition_dists.items():
+                log_transition_dists[ group ] = [ np.log( dist ) for dist in dists ]
 
-        log_emission_dists = {}
-        for group, dist in emission_dists.items():
-            log_emission_dists[ group ] = np.log( dist )
+            log_emission_dists = {}
+            for group, dist in emission_dists.items():
+                log_emission_dists[ group ] = np.log( dist )
 
         self.updateNatParams( log_initial_dists, log_transition_dists, log_emission_dists, group_graphs=group_graphs, compute_marginal=compute_marginal )
 
-    def updateNatParams( self, log_initial_dists, log_transition_dists, log_emission_dists, group_graphs=None, compute_marginal=True ):
+    def updateNatParams( self, log_initial_dists, log_transition_dists, log_emission_dists, group_graphs=None, check_parameters=True, compute_marginal=True ):
 
-        self.parameterCheck( log_initial_dists, log_transition_dists, log_emission_dists )
+        if( check_parameters ):
+            self.parameterCheck( log_initial_dists, log_transition_dists, log_emission_dists )
 
         # Get the latent state sizes from the initial dist
         self.Ks = dict( [ ( group, dist.shape[ 0 ] ) for group, dist in log_initial_dists.items() ] )
@@ -588,9 +613,23 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
 
         # Set the emission distributions
         self.emission_dists = dict( [ ( group, dist ) for group, dist in log_emission_dists.items() ] )
+        self.L_set = False
 
         if( group_graphs is not None ):
             self.preprocessData( group_graphs )
+
+        if( self.L_set == False ):
+            self.L_set = True
+            ys = np.array( self.ys ).T
+            L = []
+            for node, y in zip( self.nodes, ys ):
+                group = self.node_groups[ node ]
+                if( not np.any( np.isnan( y ) ) ):
+                    L.append( self.emission_dists[ group ][ :, y ] )
+                else:
+                    L.append( np.zeros_like( self.emission_dists[ group ][ :, 0 ] ) )
+
+            self.L = np.array( L ).sum( axis=0 ).T
 
     ######################################################################
 
@@ -642,9 +681,31 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
 
     ######################################################################
 
+    def emissionProb( self, node, is_partial_graph_index=False ):
+        # Access the emission matrix with the full graph indices
+        node_full = self.partialGraphIndexToFullGraphIndex( node ) if is_partial_graph_index == True else node
+
+        group = self.node_groups[ int( node_full ) ]
+        y = self.ys[ int( node_full ) ]
+        if( not np.any( np.isnan( y ) ) ):
+            prob = self.emission_dists[ group ][ :, y ]
+        else:
+            prob = np.zeros_like( self.emission_dists[ group ][ :, 0 ] )
+
+        if( self.inFeedbackSet( node_full, is_partial_graph_index=False ) ):
+            return fbsData( prob, 0 )
+        return fbsData( prob, -1 )
+
+    ######################################################################
+
     def uBaseCase( self, node ):
         node_full = self.partialGraphIndexToFullGraphIndex( node )
         group = self.node_groups[ int( node_full ) ]
-        initial_dist = fbsData( self.pi0[ group ], -1 )
+        initial_dist = fbsData( self.pi0s[ group ], -1 )
         emission = self.emissionProb( node, is_partial_graph_index=True )
         return self.multiplyTerms( terms=( emission, initial_dist ) )
+
+    def vBaseCase( self, node ):
+        node_full = self.partialGraphIndexToFullGraphIndex( node )
+        group = self.node_groups[ int( node_full ) ]
+        return fbsData( np.zeros( self.Ks[ group ] ), -1 )

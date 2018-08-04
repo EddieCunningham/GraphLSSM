@@ -7,7 +7,7 @@ import json
 from tqdm import tqdm
 
 from GenModels.research.model import Pedigree as JSONPedigree
-from GenModels.research.PedigreeWrappers import Pedigree
+from GenModels.research.PedigreeWrappers import Pedigree, PedigreeSexMatters
 from GenModels.research.CycleDetector import computeFeedbackSet
 
 class BiDirectionalDict( dict ):
@@ -60,7 +60,7 @@ def pedigreeToGraph( pedigree ):
 
                 edges[ parents ] = [ reindexed_parents, reindexed_children ]
 
-    graph = Pedigree()
+    graph = PedigreeSexMatters() if pedigree.inheritancePattern == 'XL' else Pedigree()
     for parents, children in edges.values():
         graph.addEdge( parents=parents, children=children )
 
@@ -77,6 +77,7 @@ def pedigreeToGraph( pedigree ):
     graph.studyID = pedigree.studyID
     graph.ethnicity1 = pedigree.ethnicity1
     graph.ethnicity2 = pedigree.ethnicity2
+    graph.inheritancePattern = pedigree.inheritancePattern
 
     return graph
 

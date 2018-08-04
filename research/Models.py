@@ -6,38 +6,48 @@ __all__ = [
     'autosomalTransitionPrior',
     'autosomalDominantEmissionPrior',
     'autosomalRecessiveEmissionPrior',
-    'autosomalTransitionPrior',
+    'xLinkedFemaleTransitionPrior',
+    'xLinkedMaleTransitionPrior',
+    'xLinkedUnknownTransitionPrior',
+    'xLinkedFemaleEmissionPrior',
+    'xLinkedMaleEmissionPrior',
+    'xLinkedUnknownEmissionPrior',
     'AutosomalParametersGibbs',
+    'XLinkedParametersGibbs',
     'AutosomalParametersEM',
+    'XLinkedParametersEM',
     'AutosomalParametersCAVI',
+    'XLinkedParametersCAVI',
     'Gibbs',
     'EM',
-    'CAVI'
+    'GroupEM',
+    'CAVI',
+    'GroupCAVI'
 ]
-
 
 ######################################################################
 
 def autosomalTransitionPrior():
-    return np.array([[[1.  , 0.  , 0.  , 0.  ],
-                      [0.5 , 0.5 , 0.  , 0.  ],
-                      [0.5 , 0.5 , 0.  , 0.  ],
-                      [0.  , 1.  , 0.  , 0.  ]],
+    # [ AA, Aa, aA, aa ] ( A is affected )
+    return np.array( [ [ [ 1.  , 0.  , 0.  , 0.   ],
+                         [ 0.5 , 0.5 , 0.  , 0.   ],
+                         [ 0.5 , 0.5 , 0.  , 0.   ],
+                         [ 0.  , 1.  , 0.  , 0.   ] ],
 
-                     [[0.5 , 0.  , 0.5 , 0.  ],
-                      [0.25, 0.25, 0.25, 0.25],
-                      [0.25, 0.25, 0.25, 0.25],
-                      [0.  , 0.5 , 0.  , 0.5 ]],
+                       [ [ 0.5 , 0.  , 0.5 , 0.   ],
+                         [ 0.25, 0.25, 0.25, 0.25 ],
+                         [ 0.25, 0.25, 0.25, 0.25 ],
+                         [ 0.  , 0.5 , 0.  , 0.5  ] ],
 
-                     [[0.5 , 0.  , 0.5 , 0.  ],
-                      [0.25, 0.25, 0.25, 0.25],
-                      [0.25, 0.25, 0.25, 0.25],
-                      [0.  , 0.5 , 0.  , 0.5 ]],
+                       [ [ 0.5 , 0.  , 0.5 , 0.   ],
+                         [ 0.25, 0.25, 0.25, 0.25 ],
+                         [ 0.25, 0.25, 0.25, 0.25 ],
+                         [ 0.  , 0.5 , 0.  , 0.5  ] ],
 
-                     [[0.  , 0.  , 1.  , 0.  ],
-                      [0.  , 0.  , 0.5 , 0.5 ],
-                      [0.  , 0.  , 0.5 , 0.5 ],
-                      [0.  , 0.  , 0.  , 1.  ]]]) + 1
+                       [ [ 0.  , 0.  , 1.  , 0.   ],
+                         [ 0.  , 0.  , 0.5 , 0.5  ],
+                         [ 0.  , 0.  , 0.5 , 0.5  ],
+                         [ 0.  , 0.  , 0.  , 1.   ] ] ] ) + 1
 
 def autosomalDominantEmissionPrior():
     # [ AA, Aa, aA, aa ]
@@ -50,10 +60,83 @@ def autosomalDominantEmissionPrior():
 def autosomalRecessiveEmissionPrior():
     # [ AA, Aa, aA, aa ]
     # [ Not affected, affected ]
-    return np.array( [ [ 1, 0 ],
-                       [ 0, 0 ],
-                       [ 0, 0 ],
-                       [ 0, 1 ] ] ) + 1
+    return np.array( [ [ 0, 1 ],
+                       [ 1, 0 ],
+                       [ 1, 0 ],
+                       [ 1, 0 ] ] ) + 1
+
+######################################################################
+
+def xLinkedFemaleTransitionPrior():
+    # Female, male, female child
+    # [ XX, Xx, xX, xx ] ( Index using males [ XY, xY ] )
+    return np.array( [ [ [ 1. , 0. , 0. , 0.  ],
+                         [ 0. , 0. , 1. , 0.  ] ],
+
+                       [ [ 0.5, 0.5, 0. , 0.  ],
+                         [ 0. , 0. , 0.5, 0.5 ] ],
+
+                       [ [ 0.5, 0.5, 0. , 0.  ],
+                         [ 0. , 0. , 0.5, 0.5 ] ],
+
+                       [ [ 0. , 1. , 0. , 0.  ],
+                         [ 0. , 0. , 0. , 1.  ] ] ] ) + 1
+
+def xLinkedMaleTransitionPrior():
+    # Female, male, male child
+    # [ XY, xY ] ( X is affected )
+    return np.array( [ [ [ 1. , 0.  ],
+                         [ 1. , 0.  ] ],
+
+                       [ [ 0.5, 0.5 ],
+                         [ 0.5, 0.5 ] ],
+
+                       [ [ 0.5, 0.5 ],
+                         [ 0.5, 0.5 ] ],
+
+                       [ [ 0. , 1.  ],
+                         [ 0. , 1.  ] ] ] ) + 1
+
+def xLinkedUnknownTransitionPrior():
+    # Female, male, unknown sex child
+    # [ XX, Xx, xX, xx, XY, xY ]
+    return np.array( [ [ [ 0.5 , 0.  , 0.  , 0.  , 0.5 , 0.   ] ,
+                         [ 0.  , 0.  , 0.5 , 0.  , 0.5 , 0.   ] ] ,
+
+                       [ [ 0.25, 0.25, 0.  , 0.  , 0.25, 0.25 ] ,
+                         [ 0.  , 0.  , 0.25, 0.25, 0.25, 0.25 ] ] ,
+
+                       [ [ 0.25, 0.25, 0.  , 0.  , 0.25, 0.25 ] ,
+                         [ 0.  , 0.  , 0.25, 0.25, 0.25, 0.25 ] ] ,
+
+                       [ [ 0.  , 0.5 , 0.  , 0.  , 0.  , 0.5  ] ,
+                         [ 0.  , 0.  , 0.  , 0.5 , 0.  , 0.5  ] ] ] ) + 1
+
+# Going to ignore the ( unknown, unknown ) -> unknown case
+
+def xLinkedFemaleEmissionPrior():
+    # [ XX, Xx, xX, xx ]
+    # [ Not affected, affected ]
+    return np.array( [ [ 0, 1 ],
+                       [ 1, 0 ],
+                       [ 1, 0 ],
+                       [ 1, 0 ] ] ) + 1
+
+def xLinkedMaleEmissionPrior():
+    # [ XY, xY ]
+    # [ Not affected, affected ]
+    return np.array( [ [ 0, 1 ],
+                       [ 1, 0 ] ] ) + 1
+
+def xLinkedUnknownEmissionPrior():
+    # [ XX, Xx, xX, xx, XY, xY ]
+    # [ Not affected, affected ]
+    return np.array( [ [ 0, 1 ],
+                       [ 1, 0 ],
+                       [ 1, 0 ],
+                       [ 1, 0 ],
+                       [ 0, 1 ],
+                       [ 0, 0 ] ] ) + 1
 
 ######################################################################
 
@@ -71,6 +154,26 @@ class AutosomalParameters():
 
         # Emission dist
         self.emission_dist = TensorTransition( hypers=dict( alpha=emission_prior ) )
+
+######################################################################
+
+class XLinkedParameters():
+
+    def __init__( self, transition_priors, emission_priors ):
+        # Initial dist
+        self.initial_dists = { 0: Categorical( hypers=dict( alpha=np.ones( 4 ) ) ),
+                               1: Categorical( hypers=dict( alpha=np.ones( 2 ) ) ),
+                               2: Categorical( hypers=dict( alpha=np.ones( 6 ) ) ) }
+
+        # Create the transition distribution
+        self.transition_dists = { 0: TensorTransition( hypers=dict( alpha=transition_priors[ 0 ] ) ),
+                                  1: TensorTransition( hypers=dict( alpha=transition_priors[ 1 ] ) ),
+                                  2: TensorTransition( hypers=dict( alpha=transition_priors[ 2 ] ) ) }
+
+        # Emission dist
+        self.emission_dists = { 0: TensorTransition( hypers=dict( alpha=emission_priors[ 0 ] ) ),
+                                1: TensorTransition( hypers=dict( alpha=emission_priors[ 1 ] ) ),
+                                2: TensorTransition( hypers=dict( alpha=emission_priors[ 2 ] ) ) }
 
 ######################################################################
 
@@ -121,6 +224,73 @@ class AutosomalParametersGibbs( AutosomalParameters ):
 
 ######################################################################
 
+class GroupTransitionBins():
+    def __init__( self, msg, graph_state, groups ):
+        self.msg = msg
+        self.graph_state = graph_state
+        self.counts = dict( [ ( group, [ [] for _ in range( 3 ) ] ) for group in groups ] )
+
+    def __call__( self, node_list ):
+        for node in filter( lambda n: self.msg.nParents( n ) > 0, node_list ):
+            group = self.msg.node_groups[ node ]
+            parents, order = self.msg.getParents( node, get_order=True )
+            for i, p in zip( order, parents ):
+                self.counts[ group ][ i ].append( self.graph_state.node_states[ p ] )
+            self.counts[ group ][ -1 ].append( self.graph_state.node_states[ node ] )
+
+class XLinkedParametersGibbs( XLinkedParameters ):
+
+    def resampleInitialDist( self, msg, graph_state ):
+        root_states = dict( [ ( group, [] ) for group in self.initial_dists.keys() ] )
+        for node, state in graph_state.node_states.items():
+            if( msg.nParents( node ) == 0 ):
+                root_states[ msg.node_groups[ node ] ].append( state )
+
+        for group in self.initial_dists:
+            self.initial_dists[ group ].resample( x=np.array( root_states[ group ], dtype=int ) )
+
+    def resampleTransitionDist( self, msg, graph_state ):
+        transition_bins = GroupTransitionBins( msg, graph_state, self.transition_dists.keys() )
+        msg.forwardPass( transition_bins )
+
+        for group, counts in transition_bins.counts.items():
+            x = [ np.array( count ) for count in counts ]
+            self.transition_dists[ group ].resample( x )
+
+    def resampleEmissionDist( self, msg, graph_state ):
+        states = dict( [ ( group, [] ) for group in self.emission_dists.keys() ] )
+        emissions = dict( [ ( group, [] ) for group in self.emission_dists.keys() ] )
+        for node in msg.nodes:
+            group = msg.node_groups[ node ]
+            state = graph_state.node_states[ node ]
+            state_addition = state * np.ones_like( msg.ys[ node ] )
+            states[ group ].extend( state_addition.tolist() )
+            emissions[ group ].extend( msg.ys[ node ].tolist() )
+
+        for group in self.emission_dists.keys():
+            x = [ np.array( states[ group ] ), np.array( emissions[ group ] ) ]
+            self.emission_dists[ group ].resample( x )
+
+    def sampleInitialDist( self ):
+        sample = {}
+        for group, dist in self.initial_dists.items():
+            sample[ group ] = dist.iparamSample()[ 0 ]
+        return sample
+
+    def sampleTransitionDist( self ):
+        sample = {}
+        for group, dist in self.transition_dists.items():
+            sample[ group ] = [ dist.iparamSample()[ 0 ] ]
+        return sample
+
+    def sampleEmissionDist( self ):
+        sample = {}
+        for group, dist in self.emission_dists.items():
+            sample[ group ] = dist.iparamSample()[ 0 ]
+        return sample
+
+######################################################################
+
 class AutosomalParametersEM( AutosomalParameters ):
 
     def updateInitialDist( self, msg, node_smoothed ):
@@ -140,17 +310,12 @@ class AutosomalParametersEM( AutosomalParameters ):
         trans_dist_denominator = np.zeros( ( 4, 4 ) )
 
         # Update the transition distributions
-        for node in msg.nodes:
-            n_parents = msg.nParents( node )
-            if( n_parents == 0 ):
-                continue
-
+        for node in filter( lambda n: msg.nParents( n ) > 0, msg.nodes ):
             trans_dist_numerator += node_parents_smoothed[ node ]
             trans_dist_denominator += parents_smoothed[ node ]
 
-        self.transition_dist.params = ( trans_dist_numerator / trans_dist_denominator[ ..., None ] , )
-
-        assert np.allclose( ( trans_dist_numerator / trans_dist_denominator[ ..., None ] ).sum( axis=-1 ), 1.0 )
+        self.transition_dist.params = ( trans_dist_numerator / trans_dist_denominator[ ..., None ], )
+        assert np.allclose( self.transition_dist.params[ 0 ].sum( axis=-1 ), 1.0 )
 
     def updateEmissionDist( self, msg, node_smoothed ):
 
@@ -166,8 +331,61 @@ class AutosomalParametersEM( AutosomalParameters ):
             emission_dist_denominator += node_smoothed[ node ] * measurements
 
         self.emission_dist.params = ( emission_dist_numerator / emission_dist_denominator[ :, None ], )
+        assert np.allclose( self.emission_dist.params[ 0 ].sum( axis=-1 ), 1.0 )
 
-        assert np.allclose( ( emission_dist_numerator / emission_dist_denominator[ :, None ] ).sum( axis=-1 ), 1.0 )
+######################################################################
+
+class XLinkedParametersEM( XLinkedParameters ):
+
+    def updateInitialDist( self, msg, node_smoothed ):
+
+        initial_dists = dict( [ ( group, np.zeros_like( msg.pi0s[ group ] ) ) for group in self.initial_dists.keys() ] )
+
+        # Update the root distribution
+        root_counts = dict( [ ( group, 0 ) for group in self.initial_dists.keys() ] )
+        for root in msg.roots:
+            group = msg.node_groups[ root ]
+            initial_dists[ group ] += node_smoothed[ root ]
+            root_counts[ group ] += 1
+
+        for group in self.initial_dists.keys():
+            if( root_counts[ group ] > 0 ):
+                initial_dists[ group ] /= root_counts[ group ]
+                self.initial_dists[ group ].params = ( initial_dists[ group ], )
+                assert np.allclose( initial_dists[ group ].sum( axis=-1 ), 1.0 )
+
+    def updateTransitionDist( self, msg, parents_smoothed, node_parents_smoothed ):
+
+        trans_dist_numerator = dict( [ ( group, np.zeros_like( msg.pis[ group ][ 3 ] ) ) for group in self.transition_dists.keys() ] )
+        trans_dist_denominator = dict( [ ( group, np.zeros( msg.pis[ group ][ 3 ].shape[ :-1 ] ) ) for group in self.transition_dists.keys() ] )
+
+        # Update the transition distributions
+        for node in filter( lambda n: msg.nParents( n ) > 0, msg.nodes ):
+            group = msg.node_groups[ node ]
+            trans_dist_numerator[ group ] += node_parents_smoothed[ node ]
+            trans_dist_denominator[ group ] += parents_smoothed[ node ]
+
+        for group in self.transition_dists.keys():
+            self.transition_dists[ group ].params = ( trans_dist_numerator[ group ] / trans_dist_denominator[ group ][ ..., None ], )
+            assert np.allclose( self.transition_dists[ group ].params[ 0 ].sum( axis=-1 ), 1.0 )
+
+    def updateEmissionDist( self, msg, node_smoothed ):
+
+        emission_dist_numerator = dict( [ ( group, np.zeros_like( msg.emission_dists[ group ] ) ) for group in self.emission_dists.keys() ] )
+        emission_dist_denominator = dict( [ ( group, np.zeros_like( msg.pi0s[ group ] ) ) for group in self.emission_dists.keys() ] )
+
+        # Update the emission distribution
+        for node, ys in zip( msg.nodes, msg.ys ):
+            measurements = ys.shape[ 0 ]
+            group = msg.node_groups[ node ]
+
+            for y in ys:
+                emission_dist_numerator[ group ][ :, y ] += node_smoothed[ node ]
+            emission_dist_denominator[ group ] += node_smoothed[ node ] * measurements
+
+        for group in self.emission_dists.keys():
+            self.emission_dists[ group ].params = ( emission_dist_numerator[ group ] / emission_dist_denominator[ group ][ :, None ], )
+            assert np.allclose( self.emission_dists[ group ].params[ 0 ].sum( axis=-1 ), 1.0 )
 
 ######################################################################
 
@@ -177,7 +395,6 @@ class AutosomalParametersCAVI( AutosomalParameters ):
     # mean field natural parameters
 
     def updatedInitialPrior( self, msg, node_smoothed ):
-
 
         expected_initial_stats = np.zeros_like( msg.pi0 )
         # Update the root distribution
@@ -214,43 +431,48 @@ class AutosomalParametersCAVI( AutosomalParameters ):
 
 ######################################################################
 
-# class XLinkedParameters():
+class XLinkedParametersCAVI( XLinkedParameters ):
+    # Compute posterior variational natural prior parameters.
+    # To do this, just add the expected stats to the intial
+    # mean field natural parameters
 
-#     def __init__( self, transition_priors, emission_priors ):
-#         # Initial dist
-#         self.initial_dists = { 0: Categorical( hypers=dict( alpha=np.ones( 4 ) ) ),
-#                                1: Categorical( hypers=dict( alpha=np.ones( 4 ) ) ),
-#                                2: Categorical( hypers=dict( alpha=np.ones( 4 ) ) ) }
+    def updatedInitialPrior( self, msg, node_smoothed ):
 
-#         # Create the transition distribution
-#         self.transition_dists = { 0: TensorTransition( hypers=dict( alpha=transition_priors[ 0 ] ) ),
-#                                   1: TensorTransition( hypers=dict( alpha=transition_priors[ 1 ] ) ),
-#                                   2: TensorTransition( hypers=dict( alpha=transition_priors[ 2 ] ) ) }
+        expected_initial_stats = dict( [ ( group, np.zeros_like( msg.pi0s[ group ] ) ) for group in self.initial_dists.keys() ] )
 
-#         # Emission dist
-#         self.emission_dists = { 0: TensorTransition( hypers=dict( alpha=emission_priors[ 0 ] ) ),
-#                                 1: TensorTransition( hypers=dict( alpha=emission_priors[ 1 ] ) ),
-#                                 2: TensorTransition( hypers=dict( alpha=emission_priors[ 2 ] ) ) }
+        # Update the root distribution
+        for root in msg.roots:
+            group = msg.node_groups[ root ]
+            expected_initial_stats[ group ] += node_smoothed[ root ]
 
-#     def sampleInitialDist( self ):
-#         sample = {}
-#         for group, dist in self.initial_dists.items():
-#             sample[ group ] = dist.sample()[ 0 ]
-#         return sample
+        return dict( [ ( group, ( dist.prior.mf_nat_params[ 0 ] + expected_initial_stats[ group ], ) ) for group, dist in self.initial_dists.items() ] )
 
-#     def sampleTransitionDist( self ):
-#         sample = {}
-#         for group, dist in self.transition_dists.items():
-#             sample[ group ] = [ dist.sample()[ 0 ] ]
-#         return sample
+    def updatedTransitionPrior( self, msg, node_parents_smoothed ):
 
-#     def sampleEmissionDist( self ):
-#         sample = {}
-#         for group, dist in self.emission_dists.items():
-#             sample[ group ] = dist.sample()[ 0 ]
-#         return sample
+        expected_transition_stats = dict( [ ( group, np.zeros_like( msg.pis[ group ][ 3 ] ) ) for group in self.transition_dists.keys() ] )
 
-# ######################################################################
+        # Update the transition distributions
+        for node in filter( lambda n: msg.nParents( n ) > 0, msg.nodes ):
+            group = msg.node_groups[ node ]
+
+            expected_transition_stats[ group ] += node_parents_smoothed[ node ]
+
+        return dict( [ ( group, ( dist.prior.mf_nat_params[ 0 ] + expected_transition_stats[ group ], ) ) for group, dist in self.transition_dists.items() ] )
+
+    def updatedEmissionPrior( self, msg, node_smoothed ):
+
+        expected_emission_stats = dict( [ ( group, np.zeros_like( msg.emission_dists[ group ] ) ) for group in self.emission_dists.keys() ] )
+
+        # Update the emission distribution
+        for node, ys in zip( msg.nodes, msg.ys ):
+            group = msg.node_groups[ node ]
+
+            for y in ys:
+                expected_emission_stats[ group ][ :, y ] += node_smoothed[ node ]
+
+        return dict( [ ( group, ( dist.prior.mf_nat_params[ 0 ] + expected_emission_stats[ group ], ) ) for group, dist in self.emission_dists.items() ] )
+
+######################################################################
 
 class Optimizer():
 
@@ -365,6 +587,29 @@ class EM( Optimizer ):
         self.MStep( node_smoothed, parents_smoothed, node_parents_smoothed )
         return marginal
 
+class GroupEM( EM ):
+
+    def EStep( self ):
+        pi0s = dict( [ ( group, dist.pi ) for group, dist in self.params.initial_dists.items() ] )
+        pis = dict( [ ( group, [ dist.pi ] ) for group, dist in self.params.transition_dists.items() ] )
+        Ls = dict( [ ( group, dist.pi ) for group, dist in self.params.emission_dists.items() ] )
+        self.msg.updateParams( pi0s, pis, Ls )
+        self.runFilter()
+
+        marginal = self.msg.marginalProb( self.U, self.V, 0 )
+
+        # Compute log P( x | Y ), log P( x_p1..pN | Y ) and log P( x_c, x_p1..pN | Y )
+        node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes )
+        parents_smoothed = self.msg.parentsSmoothed( self.U, self.V, self.msg.nodes )
+        node_parents_smoothed = self.msg.parentChildSmoothed( self.U, self.V, self.msg.nodes )
+
+        # The probabilities are normalized, so don't need them in log space anymore
+        node_smoothed = [ ( n, np.exp( val ) ) for n, val in node_smoothed ]
+        parents_smoothed = [ ( n, np.exp( val ) ) for n, val in parents_smoothed ]
+        node_parents_smoothed = [ ( n, np.exp( val ) ) for n, val in node_parents_smoothed ]
+
+        return dict( node_smoothed ), dict( parents_smoothed ), dict( node_parents_smoothed ), marginal
+
 ######################################################################
 
 class CAVI( Optimizer ):
@@ -385,7 +630,6 @@ class CAVI( Optimizer ):
         transition_kl_divergence = TensorTransitionDirichletPrior.KLDivergence( nat_params1=transition_prior_mfnp, nat_params2=self.params.transition_dist.prior.nat_params )
         emission_kl_divergence = TensorTransitionDirichletPrior.KLDivergence( nat_params1=emission_prior_mfnp, nat_params2=self.params.emission_dist.prior.nat_params )
 
-        # print( 'normalizer', normalizer, 'kl', initial_kl_divergence + transition_kl_divergence + emission_kl_divergence )
         return normalizer - ( initial_kl_divergence + transition_kl_divergence + emission_kl_divergence )
 
     def variationalEStep( self, initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp ):
@@ -423,3 +667,48 @@ class CAVI( Optimizer ):
         return elbo
 
 ######################################################################
+
+class GroupCAVI( CAVI ):
+    # Coordinate ascent variational inference
+
+    def __init__( self, msg, parameters ):
+        super().__init__( msg, parameters )
+
+        # Initialize the expected mf nat params using the prior
+        self.initial_prior_mfnp    = dict( [ ( group, dist.prior.nat_params ) for group, dist in self.params.initial_dists.items() ] )
+        self.transition_prior_mfnp = dict( [ ( group, dist.prior.nat_params ) for group, dist in self.params.transition_dists.items() ] )
+        self.emission_prior_mfnp   = dict( [ ( group, dist.prior.nat_params ) for group, dist in self.params.emission_dists.items() ] )
+
+    def ELBO( self, initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp ):
+        normalizer = self.msg.marginalProb( self.U, self.V, 0 )
+
+        initial_kl_divergence, transition_kl_divergence, emission_kl_divergence = 0, 0, 0
+
+        for group in self.params.initial_dists.keys():
+            initial_kl_divergence    += Dirichlet.KLDivergence( nat_params1=initial_prior_mfnp[ group ], nat_params2=self.params.initial_dists[ group ].prior.nat_params )
+            transition_kl_divergence += TensorTransitionDirichletPrior.KLDivergence( nat_params1=transition_prior_mfnp[ group ], nat_params2=self.params.transition_dists[ group ].prior.nat_params )
+            emission_kl_divergence   += TensorTransitionDirichletPrior.KLDivergence( nat_params1=emission_prior_mfnp[ group ], nat_params2=self.params.emission_dists[ group ].prior.nat_params )
+
+        return normalizer - ( initial_kl_divergence + transition_kl_divergence + emission_kl_divergence )
+
+    def variationalEStep( self, initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp ):
+
+        # Filter using the expected natural parameters
+        expected_initial_nat_params    = dict( [ ( group, dist.prior.expectedSufficientStats( nat_params=initial_prior_mfnp[ group ] )[ 0 ] ) for group, dist in self.params.initial_dists.items() ] )
+        expected_transition_nat_params = dict( [ ( group, [ dist.prior.expectedSufficientStats( nat_params=transition_prior_mfnp[ group ] )[ 0 ] ] ) for group, dist in self.params.transition_dists.items() ] )
+        expected_emission_nat_params   = dict( [ ( group, dist.prior.expectedSufficientStats( nat_params=emission_prior_mfnp[ group ] )[ 0 ] ) for group, dist in self.params.emission_dists.items() ] )
+
+        self.msg.updateNatParams( expected_initial_nat_params, expected_transition_nat_params, expected_emission_nat_params, check_parameters=False )
+        self.runFilter()
+
+        elbo = self.ELBO( initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp )
+
+        # Compute log P( x | Y ) and log P( x_c, x_p1..pN | Y )
+        node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes )
+        node_parents_smoothed = self.msg.parentChildSmoothed( self.U, self.V, self.msg.nodes )
+
+        # The probabilities are normalized, so don't need them in log space anymore
+        node_smoothed = [ ( n, np.exp( val ) ) for n, val in node_smoothed ]
+        node_parents_smoothed = [ ( n, np.exp( val ) ) for n, val in node_parents_smoothed ]
+
+        return dict( node_smoothed ), dict( node_parents_smoothed ), elbo
