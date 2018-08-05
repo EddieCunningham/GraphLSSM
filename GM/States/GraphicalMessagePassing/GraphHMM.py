@@ -1,10 +1,11 @@
 from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import *
 from GenModels.GM.States.GraphicalMessagePassing.GraphFilterBase import *
 import numpy as np
-from functools import reduce
+from functools import partial
 from scipy.sparse import coo_matrix
 from collections import Iterable
 from GenModels.GM.Utility import fbsData
+import joblib
 
 __all__ = [ 'GraphHMM',
             'GraphHMMFBS',
@@ -12,7 +13,44 @@ __all__ = [ 'GraphHMM',
 
 ######################################################################
 
+# def unwrappedUBaseCase( cls, self, node ):
+#     return cls.uBaseCase( self, node )
+
+# def unwrappedU( cls, self, U, V, node ):
+#     return cls.u( self, U, V, node )
+
+# def unwrappedVBaseCase( cls, self, node ):
+#     return cls.vBaseCase( self, node )
+
+# def unwrappedV( cls, self, U, V, node, edge ):
+#     return cls.v( self, U, V, node, edge )
+
+######################################################################
+
 class _graphHMMMixin():
+
+    # def uFilter( self, is_base_case, nodes, U, V, parallel=False ):
+    #     # Parallel version
+
+    #     if( parallel == True ):
+    #         # self_it = itertools.repeat( self, nodes.shape[ 0 ] )
+    #         new_u = joblib.Parallel( n_jobs=-1 )( [ joblib.delayed( unwrappedUBaseCase )( GraphHMM, self, node ) if is_base_case else
+    #                                                 joblib.delayed( unwrappedU )( GraphHMM, self, U, V, node ) for node in nodes ] )
+    #         self.updateU( nodes, new_u, U )
+    #     else:
+    #         super().uFilter( is_base_case, nodes, U, V )
+
+    # def vFilter( self, is_base_case, nodes_and_edges, U, V, parallel=False ):
+
+    #     if( parallel == True ):
+    #         nodes, edges = nodes_and_edges
+    #         new_v = joblib.Parallel( n_jobs=-1 )( [ joblib.delayed( unwrappedVBaseCase )( GraphHMM, self, node ) if is_base_case else
+    #                                                 joblib.delayed( unwrappedV )( GraphHMM, self, U, V, node, edge ) for node, edge in zip( nodes, edges ) ] )
+    #         self.updateV( nodes, edges, new_v, V )
+    #     else:
+    #         super().vFilter( is_base_case, nodes_and_edges, U, V )
+
+    ######################################################################
 
     def genFilterProbs( self ):
 
@@ -165,17 +203,10 @@ class _graphHMMMixin():
         ans = np.zeros( shape )
         for ax, term in zip( axes, terms ):
 
-            ax = [ i for i, s in enumerate( term.shape ) if s != 1 ]
-
             for _ in range( ndim - term.ndim ):
                 term = term[ ..., None ]
 
-            # Build a meshgrid to correspond to the final shape and repeat
-            # over axes that aren't in ax
-            reps = np.copy( shape )
-            reps[ np.array( ax ) ] = 1
-
-            ans += np.tile( term, reps )
+            ans += np.broadcast_to( term, ans.shape )
 
         return ans
 
@@ -250,6 +281,29 @@ class GraphHMM( _graphHMMMixin, GraphFilter ):
 ######################################################################
 
 class GraphHMMFBS( _graphHMMMixin, GraphFilterFBS ):
+
+    # def uFilter( self, is_base_case, nodes, U, V, parallel=False ):
+    #     # Parallel version
+
+    #     if( parallel == True ):
+    #         # self_it = itertools.repeat( self, nodes.shape[ 0 ] )
+    #         new_u = joblib.Parallel( n_jobs=-1 )( [ joblib.delayed( unwrappedUBaseCase )( GraphHMMFBS, self, node ) if is_base_case else
+    #                                                 joblib.delayed( unwrappedU )( GraphHMMFBS, self, U, V, node ) for node in nodes ] )
+    #         self.updateU( nodes, new_u, U )
+    #     else:
+    #         super().uFilter( is_base_case, nodes, U, V )
+
+    # def vFilter( self, is_base_case, nodes_and_edges, U, V, parallel=False ):
+
+    #     if( parallel == True ):
+    #         nodes, edges = nodes_and_edges
+    #         new_v = joblib.Parallel( n_jobs=-1 )( [ joblib.delayed( unwrappedVBaseCase )( GraphHMMFBS, self, node ) if is_base_case else
+    #                                                 joblib.delayed( unwrappedV )( GraphHMMFBS, self, U, V, node, edge ) for node, edge in zip( nodes, edges ) ] )
+    #         self.updateV( nodes, edges, new_v, V )
+    #     else:
+    #         super().vFilter( is_base_case, nodes_and_edges, U, V )
+
+    ######################################################################
 
     def preprocessData( self, data_graphs ):
 
@@ -371,7 +425,16 @@ class GraphHMMFBS( _graphHMMMixin, GraphFilterFBS ):
                 non_fbs_data_count += 1
 
         # Can't mix types
-        assert fbs_data_count == 0 or non_fbs_data_count == 0
+        if( not ( fbs_data_count == 0 or non_fbs_data_count == 0 ) ):
+            print( 'fbs_data_count', fbs_data_count )
+            print( 'non_fbs_data_count', non_fbs_data_count )
+            print( terms )
+            for t in terms:
+                if( isinstance( t, fbsData ) ):
+                    print( 'this ones good', t, type( t ) )
+                else:
+                    print( 'this ones bad', t, type( t ) )
+            assert 0
 
         # Use the regular multiply if we don't have fbs data
         if( fbs_data_count == 0 ):
@@ -424,17 +487,10 @@ class GraphHMMFBS( _graphHMMMixin, GraphFilterFBS ):
         ans = np.zeros( shape )
         for ax, term in zip( axes, terms ):
 
-            ax = [ i for i, s in enumerate( term.shape ) if s != 1 ]
-
             for _ in range( ndim - term.ndim ):
                 term = term[ ..., None ]
 
-            # Build a meshgrid to correspond to the final shape and repeat
-            # over axes that aren't in ax
-            reps = np.copy( shape )
-            reps[ np.array( ax ) ] = 1
-
-            ans += np.tile( term, reps )
+            ans += np.broadcast_to( term, ans.shape )
 
         return fbsData( ans, max_fbs_axis )
 

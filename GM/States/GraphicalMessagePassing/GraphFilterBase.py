@@ -1,13 +1,28 @@
 from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import *
 import numpy as np
 from scipy.sparse import coo_matrix
-from functools import reduce
+from functools import partial
 from collections import Iterable
 import itertools
 import inspect
 from GenModels.GM.Utility import fbsData
+import joblib
 
 __all__ = [ 'GraphFilter', 'GraphFilterFBS' ]
+
+def unwrappedUBaseCase( self, node ):
+    return GraphFilter.uBaseCase( self, node )
+
+def unwrappedU( self, U, V, node ):
+    return GraphFilter.u( self, U, V, node )
+
+def unwrappedUBaseCaseFBS( self, node ):
+    return GraphFilterFBS.uBaseCase( self, node )
+
+def unwrappedUFBS( self, U, V, node ):
+    return GraphFilterFBS.u( self, U, V, node )
+
+######################################################################
 
 class _filterMixin():
     # Base message passing class for hyper graphs.
@@ -30,11 +45,11 @@ class _filterMixin():
 
     ######################################################################
 
-    def uBaseCase( self, roots, U ):
-        assert 0
+    # def uBaseCase( self, roots, U ):
+    #     assert 0
 
-    def vBaseCase( self, leaves, V ):
-        assert 0
+    # def vBaseCase( self, leaves, V ):
+    #     assert 0
 
     ######################################################################
 
@@ -311,13 +326,15 @@ class _filterMixin():
 
     ######################################################################
 
-    def uFilter( self, base_case, nodes, U, V ):
+    def uFilter( self, is_base_case, nodes, U, V, parallel=False ):
         # Compute P( ↑( n )_y, n_x )
         # Probability of all emissions that can be reached by going up node's up edge
 
+        assert parallel != True, 'Call the parallel version from the child class'
+
         new_u = []
         for node in nodes:
-            if( self.nParents( node ) == 0 ):
+            if( is_base_case ):
                 u = self.uBaseCase( node )
             else:
                 u = self.u( U, V, node )
@@ -325,25 +342,27 @@ class _filterMixin():
 
         self.updateU( nodes, new_u, U )
 
-    def vFilter( self, base_case, nodes_and_edges, U, V ):
+    def vFilter( self, is_base_case, nodes_and_edges, U, V, parallel=False ):
 
         nodes, edges = nodes_and_edges
 
-        newV = []
+        assert parallel != True, 'Call the parallel version from the child class'
+
+        new_v = []
         for node, edge in zip( nodes, edges ):
-            if( self.nChildren( node ) == 0 ):
+            if( is_base_case ):
                 assert edge == None
                 v = self.vBaseCase( node )
             else:
                 assert edge is not None
                 v = self.v( U, V, node, edge )
-            newV.append( v )
+            new_v.append( v )
 
-        self.updateV( nodes, edges, newV, V )
+        self.updateV( nodes, edges, new_v, V )
 
     ######################################################################
 
-    def filter( self ):
+    def filter( self, parallel=False ):
 
         U, V = self.genFilterProbs()
 
@@ -353,7 +372,7 @@ class _filterMixin():
         # To get the filtered probs for the smoothed probs for the
         # feedback set nodes, marginalize over the non fbs nodes
         # at any extended smoothed prob
-        self.upDown( self.uFilter, self.vFilter, U=U, V=V )
+        self.upDown( partial( self.uFilter, parallel=parallel ), partial( self.vFilter, parallel=parallel ), U=U, V=V )
 
         return U, V
 
@@ -692,13 +711,14 @@ class __FBSFilterMixin():
 
     ######################################################################
 
-    def uFilter( self, is_base_case, nodes, U, V ):
+    def uFilter( self, is_base_case, nodes, U, V, parallel=False ):
         # Compute P( ↑( n )_y, n_x )
         # Probability of all emissions that can be reached by going up node's up edge
+        assert parallel != True, 'Call the parallel version from the child class'
 
         new_u = []
         for node in nodes:
-            if( self.nParents( node, is_partial_graph_index=True, use_partial_graph=True ) == 0 ):
+            if( is_base_case ):
                 u = self.uBaseCase( node )
             else:
                 u = self.u( U, V, node )
@@ -706,31 +726,31 @@ class __FBSFilterMixin():
 
         self.updateU( nodes, new_u, U )
 
-    def vFilter( self, is_base_case, nodes_and_edges, U, V ):
+    def vFilter( self, is_base_case, nodes_and_edges, U, V, parallel=False ):
+        assert parallel != True, 'Call the parallel version from the child class'
 
         nodes, edges = nodes_and_edges
 
-        newV = []
+        new_v = []
         for node, edge in zip( nodes, edges ):
             if( is_base_case ):
-            # if( self.nChildren( node, is_partial_graph_index=True, use_partial_graph=True ) == 0 ):
                 assert edge == None
                 v = self.vBaseCase( node )
             else:
                 assert edge is not None
                 v = self.v( U, V, node, edge )
-            newV.append( v )
+            new_v.append( v )
 
-        self.updateV( nodes, edges, newV, V )
+        self.updateV( nodes, edges, new_v, V )
 
     ######################################################################
 
-    def filter( self ):
+    def filter( self, parallel=False ):
 
         U, V = self.genFilterProbs()
 
         # Run message passing over the partial graph
-        self.partial_graph.upDown( self.uFilter, self.vFilter, U=U, V=V )
+        self.partial_graph.upDown( partial( self.uFilter, parallel=parallel ), partial( self.vFilter, parallel=parallel ), U=U, V=V )
 
         return U, V
 

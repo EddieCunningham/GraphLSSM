@@ -18,11 +18,18 @@ __all__ = [
     'XLinkedParametersEM',
     'AutosomalParametersCAVI',
     'XLinkedParametersCAVI',
+    'AutosomalParametersSVI',
+    'XLinkedParametersSVI',
     'Gibbs',
     'EM',
     'GroupEM',
     'CAVI',
-    'GroupCAVI'
+    'GroupCAVI',
+    'SVI',
+    'GroupSVI',
+    'AutosomalDominant',
+    'AutosomalRecessive',
+    'XLinkedRecessive'
 ]
 
 ######################################################################
@@ -389,10 +396,13 @@ class XLinkedParametersEM( XLinkedParameters ):
 
 ######################################################################
 
-class AutosomalParametersCAVI( AutosomalParameters ):
+class AutosomalParametersVI( AutosomalParameters ):
     # Compute posterior variational natural prior parameters.
     # To do this, just add the expected stats to the intial
     # mean field natural parameters
+    def __init__( self, transition_prior, emission_prior, minibatch_ratio=1.0 ):
+        super().__init__( transition_prior, emission_prior )
+        self.s = minibatch_ratio
 
     def updatedInitialPrior( self, msg, node_smoothed ):
 
@@ -401,7 +411,7 @@ class AutosomalParametersCAVI( AutosomalParameters ):
         for root in msg.roots:
             expected_initial_stats += node_smoothed[ root ]
 
-        return ( self.initial_dist.prior.mf_nat_params[ 0 ] + expected_initial_stats, )
+        return ( self.initial_dist.prior.mf_nat_params[ 0 ] + self.s * expected_initial_stats, )
 
     def updatedTransitionPrior( self, msg, node_parents_smoothed ):
 
@@ -415,7 +425,7 @@ class AutosomalParametersCAVI( AutosomalParameters ):
 
             expected_transition_stats += node_parents_smoothed[ node ]
 
-        return ( self.transition_dist.prior.mf_nat_params[ 0 ] + expected_transition_stats, )
+        return ( self.transition_dist.prior.mf_nat_params[ 0 ] + self.s * expected_transition_stats, )
 
     def updatedEmissionPrior( self, msg, node_smoothed ):
 
@@ -427,14 +437,24 @@ class AutosomalParametersCAVI( AutosomalParameters ):
             for y in ys:
                 expected_emission_stats[ :, y ] += node_smoothed[ node ]
 
-        return ( self.emission_dist.prior.mf_nat_params[ 0 ] + expected_emission_stats, )
+        return ( self.emission_dist.prior.mf_nat_params[ 0 ] + self.s * expected_emission_stats, )
+
+class AutosomalParametersCAVI( AutosomalParametersVI ):
+    pass
+
+class AutosomalParametersSVI( AutosomalParametersVI ):
+    def setMinibatchRatio( self, s ):
+        self.s = s
 
 ######################################################################
 
-class XLinkedParametersCAVI( XLinkedParameters ):
+class XLinkedParametersVI( XLinkedParameters ):
     # Compute posterior variational natural prior parameters.
     # To do this, just add the expected stats to the intial
     # mean field natural parameters
+    def __init__( self, transition_priors, emission_priors, minibatch_ratio=1.0 ):
+        super().__init__( transition_priors, emission_priors )
+        self.s = minibatch_ratio
 
     def updatedInitialPrior( self, msg, node_smoothed ):
 
@@ -445,7 +465,7 @@ class XLinkedParametersCAVI( XLinkedParameters ):
             group = msg.node_groups[ root ]
             expected_initial_stats[ group ] += node_smoothed[ root ]
 
-        return dict( [ ( group, ( dist.prior.mf_nat_params[ 0 ] + expected_initial_stats[ group ], ) ) for group, dist in self.initial_dists.items() ] )
+        return dict( [ ( group, ( dist.prior.mf_nat_params[ 0 ] + self.s * expected_initial_stats[ group ], ) ) for group, dist in self.initial_dists.items() ] )
 
     def updatedTransitionPrior( self, msg, node_parents_smoothed ):
 
@@ -457,7 +477,7 @@ class XLinkedParametersCAVI( XLinkedParameters ):
 
             expected_transition_stats[ group ] += node_parents_smoothed[ node ]
 
-        return dict( [ ( group, ( dist.prior.mf_nat_params[ 0 ] + expected_transition_stats[ group ], ) ) for group, dist in self.transition_dists.items() ] )
+        return dict( [ ( group, ( dist.prior.mf_nat_params[ 0 ] + self.s * expected_transition_stats[ group ], ) ) for group, dist in self.transition_dists.items() ] )
 
     def updatedEmissionPrior( self, msg, node_smoothed ):
 
@@ -470,7 +490,14 @@ class XLinkedParametersCAVI( XLinkedParameters ):
             for y in ys:
                 expected_emission_stats[ group ][ :, y ] += node_smoothed[ node ]
 
-        return dict( [ ( group, ( dist.prior.mf_nat_params[ 0 ] + expected_emission_stats[ group ], ) ) for group, dist in self.emission_dists.items() ] )
+        return dict( [ ( group, ( dist.prior.mf_nat_params[ 0 ] + self.s * expected_emission_stats[ group ], ) ) for group, dist in self.emission_dists.items() ] )
+
+class XLinkedParametersCAVI( XLinkedParametersVI ):
+    pass
+
+class XLinkedParametersSVI( XLinkedParametersVI ):
+    def setMinibatchRatio( self, s ):
+        self.s = s
 
 ######################################################################
 
@@ -532,7 +559,7 @@ class Gibbs( Optimizer ):
             if( len( parents ) == 0 ):
                 prob = probs
             else:
-                indices = [ [ self.graph_state.node_states[ p ] ] for p in parents ]
+                indices = tuple( [ [ self.graph_state.node_states[ p ] ] for p in parents ] )
                 prob = probs[ indices ].ravel()
 
             # Sample from P( x_c | x_p1..pN, Y )
@@ -587,6 +614,8 @@ class EM( Optimizer ):
         self.MStep( node_smoothed, parents_smoothed, node_parents_smoothed )
         return marginal
 
+######################################################################
+
 class GroupEM( EM ):
 
     def EStep( self ):
@@ -615,13 +644,14 @@ class GroupEM( EM ):
 class CAVI( Optimizer ):
     # Coordinate ascent variational inference
 
-    def __init__( self, msg, parameters ):
+    def __init__( self, msg, parameters, from_super=False ):
         super().__init__( msg, parameters )
 
-        # Initialize the expected mf nat params using the prior
-        self.initial_prior_mfnp    = self.params.initial_dist.prior.nat_params
-        self.transition_prior_mfnp = self.params.transition_dist.prior.nat_params
-        self.emission_prior_mfnp   = self.params.emission_dist.prior.nat_params
+        if( from_super == False ):
+            # Initialize the expected mf nat params using the prior
+            self.initial_prior_mfnp    = self.params.initial_dist.prior.nat_params
+            self.transition_prior_mfnp = self.params.transition_dist.prior.nat_params
+            self.emission_prior_mfnp   = self.params.emission_dist.prior.nat_params
 
     def ELBO( self, initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp ):
         normalizer = self.msg.marginalProb( self.U, self.V, 0 )
@@ -662,7 +692,7 @@ class CAVI( Optimizer ):
         return initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp
 
     def fitStep( self ):
-        node_smoothed, node_parents_smoothed, elbo   = self.variationalEStep( self.initial_prior_mfnp, self.transition_prior_mfnp, self.emission_prior_mfnp )
+        node_smoothed, node_parents_smoothed, elbo = self.variationalEStep( self.initial_prior_mfnp, self.transition_prior_mfnp, self.emission_prior_mfnp )
         self.initial_prior_mfnp, self.transition_prior_mfnp, self.emission_prior_mfnp = self.variationalMStep( node_smoothed, node_parents_smoothed )
         return elbo
 
@@ -672,7 +702,7 @@ class GroupCAVI( CAVI ):
     # Coordinate ascent variational inference
 
     def __init__( self, msg, parameters ):
-        super().__init__( msg, parameters )
+        super().__init__( msg, parameters, from_super=True )
 
         # Initialize the expected mf nat params using the prior
         self.initial_prior_mfnp    = dict( [ ( group, dist.prior.nat_params ) for group, dist in self.params.initial_dists.items() ] )
@@ -712,3 +742,157 @@ class GroupCAVI( CAVI ):
         node_parents_smoothed = [ ( n, np.exp( val ) ) for n, val in node_parents_smoothed ]
 
         return dict( node_smoothed ), dict( node_parents_smoothed ), elbo
+
+######################################################################
+
+class SVI( CAVI ):
+
+    # Stochasic variational inference
+    def __init__( self, msg, parameters, minibatch_ratio, step_size ):
+        super().__init__( msg, parameters )
+        self.s = minibatch_ratio
+        self.params.setMinibatchRatio( self.s )
+        assert step_size >= 0 and step_size <= 1
+        self.p = step_size
+
+    def variationalMStep( self, node_smoothed, node_parents_smoothed ):
+        initial_prior_mfnp_update,    = self.params.updatedInitialPrior( self.msg, node_smoothed )
+        transition_prior_mfnp_update, = self.params.updatedTransitionPrior( self.msg, node_parents_smoothed )
+        emission_prior_mfnp_update,   = self.params.updatedEmissionPrior( self.msg, node_smoothed )
+
+        # Take a natural gradient step
+        initial_prior_mfnp = ( 1 - self.p ) * self.initial_prior_mfnp[ 0 ] + self.p * initial_prior_mfnp_update
+        transition_prior_mfnp = ( 1 - self.p ) * self.transition_prior_mfnp[ 0 ] + self.p * transition_prior_mfnp_update
+        emission_prior_mfnp = ( 1 - self.p ) * self.emission_prior_mfnp[ 0 ] + self.p * emission_prior_mfnp_update
+        return ( initial_prior_mfnp, ), ( transition_prior_mfnp, ), ( emission_prior_mfnp, )
+
+######################################################################
+
+class GroupSVI( GroupCAVI ):
+    # Stochasic variational inference
+    def __init__( self, msg, parameters, minibatch_ratio, step_size ):
+        super().__init__( msg, parameters )
+        self.s = minibatch_ratio
+        self.params.setMinibatchRatio( self.s )
+        assert step_size >= 0 and step_size <= 1
+        self.p = step_size
+
+    def variationalMStep( self, node_smoothed, node_parents_smoothed ):
+        initial_prior_mfnp_update    = self.params.updatedInitialPrior( self.msg, node_smoothed )
+        transition_prior_mfnp_update = self.params.updatedTransitionPrior( self.msg, node_parents_smoothed )
+        emission_prior_mfnp_update   = self.params.updatedEmissionPrior( self.msg, node_smoothed )
+
+        # Take a natural gradient step
+        initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp = {}, {}, {}
+        for group in initial_prior_mfnp_update.keys():
+
+            initial_prior_mfnp[ group ] = ( ( 1 - self.p ) * self.initial_prior_mfnp[ group ][ 0 ] + self.p * initial_prior_mfnp_update[ group ][ 0 ], )
+            transition_prior_mfnp[ group ] = ( ( 1 - self.p ) * self.transition_prior_mfnp[ group ][ 0 ] + self.p * transition_prior_mfnp_update[ group ][ 0 ], )
+            emission_prior_mfnp[ group ] = ( ( 1 - self.p ) * self.emission_prior_mfnp[ group ][ 0 ] + self.p * emission_prior_mfnp_update[ group ][ 0 ], )
+        return initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp
+
+######################################################################
+
+class _Autosomal():
+
+    def __init__( self, graphs, prior_strength=1.0, method='SVI', _dominant=True, **kwargs ):
+        assert method in [ 'EM', 'Gibbs', 'CAVI', 'SVI' ]
+        self.graphs = graphs
+        self.msg = PedigreeHMMFilter()
+        self.method = method
+
+        # Generate the priors
+        trans_prior = autosomalTransitionPrior() * prior_strength
+        if( _dominant ):
+            emiss_prior = autosomalDominantEmissionPrior() * prior_strength
+        else:
+            emiss_prior = autosomalRecessiveEmissionPrior() * prior_strength
+
+        # Generate the parameters objects
+        if( method == 'EM' ):
+            self.params = AutosomalParametersEM( transition_prior=trans_prior, emission_prior=emiss_prior )
+            self.model = EM( msg=self.msg, parameters=self.params )
+        elif( method == 'Gibbs' ):
+            self.params = AutosomalParametersGibbs( transition_prior=trans_prior, emission_prior=emiss_prior )
+            self.model = Gibbs( msg=self.msg, parameters=self.params )
+        elif( method == 'CAVI' ):
+            self.params = AutosomalParametersCAVI( transition_prior=trans_prior, emission_prior=emiss_prior )
+            self.model = CAVI( msg=self.msg, parameters=self.params )
+        else:
+            self.params = AutosomalParametersSVI( transition_prior=trans_prior, emission_prior=emiss_prior )
+            step_size = kwargs[ 'step_size' ]
+            self.minibatch_size = kwargs[ 'minibatch_size' ]
+            minibatch_ratio = self.minibatch_size / len( self.graphs )
+            self.model = SVI( msg=self.msg, parameters=self.params, minibatch_ratio=minibatch_ratio, step_size=step_size )
+
+        if( method != 'SVI' ):
+            self.msg.preprocessData( self.graphs )
+
+    def fitStep( self, **kwargs ):
+
+        if( self.method != 'SVI' ):
+            return self.model.fitStep()
+
+        minibatch_indices = np.random.randint( len( self.graphs ), size=self.minibatch_size )
+        minibatch = [ self.graphs[ i ] for i in minibatch_indices ]
+        self.msg.preprocessData( minibatch )
+        return self.model.fitStep()
+
+class AutosomalDominant( _Autosomal ):
+    def __init__( self, graphs, prior_strength=1.0, method='SVI', **kwargs ):
+        super().__init__( graphs, prior_strength, method=method, _dominant=True, **kwargs )
+
+class AutosomalRecessive( _Autosomal ):
+    def __init__( self, graphs, prior_strength=1.0, method='SVI', **kwargs ):
+        super().__init__( graphs, prior_strength, method=method, _dominant=False, **kwargs )
+
+######################################################################
+
+class XLinkedRecessive():
+
+    def __init__( self, graphs, prior_strength=1.0, method='SVI', **kwargs ):
+        assert method in [ 'EM', 'Gibbs', 'CAVI', 'SVI' ]
+        self.graphs = graphs
+        self.msg = PedigreeHMMFilterSexMatters()
+        self.method = method
+
+        # Generate the priors
+        female_trans_prior = xLinkedFemaleTransitionPrior() * prior_strength
+        male_trans_prior = xLinkedMaleTransitionPrior() * prior_strength
+        unknown_trans_prior = xLinkedUnknownTransitionPrior() * prior_strength
+        trans_priors = [ female_trans_prior, male_trans_prior, unknown_trans_prior ]
+
+        female_emiss_prior = xLinkedFemaleEmissionPrior() * prior_strength
+        male_emiss_prior = xLinkedMaleEmissionPrior() * prior_strength
+        unknown_emiss_prior = xLinkedUnknownEmissionPrior() * prior_strength
+        emiss_priors = [ female_emiss_prior, male_emiss_prior, unknown_emiss_prior ]
+
+        # Generate the parameters objects
+        if( method == 'EM' ):
+            self.params = XLinkedParametersEM( transition_priors=trans_priors, emission_priors=emiss_priors )
+            self.model = GroupEM( msg=self.msg, parameters=self.params )
+        elif( method == 'Gibbs' ):
+            self.params = XLinkedParametersGibbs( transition_priors=trans_priors, emission_priors=emiss_priors )
+            self.model = Gibbs( msg=self.msg, parameters=self.params )
+        elif( method == 'CAVI' ):
+            self.params = XLinkedParametersCAVI( transition_priors=trans_priors, emission_priors=emiss_priors )
+            self.model = GroupCAVI( msg=self.msg, parameters=self.params )
+        else:
+            self.params = XLinkedParametersSVI( transition_priors=trans_priors, emission_priors=emiss_priors )
+            step_size = kwargs[ 'step_size' ]
+            self.minibatch_size = kwargs[ 'minibatch_size' ]
+            minibatch_ratio = self.minibatch_size / len( self.graphs )
+            self.model = GroupSVI( msg=self.msg, parameters=self.params, minibatch_ratio=minibatch_ratio, step_size=step_size )
+
+        if( method != 'SVI' ):
+            self.msg.preprocessData( self.graphs )
+
+    def fitStep( self, **kwargs ):
+
+        if( self.method != 'SVI' ):
+            return self.model.fitStep()
+
+        minibatch_indices = np.random.randint( len( self.graphs ), size=self.minibatch_size )
+        minibatch = [ self.graphs[ i ] for i in minibatch_indices ]
+        self.msg.preprocessData( minibatch )
+        return self.model.fitStep()
