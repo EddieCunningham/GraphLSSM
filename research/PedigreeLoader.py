@@ -39,11 +39,14 @@ def pedigreeToGraph( pedigree ):
     index_map = BiDirectionalDict( {} )
 
     for person in pedigree.family:
-        if( person.Id not in index_map ):
-            index_map[ person.Id ] = len( index_map )
 
         for mate, children in person.mateKids:
             # Order is female, male, unknown
+            if( person.Id not in index_map ):
+                index_map[ person.Id ] = len( index_map )
+            if( mate.Id not in index_map ):
+                index_map[ mate.Id ] = len( index_map )
+
             parents = tuple( sorted( [ mate, person ], key=lambda p: p.sex ) )
             if( parents not in edges ):
                 reindexed_parents = []
@@ -63,6 +66,8 @@ def pedigreeToGraph( pedigree ):
     graph = PedigreeSexMatters() if pedigree.inheritancePattern == 'XL' else Pedigree()
     for parents, children in edges.values():
         graph.addEdge( parents=parents, children=children )
+
+    graph.pedigree_obj = pedigree
 
     found_affected = False
     for person in pedigree.family:

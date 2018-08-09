@@ -154,7 +154,7 @@ class _graphHMMMixin():
         # If we know the latent state for child, then ensure that we
         # transition there
         if( int( child ) in self.possible_latent_states ):
-            states = self.possible_latent_states[ child ]
+            states = self.possible_latent_states[ int( child ) ]
             impossible_axes = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
             pi[ ..., impossible_axes ] = np.NINF
             pi[ ..., states ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
@@ -232,7 +232,15 @@ class _graphHMMMixin():
     ######################################################################
 
     def uBaseCase( self, node, debug=True ):
-        initial_dist = self.pi0
+        pi = np.copy( self.pi0 )
+        if( int( node ) in self.possible_latent_states ):
+            states = self.possible_latent_states[ int( node ) ]
+            impossible_states = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
+            for state in impossible_states:
+                pi[ state ] = np.NINF
+            pi[ states ] -= np.logaddexp.reduce( pi )
+
+        initial_dist = pi
         emission = self.emissionProb( node )
         newU = self.multiplyTerms( terms=( emission, initial_dist ) )
         return newU
@@ -527,7 +535,16 @@ class GraphHMMFBS( _graphHMMMixin, GraphFilterFBS ):
     ######################################################################
 
     def uBaseCase( self, node ):
-        initial_dist = fbsData( self.pi0, -1 )
+        pi = np.copy( self.pi0 )
+        node_full = self.partialGraphIndexToFullGraphIndex( node )
+        if( int( node_full ) in self.possible_latent_states ):
+            states = self.possible_latent_states[ int( node_full ) ]
+            impossible_states = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
+            for state in impossible_states:
+                pi[ impossible_states ] = np.NINF
+            pi[ states ] -= np.logaddexp.reduce( pi )
+
+        initial_dist = fbsData( pi, -1 )
         emission = self.emissionProb( node, is_partial_graph_index=True )
         return self.multiplyTerms( terms=( emission, initial_dist ) )
 
@@ -757,7 +774,15 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
     def uBaseCase( self, node ):
         node_full = self.partialGraphIndexToFullGraphIndex( node )
         group = self.node_groups[ int( node_full ) ]
-        initial_dist = fbsData( self.pi0s[ group ], -1 )
+        pi = np.copy( self.pi0s[ group ] )
+        if( int( node_full ) in self.possible_latent_states ):
+            states = self.possible_latent_states[ int( node_full ) ]
+            impossible_states = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
+            for state in impossible_states:
+                pi[ impossible_states ] = np.NINF
+            pi[ states ] -= np.logaddexp.reduce( pi )
+
+        initial_dist = fbsData( pi, -1 )
         emission = self.emissionProb( node, is_partial_graph_index=True )
         return self.multiplyTerms( terms=( emission, initial_dist ) )
 

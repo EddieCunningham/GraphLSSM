@@ -29,7 +29,10 @@ __all__ = [
     'GroupSVI',
     'AutosomalDominant',
     'AutosomalRecessive',
-    'XLinkedRecessive'
+    'XLinkedRecessive',
+    'autosomalDominantPriors',
+    'autosomalRecessivePriors',
+    'xLinkedRecessivePriors'
 ]
 
 ######################################################################
@@ -54,7 +57,7 @@ def autosomalTransitionPrior():
                        [ [ 0.  , 0.  , 1.  , 0.   ],
                          [ 0.  , 0.  , 0.5 , 0.5  ],
                          [ 0.  , 0.  , 0.5 , 0.5  ],
-                         [ 0.  , 0.  , 0.  , 1.   ] ] ] ) + 1
+                         [ 0.  , 0.  , 0.  , 1.   ] ] ] )
 
 def autosomalDominantEmissionPrior():
     # [ AA, Aa, aA, aa ]
@@ -62,7 +65,7 @@ def autosomalDominantEmissionPrior():
     return np.array( [ [ 0, 1 ],
                        [ 0, 1 ],
                        [ 0, 1 ],
-                       [ 1, 0 ] ] ) + 1
+                       [ 1, 0 ] ] )
 
 def autosomalRecessiveEmissionPrior():
     # [ AA, Aa, aA, aa ]
@@ -70,7 +73,7 @@ def autosomalRecessiveEmissionPrior():
     return np.array( [ [ 0, 1 ],
                        [ 1, 0 ],
                        [ 1, 0 ],
-                       [ 1, 0 ] ] ) + 1
+                       [ 1, 0 ] ] )
 
 ######################################################################
 
@@ -87,7 +90,7 @@ def xLinkedFemaleTransitionPrior():
                          [ 0. , 0. , 0.5, 0.5 ] ],
 
                        [ [ 0. , 1. , 0. , 0.  ],
-                         [ 0. , 0. , 0. , 1.  ] ] ] ) + 1
+                         [ 0. , 0. , 0. , 1.  ] ] ] )
 
 def xLinkedMaleTransitionPrior():
     # Female, male, male child
@@ -102,7 +105,7 @@ def xLinkedMaleTransitionPrior():
                          [ 0.5, 0.5 ] ],
 
                        [ [ 0. , 1.  ],
-                         [ 0. , 1.  ] ] ] ) + 1
+                         [ 0. , 1.  ] ] ] )
 
 def xLinkedUnknownTransitionPrior():
     # Female, male, unknown sex child
@@ -117,7 +120,7 @@ def xLinkedUnknownTransitionPrior():
                          [ 0.  , 0.  , 0.25, 0.25, 0.25, 0.25 ] ] ,
 
                        [ [ 0.  , 0.5 , 0.  , 0.  , 0.  , 0.5  ] ,
-                         [ 0.  , 0.  , 0.  , 0.5 , 0.  , 0.5  ] ] ] ) + 1
+                         [ 0.  , 0.  , 0.  , 0.5 , 0.  , 0.5  ] ] ] )
 
 # Going to ignore the ( unknown, unknown ) -> unknown case
 
@@ -127,13 +130,13 @@ def xLinkedFemaleEmissionPrior():
     return np.array( [ [ 0, 1 ],
                        [ 1, 0 ],
                        [ 1, 0 ],
-                       [ 1, 0 ] ] ) + 1
+                       [ 1, 0 ] ] )
 
 def xLinkedMaleEmissionPrior():
     # [ XY, xY ]
     # [ Not affected, affected ]
     return np.array( [ [ 0, 1 ],
-                       [ 1, 0 ] ] ) + 1
+                       [ 1, 0 ] ] )
 
 def xLinkedUnknownEmissionPrior():
     # [ XX, Xx, xX, xx, XY, xY ]
@@ -143,7 +146,7 @@ def xLinkedUnknownEmissionPrior():
                        [ 1, 0 ],
                        [ 1, 0 ],
                        [ 0, 1 ],
-                       [ 0, 0 ] ] ) + 1
+                       [ 0, 0 ] ] )
 
 ######################################################################
 
@@ -161,6 +164,9 @@ class AutosomalParameters():
 
         # Emission dist
         self.emission_dist = TensorTransition( hypers=dict( alpha=emission_prior ) )
+
+    def paramProb( self ):
+        return self.initial_dist.ilog_params() + self.transition_dist.ilog_params() + self.emission_dist.ilog_params()
 
 ######################################################################
 
@@ -181,6 +187,14 @@ class XLinkedParameters():
         self.emission_dists = { 0: TensorTransition( hypers=dict( alpha=emission_priors[ 0 ] ) ),
                                 1: TensorTransition( hypers=dict( alpha=emission_priors[ 1 ] ) ),
                                 2: TensorTransition( hypers=dict( alpha=emission_priors[ 2 ] ) ) }
+
+    def paramProb( self ):
+        ans = 0.0
+        for group in self.initial_dists.keys():
+            ans += self.initial_dists[ group ].ilog_params()
+            ans += self.transition_dists[ group ].ilog_params()
+            ans += self.emission_dists[ group ].ilog_params()
+        return ans
 
 ######################################################################
 
@@ -581,6 +595,52 @@ class Gibbs( Optimizer ):
         self.resampleStates()
         self.resampleParameters()
 
+    def genProbHelper( self, node_list ):
+        # Compute P( X, Y | Θ )
+        for node in node_list:
+            node_state = self.graph_state.node_states[ node ]
+
+            # P( X | Θ )
+            if( self.msg.nParents( node ) == 0 ):
+                self.gen_prob += self.params.initial_dist.ilog_likelihood( np.array( [ node_state ] ) )
+            else:
+                parents, parent_order = self.msg.getParents( node, get_order=True )
+                states = tuple( [ np.array( [ self.graph_state.node_states[ p ] ] ) for p in parents ] )
+                transition_state = states + ( np.array( [ node_state ] ), )
+                self.gen_prob += self.params.transition_dist.ilog_likelihood( transition_state )
+
+            # P( Y | X, Θ )
+            emission_state = ( np.array( [ node_state ] ), np.array( [ self.msg.ys[ node ] ] ) )
+            self.gen_prob += self.params.emission_dist.ilog_likelihood( emission_state )
+
+    def generativeProbability( self ):
+        self.gen_prob = 0.0
+        self.msg.forwardPass( self.genProbHelper )
+        return self.gen_prob
+
+######################################################################
+
+class GroupGibbs( Gibbs ):
+
+    def genProbHelper( self, node_list ):
+        # Compute P( X, Y | Θ )
+        for node in node_list:
+            node_state = self.graph_state.node_states[ node ]
+            group = self.msg.node_groups[ node ]
+
+            # P( X | Θ )
+            if( self.msg.nParents( node ) == 0 ):
+                self.gen_prob += self.params.initial_dists[ group ].ilog_likelihood( np.array( [ node_state ] ) )
+            else:
+                parents, parent_order = self.msg.getParents( node, get_order=True )
+                states = tuple( [ np.array( [ self.graph_state.node_states[ p ] ] ) for p in parents ] )
+                transition_state = states + ( np.array( [ node_state ] ), )
+                self.gen_prob += self.params.transition_dists[ group ].ilog_likelihood( transition_state )
+
+            # P( Y | X, Θ )
+            emission_state = ( np.array( [ node_state ] ), np.array( [ self.msg.ys[ node ] ] ) )
+            self.gen_prob += self.params.emission_dists[ group ].ilog_likelihood( emission_state )
+
 ######################################################################
 
 class EM( Optimizer ):
@@ -793,37 +853,55 @@ class GroupSVI( GroupCAVI ):
 
 ######################################################################
 
+def autosomalDominantPriors( prior_strength=1.0 ):
+    trans_prior = autosomalTransitionPrior() * prior_strength + 1
+    emiss_prior = autosomalDominantEmissionPrior() * prior_strength + 1
+    return trans_prior, emiss_prior
+
+def autosomalRecessivePriors( prior_strength=1.0 ):
+    trans_prior = autosomalTransitionPrior() * prior_strength + 1
+    emiss_prior = autosomalRecessiveEmissionPrior() * prior_strength + 1
+    return trans_prior, emiss_prior
+
+######################################################################
+
 class _Autosomal():
 
-    def __init__( self, graphs, prior_strength=1.0, method='SVI', _dominant=True, **kwargs ):
+    def __init__( self, graphs, prior_strength=1.0, method='SVI', priors=None, params=None, _dominant=True, **kwargs ):
         assert method in [ 'EM', 'Gibbs', 'CAVI', 'SVI' ]
         self.graphs = graphs
         self.msg = PedigreeHMMFilter()
         self.method = method
 
         # Generate the priors
-        trans_prior = autosomalTransitionPrior() * prior_strength
-        if( _dominant ):
-            emiss_prior = autosomalDominantEmissionPrior() * prior_strength
+        if( priors is None ):
+            trans_prior, emiss_prior = autosomalDominantPriors( prior_strength ) if _dominant else autosomalRecessivePriors( prior_strength )
         else:
-            emiss_prior = autosomalRecessiveEmissionPrior() * prior_strength
+            # Initialize using other priors
+            trans_prior, emiss_prior = priors
 
-        # Generate the parameters objects
+        # Generate the parameters
         if( method == 'EM' ):
-            self.params = AutosomalParametersEM( transition_prior=trans_prior, emission_prior=emiss_prior )
+            self.params = AutosomalParametersEM( transition_prior=trans_prior, emission_prior=emiss_prior ) if params is None else params
+        elif( method == 'Gibbs' ):
+            self.params = AutosomalParametersGibbs( transition_prior=trans_prior, emission_prior=emiss_prior ) if params is None else params
+        elif( method == 'CAVI' ):
+            self.params = AutosomalParametersCAVI( transition_prior=trans_prior, emission_prior=emiss_prior ) if params is None else params
+        else:
+            self.params = AutosomalParametersSVI( transition_prior=trans_prior, emission_prior=emiss_prior ) if params is None else params
+
+        # Generate the model objects
+        if( method == 'EM' ):
             self.model = EM( msg=self.msg, parameters=self.params )
         elif( method == 'Gibbs' ):
-            self.params = AutosomalParametersGibbs( transition_prior=trans_prior, emission_prior=emiss_prior )
             self.model = Gibbs( msg=self.msg, parameters=self.params )
         elif( method == 'CAVI' ):
-            self.params = AutosomalParametersCAVI( transition_prior=trans_prior, emission_prior=emiss_prior )
             self.model = CAVI( msg=self.msg, parameters=self.params )
         else:
-            self.params = AutosomalParametersSVI( transition_prior=trans_prior, emission_prior=emiss_prior )
             step_size = kwargs[ 'step_size' ]
             self.minibatch_size = kwargs[ 'minibatch_size' ]
-            minibatch_ratio = self.minibatch_size / len( self.graphs )
-            self.model = SVI( msg=self.msg, parameters=self.params, minibatch_ratio=minibatch_ratio, step_size=step_size )
+            self.model = SVI( msg=self.msg, parameters=self.params, minibatch_ratio=None, step_size=step_size )
+            self.total_nodes = sum( [ len( graph.nodes ) for graph, fbs in self.graphs ] )
 
         if( method != 'SVI' ):
             self.msg.preprocessData( self.graphs )
@@ -836,53 +914,92 @@ class _Autosomal():
         minibatch_indices = np.random.randint( len( self.graphs ), size=self.minibatch_size )
         minibatch = [ self.graphs[ i ] for i in minibatch_indices ]
         self.msg.preprocessData( minibatch )
+
+        # Compute minibatch ratio
+        minibatch_nodes = sum( [ len( graph.nodes ) for graph, fbs in minibatch ] )
+        self.params.setMinibatchRatio( self.total_nodes / minibatch_nodes )
+
         return self.model.fitStep()
 
+    def sampleParams( self ):
+        self.msg.updateParams( self.params.sampleInitialDist(), self.params.sampleTransitionDist(), self.params.sampleEmissionDist() )
+
+    def marginal( self ):
+        U, V = self.msg.filter()
+        return self.msg.marginalProb( U, V, 0 )
+
+    def generative( self ):
+        assert self.method == 'Gibbs'
+        return self.model.generativeProbability()
+
+    def paramProb( self ):
+        return self.params.paramProb()
+
 class AutosomalDominant( _Autosomal ):
-    def __init__( self, graphs, prior_strength=1.0, method='SVI', **kwargs ):
-        super().__init__( graphs, prior_strength, method=method, _dominant=True, **kwargs )
+    def __init__( self, graphs, prior_strength=1.0, method='SVI', priors=None, params=None, **kwargs ):
+        super().__init__( graphs, prior_strength, method=method, priors=priors, params=params, _dominant=True, **kwargs )
 
 class AutosomalRecessive( _Autosomal ):
-    def __init__( self, graphs, prior_strength=1.0, method='SVI', **kwargs ):
-        super().__init__( graphs, prior_strength, method=method, _dominant=False, **kwargs )
+    def __init__( self, graphs, prior_strength=1.0, method='SVI', priors=None, params=None, **kwargs ):
+        super().__init__( graphs, prior_strength, method=method, priors=priors, params=params, _dominant=False, **kwargs )
+
+######################################################################
+
+def xLinkedRecessivePriors( prior_strength=1.0 ):
+    female_trans_prior = xLinkedFemaleTransitionPrior() * prior_strength + 1
+    male_trans_prior = xLinkedMaleTransitionPrior() * prior_strength + 1
+    unknown_trans_prior = xLinkedUnknownTransitionPrior() * prior_strength + 1
+    trans_priors = [ female_trans_prior, male_trans_prior, unknown_trans_prior ]
+
+    female_emiss_prior = xLinkedFemaleEmissionPrior() * prior_strength + 1
+    male_emiss_prior = xLinkedMaleEmissionPrior() * prior_strength + 1
+    unknown_emiss_prior = xLinkedUnknownEmissionPrior() * prior_strength + 1
+    emiss_priors = [ female_emiss_prior, male_emiss_prior, unknown_emiss_prior ]
+
+    return trans_priors, emiss_priors
 
 ######################################################################
 
 class XLinkedRecessive():
 
-    def __init__( self, graphs, prior_strength=1.0, method='SVI', **kwargs ):
+    def __init__( self, graphs, prior_strength=1.0, method='SVI', priors=None, params=None, **kwargs ):
         assert method in [ 'EM', 'Gibbs', 'CAVI', 'SVI' ]
         self.graphs = graphs
         self.msg = PedigreeHMMFilterSexMatters()
         self.method = method
 
         # Generate the priors
-        female_trans_prior = xLinkedFemaleTransitionPrior() * prior_strength
-        male_trans_prior = xLinkedMaleTransitionPrior() * prior_strength
-        unknown_trans_prior = xLinkedUnknownTransitionPrior() * prior_strength
-        trans_priors = [ female_trans_prior, male_trans_prior, unknown_trans_prior ]
-
-        female_emiss_prior = xLinkedFemaleEmissionPrior() * prior_strength
-        male_emiss_prior = xLinkedMaleEmissionPrior() * prior_strength
-        unknown_emiss_prior = xLinkedUnknownEmissionPrior() * prior_strength
-        emiss_priors = [ female_emiss_prior, male_emiss_prior, unknown_emiss_prior ]
+        if( priors is None ):
+            trans_priors, emiss_priors = xLinkedRecessivePriors( prior_strength )
+        else:
+            # Initialize using known priors
+            trans_priors, emiss_priors = priors
+            female_trans_prior, male_trans_prior, unknown_trans_prior = trans_priors
+            female_emiss_prior, male_emiss_prior, unknown_emiss_prior = emiss_priors
 
         # Generate the parameters objects
         if( method == 'EM' ):
-            self.params = XLinkedParametersEM( transition_priors=trans_priors, emission_priors=emiss_priors )
+            self.params = XLinkedParametersEM( transition_priors=trans_priors, emission_priors=emiss_priors ) if params is None else params
+        elif( method == 'Gibbs' ):
+            self.params = XLinkedParametersGibbs( transition_priors=trans_priors, emission_priors=emiss_priors ) if params is None else params
+        elif( method == 'CAVI' ):
+            self.params = XLinkedParametersCAVI( transition_priors=trans_priors, emission_priors=emiss_priors ) if params is None else params
+        else:
+            self.params = XLinkedParametersSVI( transition_priors=trans_priors, emission_priors=emiss_priors ) if params is None else params
+
+        # Generate the model objects
+        if( method == 'EM' ):
             self.model = GroupEM( msg=self.msg, parameters=self.params )
         elif( method == 'Gibbs' ):
-            self.params = XLinkedParametersGibbs( transition_priors=trans_priors, emission_priors=emiss_priors )
-            self.model = Gibbs( msg=self.msg, parameters=self.params )
+            self.model = GroupGibbs( msg=self.msg, parameters=self.params )
         elif( method == 'CAVI' ):
-            self.params = XLinkedParametersCAVI( transition_priors=trans_priors, emission_priors=emiss_priors )
             self.model = GroupCAVI( msg=self.msg, parameters=self.params )
         else:
-            self.params = XLinkedParametersSVI( transition_priors=trans_priors, emission_priors=emiss_priors )
             step_size = kwargs[ 'step_size' ]
             self.minibatch_size = kwargs[ 'minibatch_size' ]
             minibatch_ratio = self.minibatch_size / len( self.graphs )
             self.model = GroupSVI( msg=self.msg, parameters=self.params, minibatch_ratio=minibatch_ratio, step_size=step_size )
+            self.total_nodes = sum( [ len( graph.nodes ) for graph, fbs in self.graphs ] )
 
         if( method != 'SVI' ):
             self.msg.preprocessData( self.graphs )
@@ -895,4 +1012,23 @@ class XLinkedRecessive():
         minibatch_indices = np.random.randint( len( self.graphs ), size=self.minibatch_size )
         minibatch = [ self.graphs[ i ] for i in minibatch_indices ]
         self.msg.preprocessData( minibatch )
+
+        # Compute minibatch ratio
+        minibatch_nodes = sum( [ len( graph.nodes ) for graph, fbs in minibatch ] )
+        self.params.setMinibatchRatio( self.total_nodes / minibatch_nodes )
+
         return self.model.fitStep()
+
+    def sampleParams( self ):
+        self.msg.updateParams( self.params.sampleInitialDist(), self.params.sampleTransitionDist(), self.params.sampleEmissionDist() )
+
+    def marginal( self ):
+        U, V = self.msg.filter()
+        return self.msg.marginalProb( U, V, 0 )
+
+    def generative( self ):
+        assert self.method == 'Gibbs'
+        return self.model.generativeProbability()
+
+    def paramProb( self ):
+        return self.params.paramProb()

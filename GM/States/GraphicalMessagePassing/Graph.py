@@ -1,8 +1,15 @@
 import graphviz
 from scipy.sparse import coo_matrix
-import os
+import itertools
+import numpy as np
+from collections import deque, namedtuple
 
 __all__ = [ 'Graph', 'DataGraph', 'GroupGraph' ]
+
+class Edges():
+    def __init__( self ):
+        self.up_edge = None
+        self.down_edges = []
 
 class Graph():
     # This class is how we make sparse matrices
@@ -11,6 +18,107 @@ class Graph():
         self.nodes = set()
         self.edge_children = list()
         self.edge_parents = list()
+
+    ######################################################################
+
+    @property
+    def roots( self ):
+        if( hasattr( self, '_roots' ) == False ):
+            self._roots = self.nodes - set( list( itertools.chain( *self.edge_children ) ) )
+        return self._roots
+
+    @property
+    def leaves( self ):
+        if( hasattr( self, '_leaves' ) == False ):
+            self._leaves = self.nodes - set( list( itertools.chain( *self.edge_parents ) ) )
+        return self._leaves
+
+    @property
+    def node_memberships( self ):
+        if( hasattr( self, '_node_memberships' ) == False ):
+            self._node_memberships = {}
+            for e, ( parents, children ) in enumerate( zip( self.edge_parents, self.edge_children ) ):
+                for parent in parents:
+                    if( parent not in self._node_memberships ):
+                        self._node_memberships[ parent ] = Edges()
+                    if( e not in self._node_memberships[ parent ].down_edges ):
+                        self._node_memberships[ parent ].down_edges.append( e )
+
+                for child in children:
+                    if( child not in self._node_memberships ):
+                        self._node_memberships[ child ] = Edges()
+                    if( self._node_memberships[ child ].up_edge is not None ):
+                        assert self._node_memberships[ child ].up_edge == e
+                    else:
+                        self._node_memberships[ child ].up_edge = e
+
+        return self._node_memberships
+
+    ######################################################################
+
+    def getParents( self, node ):
+        up_edge = self.node_memberships[ node ].up_edge
+        return self.edge_parents[ up_edge ] if up_edge is not None else []
+
+    def getChildren( self, node ):
+        ans = []
+        for down_edge in self.node_memberships[ node ].down_edges:
+            ans.append( self.edge_children[ down_edge ] )
+        return ans
+
+    ######################################################################
+
+    def forwardPass( self ):
+        edge_semaphores = np.array( [ len( e ) for e in self.edge_parents ] )
+
+        # Get the first edges to start with
+        for edge, parents in enumerate( self.edge_parents ):
+            edge_semaphores[ edge ] -= len( set.intersection( self.roots, set( parents ) ) )
+
+        for root in self.roots:
+            yield root
+
+        edges = np.arange( edge_semaphores.shape[ 0 ], dtype=int )
+
+        done_edges = edge_semaphores == 0
+        q = deque( edges[ done_edges ] )
+        while( len( q ) > 0 ):
+
+            edge = q.popleft()
+            for child in self.edge_children[ edge ]:
+                yield child
+                for down_edge in self.node_memberships[ child ].down_edges:
+                    edge_semaphores[ down_edge ] -= 1
+
+            now_done = ( edge_semaphores == 0 ) & ( ~done_edges )
+            q.extend( edges[ now_done ] )
+            done_edges |= now_done
+
+    def backwardPass( self ):
+        edge_semaphores = np.array( [ len( e ) for e in self.edge_children ] )
+
+        # Get the first edges to start with
+        for edge, children in enumerate( self.edge_children ):
+            edge_semaphores[ edge ] -= len( set.intersection( self.leaves, set( children ) ) )
+
+        for leaf in self.leaves:
+            yield leaf
+
+        edges = np.arange( edge_semaphores.shape[ 0 ], dtype=int )
+
+        done_edges = edge_semaphores == 0
+        q = deque( edges[ done_edges ] )
+        while( len( q ) > 0 ):
+
+            edge = q.popleft()
+            for parent in self.edge_parents[ edge ]:
+                yield parent
+                if( self.node_memberships[ parent ].up_edge is not None ):
+                    edge_semaphores[ self.node_memberships[ parent ].up_edge ] -= 1
+
+            now_done = ( edge_semaphores == 0 ) & ( ~done_edges )
+            q.extend( edges[ now_done ] )
+            done_edges |= now_done
 
     ######################################################################
 

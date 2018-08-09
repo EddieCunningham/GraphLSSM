@@ -14,6 +14,7 @@ class _pedigreeMixin():
         super().__init__()
         self.attrs = {}
         self.studyID = None
+        self.pedigree_obj = None
 
     def setNodeAttrs( self, nodes, attrs ):
         if( isinstance( nodes, int ) ):
@@ -26,15 +27,74 @@ class _pedigreeMixin():
                     self.attrs[ node ] = {}
                 self.attrs[ node ].update( attr )
 
+    def draw( self, render=True, **kwargs ):
+
+        male_style = dict( shape='square' )
+        female_style = dict( shape='circle' )
+        unknown_style = dict( shape='diamond' )
+        affected_male_style = dict( shape='square', fontcolor='black', style='bold', color='blue' )
+        affected_female_style = dict( shape='circle', fontcolor='black', style='bold', color='blue' )
+        affected_unknown_style = dict( shape='diamond', fontcolor='black', style='bold', color='blue' )
+        styles = { 0: male_style, 1: female_style, 2: unknown_style, 3: affected_male_style, 4: affected_female_style, 5: affected_unknown_style }
+
+        unaffected_males = []
+        unaffected_females = []
+        unaffected_unknowns = []
+        affected_males = []
+        affected_females = []
+        affected_unknowns = []
+
+        for n in self.nodes:
+            attrs = self.attrs[ n ]
+            if( attrs[ 'sex' ] == 'male' ):
+                if( attrs[ 'affected' ] == True ):
+                    affected_males.append( n )
+                else:
+                    unaffected_males.append( n )
+            elif( attrs[ 'sex' ] == 'female' ):
+                if( attrs[ 'affected' ] == True ):
+                    affected_females.append( n )
+                else:
+                    unaffected_females.append( n )
+            else:
+                if( attrs[ 'affected' ] == True ):
+                    affected_unknowns.append( n )
+                else:
+                    unaffected_unknowns.append( n )
+
+        node_to_style_key =       dict( [ ( n, 0 ) for n in unaffected_males ] )
+        node_to_style_key.update( dict( [ ( n, 1 ) for n in unaffected_females ] ) )
+        node_to_style_key.update( dict( [ ( n, 2 ) for n in unaffected_unknowns ] ) )
+        node_to_style_key.update( dict( [ ( n, 3 ) for n in affected_males ] ) )
+        node_to_style_key.update( dict( [ ( n, 4 ) for n in affected_females ] ) )
+        node_to_style_key.update( dict( [ ( n, 5 ) for n in affected_unknowns ] ) )
+
+        kwargs.update( dict( styles=styles, node_to_style_key=node_to_style_key) )
+
+        return super().draw( render=render, **kwargs )
+
 class Pedigree( _pedigreeMixin, DataGraph ):
-    pass
+
+    @staticmethod
+    def fromPedigreeSexMatters( pedigree, deep_copy=True ):
+        deepcopy = copy.deepcopy if deep_copy else lambda x: x
+        new_pedigree = PedigreeSexMatters()
+        new_pedigree.pedigree_obj = pedigree.pedigree_obj
+        new_pedigree.nodes = deepcopy( pedigree.nodes )
+        new_pedigree.edge_children = deepcopy( pedigree.edge_children )
+        new_pedigree.edge_parents = deepcopy( pedigree.edge_parents )
+        new_pedigree.data = deepcopy( pedigree.data )
+        new_pedigree.possible_latent_states = deepcopy( pedigree.possible_latent_states )
+        new_pedigree.attrs = deepcopy( pedigree.attrs )
+        return new_pedigree
 
 class PedigreeSexMatters( _pedigreeMixin, GroupGraph ):
 
     @staticmethod
-    def fromPedigree( pedigree, deep_copy=False ):
+    def fromPedigree( pedigree, deep_copy=True ):
         deepcopy = copy.deepcopy if deep_copy else lambda x: x
         new_pedigree = PedigreeSexMatters()
+        new_pedigree.pedigree_obj = pedigree.pedigree_obj
         new_pedigree.nodes = deepcopy( pedigree.nodes )
         new_pedigree.edge_children = deepcopy( pedigree.edge_children )
         new_pedigree.edge_parents = deepcopy( pedigree.edge_parents )
@@ -43,7 +103,7 @@ class PedigreeSexMatters( _pedigreeMixin, GroupGraph ):
         new_pedigree.attrs = deepcopy( pedigree.attrs )
         sex_to_index = lambda x: [ 'female', 'male', 'unknown' ].index( x )
         for node, attr in pedigree.attrs.items():
-            new_pedigree.setGroups( nodes, sex_to_index( attr[ 'sex' ] ) )
+            new_pedigree.setGroups( node, sex_to_index( attr[ 'sex' ] ) )
 
         return new_pedigree
 
@@ -58,6 +118,15 @@ class PedigreeSexMatters( _pedigreeMixin, GroupGraph ):
 class _pedigreeFilterMixin():
 
     def preprocessData( self, data_graphs ):
+        if( isinstance( self, GraphHMMFBSMultiGroups ) ):
+            updated_graphs = []
+            for graph, fbs in data_graphs:
+                if( not isinstance( graph, PedigreeSexMatters ) ):
+                    updated_graphs.append( ( PedigreeSexMatters.fromPedigree( graph ), fbs ) )
+                else:
+                    updated_graphs.append( ( graph, fbs ) )
+            data_graphs = updated_graphs
+
         super().preprocessData( data_graphs )
         self.node_attrs = []
         total_nodes = 0
