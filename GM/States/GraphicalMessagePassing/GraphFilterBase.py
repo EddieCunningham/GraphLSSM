@@ -456,22 +456,28 @@ class _filterMixin():
 
     ######################################################################
 
-    def marginalProb( self, U, V, node ):
+    def marginalProb( self, U, V, node=None ):
         # P( Y )
+        if( node is None ):
+            marginal = 0.0
+            for node in self.parent_graph_assignments:
+                joint = self.nodeJointSingleNode( U, V, node )
+                marginal += self.integrate( joint, axes=range( joint.ndim ) )
+            return marginal
         joint = self.nodeJointSingleNode( U, V, node )
         return self.integrate( joint, axes=range( joint.ndim ) )
 
     def nodeSmoothed( self, U, V, nodes ):
         # P( x | Y )
-        return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.nodeJoint( U, V, nodes ) ]
+        return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.nodeJoint( U, V, nodes ) ]
 
     def parentsSmoothed( self, U, V, nodes ):
         # P( x_p1..pN | Y )
-        return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.jointParents( U, V, nodes ) ]
+        return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.jointParents( U, V, nodes ) ]
 
     def parentChildSmoothed( self, U, V, nodes ):
         # P( x_c, x_p1..pN | Y )
-        return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.jointParentChild( U, V, nodes ) ]
+        return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.jointParentChild( U, V, nodes ) ]
 
     def conditionalParentChild( self, U, V, nodes ):
         # P( x_c | x_p1..pN, Y )
@@ -1059,22 +1065,29 @@ class __FBSFilterMixin():
 
     ######################################################################
 
-    def marginalProb( self, U, V, node ):
+    def marginalProb( self, U, V, node=None ):
         # P( Y )
+        if( node is None ):
+            marginal = 0.0
+            for node in self.full_graph.parent_graph_assignments:
+                joint = self.nodeJointSingleNode( U, V, node )
+                marginal += self.integrate( joint, axes=range( joint.ndim ) )
+            return marginal
+
         joint = self.nodeJointSingleNode( U, V, node )
         return self.integrate( joint, axes=range( joint.ndim ) )
 
     def nodeSmoothed( self, U, V, nodes ):
         # P( x | Y )
-        return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.nodeJoint( U, V, nodes ) ]
+        return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.nodeJoint( U, V, nodes ) ]
 
     def parentsSmoothed( self, U, V, nodes ):
         # P( x_p1..pN | Y )
-        return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.jointParents( U, V, nodes ) ]
+        return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.jointParents( U, V, nodes ) ]
 
     def parentChildSmoothed( self, U, V, nodes ):
         # P( x_c, x_p1..pN | Y )
-        return [ ( node, val - self.marginalProb( U, V, node ) ) for node, val in self.jointParentChild( U, V, nodes ) ]
+        return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.jointParentChild( U, V, nodes ) ]
 
     def conditionalParentChild( self, U, V, nodes ):
         # P( x_c | x_p1..pN, Y )

@@ -110,14 +110,16 @@ def testGraphHMMNoFBS():
     print( '\nSmoothed' )
     for n, probs in msg.nodeSmoothed( U, V, msg.nodes ):
         # If we reduce over the last axis, we should have everything sum to 1
-        reduced = np.abs( np.logaddexp.reduce( probs, axis=-1 ) ).sum()
+        reduced = np.logaddexp.reduce( probs, axis=-1 )
         print( 'P( x_%d | Y )'%( n ), ':', probs, '->', reduced )
+        # assert np.allclose( reduced, 0.0 )
 
     print( '\nChild given parents' )
     for n, probs in msg.conditionalParentChild( U, V, msg.nodes ):
         # If we reduce over the last axis, we should have everything sum to 1
-        reduced = np.abs( np.logaddexp.reduce( probs, axis=-1 ) ).sum()
+        reduced = np.logaddexp.reduce( probs, axis=-1 )
         print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', reduced )
+        # assert np.allclose( reduced, 0.0 )
 
     print( 'Done with the testGraphHMMNoFBS test!!\n' )
 
@@ -260,16 +262,18 @@ def testGraphHMM():
     print( '\nSmoothed' )
     for n, probs in msg.nodeSmoothed( U, V, msg.nodes ):
         # If we reduce over the last axis, we should have everything sum to 1
-        reduced = np.abs( msg.integrate( probs, axes=[ -1 ] ) ).sum()
+        reduced = msg.integrate( probs, axes=[ -1 ] )
         print( 'P( x_%d | Y )'%( n ), ':', probs, '->', probs.shape, reduced )
+        # assert np.allclose( reduced, 0.0 )
 
     ####################################################
 
     print( '\nChild given parents' )
     for n, probs in msg.conditionalParentChild( U, V, msg.nodes ):
         # If we reduce over the last axis, we should have everything sum to 1
-        reduced = np.abs( msg.integrate( probs, axes=[ -1 ] ) ).sum()
+        reduced = msg.integrate( probs, axes=[ -1 ] )
         print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
+        # assert np.allclose( reduced, 0.0 )
 
 ##################################################################################################
 ##################################################################################################
@@ -341,32 +345,32 @@ def testGraphGroupHMM():
     initial_dists = dict( [ ( g, Dirichlet.generate( D=d_latents[ g ] ) ) for g in range( groups ) ] )
 
     # Check how many transition distributions we need
-    all_transition_counts = {}
+    all_transition_counts = dict( [ ( group, set() ) for group in range( groups ) ] )
     for graph in group_graphs:
         if( isinstance( graph, Iterable ) ):
             graph, fbs = graph
         for children, parents in zip( graph.edge_children, graph.edge_parents ):
             ndim = len( parents ) + 1
+
+            parent_groups = [ graph.groups[ parent ] for parent in parents ]
+
             for child in children:
-                group = graph.groups[ child ]
-                if( group not in all_transition_counts ):
-                    all_transition_counts[ group ] = set()
-                all_transition_counts[ group ].add( ndim )
+                child_group = graph.groups[ child ]
+                family_groups = parent_groups + [ child_group ]
+                shape = tuple( [ d_latents[ group ] for group in family_groups ] )
+                all_transition_counts[ child_group ].add( shape )
 
     # Create the transition distribution
     transition_dists = {}
     for group in all_transition_counts:
         transition_dists[ group ] = []
-        for ndim in all_transition_counts[ group ]:
-            shape = [ d_latents[ group ] for _ in range( ndim ) ]
-            trans = np.empty( shape )
-            for indices in itertools.product( *[ range( s ) for s in shape[ 1: ] ] ):
-                trans[ indices ] = Dirichlet.generate( D=d_latents[ group ] )
+        for shape in all_transition_counts[ group ]:
+            trans = TensorTransitionDirichletPrior.generate( Ds=shape )
 
             transition_dists[ group ].append( trans )
 
     # Emission dist
-    emission_dist = dict( [ ( g, Dirichlet.generate( D=d_obs, size=d_latents[ g ] ) ) for g in range( groups ) ] )
+    emission_dist = dict( [ ( g, TensorTransitionDirichletPrior.generate( Ds=[ d_latents[ g ], d_obs ] ) ) for g in range( groups ) ] )
 
     # Create the message passer and initialize
     msg = GraphHMMFBSMultiGroups()
@@ -374,7 +378,7 @@ def testGraphGroupHMM():
 
     # Draw the graphs
     # msg.draw( styles={ 0:dict( style='filled', color='red' ) }, node_to_style_key=dict( [ ( n, 0 ) for n in msg.fbs ] ) )
-    msg.draw( use_partial=True )
+    msg.draw()
 
     # Filter
     U, V = msg.filter()
@@ -394,7 +398,6 @@ def testGraphGroupHMM():
         reduced = msg.integrate( probs, axes=range( probs.ndim ) )
         print( 'P( x_%d, Y )'%( n ), ':', probs, '->', reduced )
 
-    # assert 0
     ####################################################
 
     print( '\nJoint parents' )
@@ -448,8 +451,9 @@ def testGraphGroupHMM():
     print( '\nSmoothed' )
     for n, probs in msg.nodeSmoothed( U, V, msg.nodes ):
         # If we reduce over the last axis, we should have everything sum to 1
-        reduced = np.abs( msg.integrate( probs, axes=[ -1 ] ) ).sum()
+        reduced = msg.integrate( probs, axes=[ -1 ] )
         print( 'P( x_%d | Y )'%( n ), ':', probs, '->', probs.shape, reduced )
+        # assert np.allclose( reduced, 0.0 )
 
     ####################################################
 
@@ -458,8 +462,10 @@ def testGraphGroupHMM():
         # If we reduce over the last axis, we should have everything sum to 1
         reduced = np.abs( msg.integrate( probs, axes=[ -1 ] ) ).sum()
         print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
+        # assert np.allclose( reduced, 0.0 )
+
 def graphMarginalizationTest():
-    # testGraphHMMNoFBS()
-    # testGraphHMM()
+    testGraphHMMNoFBS()
+    testGraphHMM()
     testGraphGroupHMM()
     # assert 0

@@ -115,7 +115,7 @@ class TensorTransition( ExponentialFam ):
 
     @classmethod
     def generate( cls, Ds=[ 2, 3, 4 ], size=1 ):
-        params = ( np.ones( Ds ) / prod( Ds ), )
+        params = ( np.ones( Ds ) / np.prod( Ds ), )
         samples = cls.sample( params=params, size=size )
         return samples if size > 1 else cls.unpackSingleSample( samples )
 

@@ -674,7 +674,7 @@ class EM( Optimizer ):
         self.msg.updateParams( self.params.initial_dist.pi, [ self.params.transition_dist.pi ], self.params.emission_dist.pi )
         self.runFilter()
 
-        marginal = self.msg.marginalProb( self.U, self.V, 0 )
+        marginal = self.msg.marginalProb( self.U, self.V )
 
         # Compute log P( x | Y ), log P( x_p1..pN | Y ) and log P( x_c, x_p1..pN | Y )
         node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes )
@@ -714,7 +714,7 @@ class GroupEM( EM ):
         self.msg.updateParams( pi0s, pis, Ls )
         self.runFilter()
 
-        marginal = self.msg.marginalProb( self.U, self.V, 0 )
+        marginal = self.msg.marginalProb( self.U, self.V )
 
         # Compute log P( x | Y ), log P( x_p1..pN | Y ) and log P( x_c, x_p1..pN | Y )
         node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes )
@@ -743,7 +743,7 @@ class CAVI( Optimizer ):
             self.emission_prior_mfnp   = self.params.emission_dist.prior.nat_params
 
     def ELBO( self, initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp ):
-        normalizer = self.msg.marginalProb( self.U, self.V, 0 )
+        normalizer = self.msg.marginalProb( self.U, self.V )
 
         initial_kl_divergence = Dirichlet.KLDivergence( nat_params1=initial_prior_mfnp, nat_params2=self.params.initial_dist.prior.nat_params )
         transition_kl_divergence = TensorTransitionDirichletPrior.KLDivergence( nat_params1=transition_prior_mfnp, nat_params2=self.params.transition_dist.prior.nat_params )
@@ -803,7 +803,7 @@ class GroupCAVI( CAVI ):
         self.emission_prior_mfnp   = dict( [ ( group, dist.prior.nat_params ) for group, dist in self.params.emission_dists.items() ] )
 
     def ELBO( self, initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp ):
-        normalizer = self.msg.marginalProb( self.U, self.V, 0 )
+        normalizer = self.msg.marginalProb( self.U, self.V )
 
         initial_kl_divergence, transition_kl_divergence, emission_kl_divergence = 0, 0, 0
 
@@ -974,7 +974,7 @@ class _Autosomal():
 
     def marginal( self ):
         U, V = self.msg.filter()
-        return self.msg.marginalProb( U, V, 0 )
+        return self.msg.marginalProb( U, V )
 
     def generative( self ):
         assert self.method == 'Gibbs'
@@ -1088,7 +1088,7 @@ class XLinkedRecessive():
 
     def marginal( self ):
         U, V = self.msg.filter()
-        return self.msg.marginalProb( U, V, 0 )
+        return self.msg.marginalProb( U, V )
 
     def generative( self ):
         assert self.method == 'Gibbs'

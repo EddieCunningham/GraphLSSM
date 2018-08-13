@@ -34,13 +34,13 @@ class GraphMessagePasser():
         n_rows = 0
         n_cols = 0
         for i, mat in enumerate( sparse_matrices ):
+            graph_assigments.append( n_rows )
             m, n = mat.shape
             row = np.hstack( ( row, mat.row + n_rows ) )
             col = np.hstack( ( col, mat.col + n_cols ) )
             data = np.hstack( ( data, mat.data ) )
             n_rows += m
             n_cols += n
-            graph_assigments.append( n_rows )
         return coo_matrix( ( data, ( row, col ) ), shape=( n_rows, n_cols ), dtype=int ), graph_assigments
 
     def updateGraphs( self, graphs ):

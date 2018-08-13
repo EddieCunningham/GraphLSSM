@@ -600,7 +600,7 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
             assert np.allclose( np.ones( K ), np.exp( log_emission_dist ).sum( axis=1 ) )
             pis = set()
             for dist in log_transition_dist:
-                ndim = dist.ndim
+                ndim = dist.shape
                 assert ndim not in pis
                 pis.add( ndim )
 
@@ -627,23 +627,6 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
         self.ys = []
         for graph, fbs in group_graphs:
             self.ys.extend( [ graph.data[ node ] if graph.data[ node ] is not None else np.nan for node in graph.nodes ] )
-
-        # Don't need to change emission dist because all of the emission stuff
-        # is done here
-        # if( hasattr( self, 'emission_dists' ) ):
-        #     self.L_set = True
-        #     ys = np.array( self.ys ).T
-        #     L = []
-        #     for node, y in zip( self.nodes, ys ):
-        #         group = self.node_groups[ node ]
-        #         if( not np.any( np.isnan( y ) ) ):
-        #             L.append( self.emission_dists[ group ][ :, y ] )
-        #         else:
-        #             L.append( np.zeros_like( self.emission_dists[ group ][ :, 0 ] ) )
-
-        #     for l in L:
-        #         print( l.shape )
-        #     self.L = np.array( L ).sum( axis=0 ).T
 
     def updateParams( self, initial_dists, transition_dists, emission_dists, group_graphs=None, compute_marginal=True ):
 
@@ -683,8 +666,8 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
         for group, log_dists in log_transition_dists.items():
             self.pis[ group ] = {}
             for log_dist in log_dists:
-                ndim = log_dist.ndim
-                self.pis[ group ][ ndim ] = log_dist
+                shape = log_dist.shape
+                self.pis[ group ][ shape ] = log_dist
 
         # Set the emission distributions
         self.emission_dists = dict( [ ( group, dist ) for group, dist in log_emission_dists.items() ] )
@@ -693,19 +676,6 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
         if( group_graphs is not None ):
             self.preprocessData( group_graphs )
 
-        # if( self.L_set == False ):
-        #     self.L_set = True
-        #     ys = np.array( self.ys ).T
-        #     L = []
-        #     for node, y in zip( self.nodes, ys ):
-        #         group = self.node_groups[ node ]
-        #         if( not np.any( np.isnan( y ) ) ):
-        #             L.append( self.emission_dists[ group ][ :, y ] )
-        #         else:
-        #             L.append( np.zeros_like( self.emission_dists[ group ][ :, 0 ] ) )
-
-        #     self.L = np.array( L ).sum( axis=0 ).T
-
     ######################################################################
 
     def transitionProb( self, child, is_partial_graph_index=False ):
@@ -713,7 +683,15 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
         node_full = self.partialGraphIndexToFullGraphIndex( child ) if is_partial_graph_index == True else child
         ndim = len( parents ) + 1
         group = self.node_groups[ int( node_full ) ]
-        pi = np.copy( self.pis[ group ][ ndim ] )
+        shape = []
+        for p, _ in sorted( zip( parents, parent_order ), key=lambda po: po[ 1 ] ):
+            full_p = int( self.partialGraphIndexToFullGraphIndex( p ) )
+            g = self.node_groups[ full_p ]
+            shape.append( self.pi0s[ g ].shape[ 0 ] )
+        shape.append( self.pi0s[ group ].shape[ 0 ] )
+        shape = tuple( shape )
+
+        pi = np.copy( self.pis[ group ][ shape ] )
         # Reshape pi's axes to match parent order
         assert len( parents ) + 1 == pi.ndim
         assert parent_order.shape[ 0 ] == parents.shape[ 0 ]
@@ -763,11 +741,14 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
         group = self.node_groups[ int( node_full ) ]
         y = self.ys[ int( node_full ) ]
         if( not np.any( np.isnan( y ) ) ):
-            prob = self.emission_dists[ group ][ :, y ]
+            prob = self.emission_dists[ group ][ :, y ].sum( axis=-1 )
         else:
             prob = np.zeros_like( self.emission_dists[ group ][ :, 0 ] )
 
         if( self.inFeedbackSet( node_full, is_partial_graph_index=False ) ):
+            fbs_index = self.fbsIndex( node_full, is_partial_graph_index=False, within_graph=True )
+            for _ in range( fbs_index ):
+                prob = prob[ None ]
             return fbsData( prob, 0 )
         return fbsData( prob, -1 )
 
