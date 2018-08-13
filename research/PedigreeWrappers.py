@@ -9,7 +9,8 @@ import copy
 __all__ = [ 'Pedigree',
             'PedigreeSexMatters',
             'PedigreeHMMFilter',
-            'PedigreeHMMFilterSexMatters' ]
+            'PedigreeHMMFilterSexMatters',
+            'setGraphRootStates' ]
 
 ######################################################################
 
@@ -292,18 +293,24 @@ def sexToNotCarrierState( graph, node ):
         return [ 2, 4 ]
 
 def setGraphRootStates( graph, ip_type ):
+
     if( ip_type == 'AD' ):
+        graph = graph if isinstance( graph, Pedigree ) else Pedigree.fromPedigreeSexMatters( graph )
         affected_root = selectAffectedRoot( graph )
         graph.setPossibleLatentStates( affected_root, [ 0, 1 ] )
         for root in filter( lambda x: x!=affected_root, graph.roots ):
             graph.setPossibleLatentStates( root, [ 2 ] )
     elif( ip_type == 'AR' ):
+        graph = graph if isinstance( graph, Pedigree ) else Pedigree.fromPedigreeSexMatters( graph )
         affected_root = selectAffectedRoot( graph )
         graph.setPossibleLatentStates( affected_root, [ 0, 1 ] )
         for root in filter( lambda x: x!=affected_root, graph.roots ):
             graph.setPossibleLatentStates( root, [ 2 ] )
     elif( ip_type == 'XL' ):
+        graph = graph if isinstance( graph, PedigreeSexMatters ) else PedigreeSexMatters.fromPedigree( graph )
         affected_root = selectAffectedRoot( graph )
         graph.setPossibleLatentStates( affected_root, sexToCarrierState( graph, affected_root ) )
         for root in filter( lambda x: x!=affected_root, graph.roots ):
             graph.setPossibleLatentStates( root, sexToNotCarrierState( graph, root ) )
+
+    return graph

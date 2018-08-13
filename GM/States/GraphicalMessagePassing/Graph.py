@@ -348,10 +348,12 @@ class GroupGraph( DataGraph ):
         self.groups = {}
 
     def toNetworkX( self ):
-        graph = super.toNetworkX()
+        graph = super().toNetworkX()
 
         for node, group in self.groups.items():
             graph.nodes[ node ][ 'group' ] = group
+
+        return graph
 
     def setGroups( self, nodes, groups ):
         if( isinstance( nodes, int ) ):

@@ -9,7 +9,7 @@ __all__ = [ 'TensorTransitionDirichletPrior' ]
 class TensorTransitionDirichletPrior( ExponentialFam ):
 
     def __init__( self, alpha=None, prior=None, hypers=None ):
-        super( TensorTransitionDirichletPrior, self ).__init__( alpha, prior=prior, hypers=hypers )
+        super().__init__( alpha, prior=prior, hypers=hypers )
         self.Ds = self.alpha.shape
 
     ##########################################################################
@@ -140,7 +140,7 @@ class TensorTransitionDirichletPrior( ExponentialFam ):
 
         ans = np.empty( alpha.shape + ( size, ) )
         for indices in itertools.product( *[ range( s ) for s in alpha.shape[ :-1 ] ] ):
-            ans[ indices ] = Dirichlet.generate( D=alpha.shape[ -1 ], size=size, unpack=False ).T
+            ans[ indices ] = Dirichlet.sample( params=( alpha[ indices ], ), size=size ).T
 
         ans = np.rollaxis( ans, -1 )
 

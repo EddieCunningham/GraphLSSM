@@ -349,8 +349,8 @@ class AutosomalParametersEM( AutosomalParameters ):
 
     def updateTransitionDist( self, msg, parents_smoothed, node_parents_smoothed ):
 
-        trans_dist_numerator = np.zeros( ( 3, 3, 3 ) )
-        trans_dist_denominator = np.zeros( ( 3, 3 ) )
+        trans_dist_numerator = np.zeros_like( node_parents_smoothed )
+        trans_dist_denominator = np.zeros_like( parents_smoothed )
 
         # Update the transition distributions
         for node in filter( lambda n: msg.nParents( n ) > 0, msg.nodes ):
@@ -399,8 +399,8 @@ class XLinkedParametersEM( XLinkedParameters ):
 
     def updateTransitionDist( self, msg, parents_smoothed, node_parents_smoothed ):
 
-        trans_dist_numerator = dict( [ ( group, np.zeros_like( msg.pis[ group ][ 3 ] ) ) for group in self.transition_dists.keys() ] )
-        trans_dist_denominator = dict( [ ( group, np.zeros( msg.pis[ group ][ 3 ].shape[ :-1 ] ) ) for group in self.transition_dists.keys() ] )
+        trans_dist_numerator = dict( [ ( group, np.zeros_like( msg.pis[ group ][ dist.pi.shape ] ) ) for group, dist in self.transition_dists.items() ] )
+        trans_dist_denominator = dict( [ ( group, np.zeros( msg.pis[ group ][ dist.pi.shape ].shape[ :-1 ] ) ) for group, dist in self.transition_dists.items() ] )
 
         # Update the transition distributions
         for node in filter( lambda n: msg.nParents( n ) > 0, msg.nodes ):
@@ -451,7 +451,7 @@ class AutosomalParametersVI( AutosomalParameters ):
 
     def updatedTransitionPrior( self, msg, node_parents_smoothed ):
 
-        expected_transition_stats = np.zeros( ( 3, 3, 3 ) )
+        expected_transition_stats = np.zeros_like( node_parents_smoothed )
 
         # Update the transition distributions
         for node in msg.nodes:
@@ -505,7 +505,7 @@ class XLinkedParametersVI( XLinkedParameters ):
 
     def updatedTransitionPrior( self, msg, node_parents_smoothed ):
 
-        expected_transition_stats = dict( [ ( group, np.zeros_like( msg.pis[ group ][ 3 ] ) ) for group in self.transition_dists.keys() ] )
+        expected_transition_stats = dict( [ ( group, np.zeros_like( msg.pis[ group ][ dist.pi.shape ] ) ) for group, dist in self.transition_dists.items() ] )
 
         # Update the transition distributions
         for node in filter( lambda n: msg.nParents( n ) > 0, msg.nodes ):
