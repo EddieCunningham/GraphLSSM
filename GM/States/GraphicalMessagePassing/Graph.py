@@ -3,6 +3,7 @@ from scipy.sparse import coo_matrix
 import itertools
 import numpy as np
 from collections import deque, namedtuple
+import networkx
 
 __all__ = [ 'Graph', 'DataGraph', 'GroupGraph' ]
 
@@ -18,6 +19,19 @@ class Graph():
         self.nodes = set()
         self.edge_children = list()
         self.edge_parents = list()
+
+    ######################################################################
+
+    def toNetworkX( self ):
+        graph = networkx.DiGraph()
+
+        for e, ( parents, children ) in enumerate( zip( self.edge_parents, self.edge_children ) ):
+            for p in parents:
+                graph.add_edge( p, -e - 1, family_type='parent' )
+            for c in children:
+                graph.add_edge( -e - 1, c, family_type='child' )
+
+        return graph
 
     ######################################################################
 
@@ -269,6 +283,20 @@ class DataGraph( Graph ):
 
     ######################################################################
 
+    def toNetworkX( self ):
+        graph = super().toNetworkX()
+
+        for node, datum in self.data.items():
+            graph.nodes[ node ][ 'data' ] = datum
+            if( node in self.possible_latent_states ):
+                graph.nodes[ node ][ 'possible_latent_states' ] = self.possible_latent_states[ node ]
+            else:
+                graph.nodes[ node ][ 'possible_latent_states' ] = -1
+
+        return graph
+
+    ######################################################################
+
     @staticmethod
     def fromGraph( graph, nodes_data ):
         data_graph = DataGraph()
@@ -319,9 +347,33 @@ class GroupGraph( DataGraph ):
         super().__init__()
         self.groups = {}
 
+    def toNetworkX( self ):
+        graph = super.toNetworkX()
+
+        for node, group in self.groups.items():
+            graph.nodes[ node ][ 'group' ] = group
+
     def setGroups( self, nodes, groups ):
         if( isinstance( nodes, int ) ):
             self.groups[ nodes ] = groups
         else:
             for node, group in zip( nodes, groups ):
                 self.groups[ node ] = group
+
+    @staticmethod
+    def fromGraph( graph, nodes_data, node_groups ):
+        group_graph = GroupGraph()
+        group_graph.nodes = graph.nodes
+        group_graph.edge_children = graph.edge_children
+        group_graph.edge_parents = graph.edge_parents
+
+        for node in graph.nodes:
+            group_graph.data[ node ] = None
+
+        for node, data in nodes_data:
+            group_graph.data[ node ] = data
+
+        for node, group in node_groups:
+            group_graph.groups[ node ] = group
+
+        return group_graph

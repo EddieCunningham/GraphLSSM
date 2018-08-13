@@ -88,10 +88,11 @@ def pedigreeToGraph( pedigree ):
 
 ######################################################################
 
-def load( pedigree_folder_name='Pedigrees_JSON_Fixed_Label' ):
+def load( pedigree_folder_name='Pedigrees_JSON_FIXED_Label/' ):
 
     graphs = []
-    for dir_name, sub_dir_list, file_list in os.walk( pedigree_folder_name ):
+    for dir_name, sub_dir_list, file_list in os.walk( os.path.join( os.getcwd(), pedigree_folder_name ) ):
+
         for file_name in file_list:
             full_file_name = os.path.join( pedigree_folder_name, file_name )
 

@@ -39,39 +39,47 @@ __all__ = [
 
 def autosomalTransitionPrior():
     # [ AA, Aa, aA, aa ] ( A is affected )
-    return np.array( [ [ [ 1.  , 0.  , 0.  , 0.   ],
-                         [ 0.5 , 0.5 , 0.  , 0.   ],
-                         [ 0.5 , 0.5 , 0.  , 0.   ],
-                         [ 0.  , 1.  , 0.  , 0.   ] ],
+    # [ AA, Aa, aa ] ( A is affected )
+    with_combo = np.array( [ [ [ 1.  , 0.  , 0.  , 0.   ],
+                               [ 0.5 , 0.5 , 0.  , 0.   ],
+                               [ 0.5 , 0.5 , 0.  , 0.   ],
+                               [ 0.  , 1.  , 0.  , 0.   ] ],
 
-                       [ [ 0.5 , 0.  , 0.5 , 0.   ],
-                         [ 0.25, 0.25, 0.25, 0.25 ],
-                         [ 0.25, 0.25, 0.25, 0.25 ],
-                         [ 0.  , 0.5 , 0.  , 0.5  ] ],
+                             [ [ 0.5 , 0.  , 0.5 , 0.   ],
+                               [ 0.25, 0.25, 0.25, 0.25 ],
+                               [ 0.25, 0.25, 0.25, 0.25 ],
+                               [ 0.  , 0.5 , 0.  , 0.5  ] ],
 
-                       [ [ 0.5 , 0.  , 0.5 , 0.   ],
-                         [ 0.25, 0.25, 0.25, 0.25 ],
-                         [ 0.25, 0.25, 0.25, 0.25 ],
-                         [ 0.  , 0.5 , 0.  , 0.5  ] ],
+                             [ [ 0.5 , 0.  , 0.5 , 0.   ],
+                               [ 0.25, 0.25, 0.25, 0.25 ],
+                               [ 0.25, 0.25, 0.25, 0.25 ],
+                               [ 0.  , 0.5 , 0.  , 0.5  ] ],
 
-                       [ [ 0.  , 0.  , 1.  , 0.   ],
-                         [ 0.  , 0.  , 0.5 , 0.5  ],
-                         [ 0.  , 0.  , 0.5 , 0.5  ],
-                         [ 0.  , 0.  , 0.  , 1.   ] ] ] )
+                             [ [ 0.  , 0.  , 1.  , 0.   ],
+                               [ 0.  , 0.  , 0.5 , 0.5  ],
+                               [ 0.  , 0.  , 0.5 , 0.5  ],
+                               [ 0.  , 0.  , 0.  , 1.   ] ] ] )
+
+    without_combo = np.zeros_like( with_combo[ ..., [ 0, 1, 3 ] ] )
+    without_combo[ ..., [ 0, 2 ] ] = with_combo[ ..., [ 0, 3 ] ]
+    without_combo[ ..., [ 1 ] ] = with_combo[ ..., [ 1 ] ]  + with_combo[ ..., [ 2 ] ]
+
+    without_combo = np.delete( without_combo, 1, axis=0 )
+    without_combo = np.delete( without_combo, 1, axis=1 )
+
+    return without_combo
 
 def autosomalDominantEmissionPrior():
-    # [ AA, Aa, aA, aa ]
+    # [ AA, Aa, aa ]
     # [ Not affected, affected ]
     return np.array( [ [ 0, 1 ],
-                       [ 0, 1 ],
                        [ 0, 1 ],
                        [ 1, 0 ] ] )
 
 def autosomalRecessiveEmissionPrior():
-    # [ AA, Aa, aA, aa ]
+    # [ AA, Aa, aa ]
     # [ Not affected, affected ]
     return np.array( [ [ 0, 1 ],
-                       [ 1, 0 ],
                        [ 1, 0 ],
                        [ 1, 0 ] ] )
 
@@ -80,17 +88,26 @@ def autosomalRecessiveEmissionPrior():
 def xLinkedFemaleTransitionPrior():
     # Female, male, female child
     # [ XX, Xx, xX, xx ] ( Index using males [ XY, xY ] )
-    return np.array( [ [ [ 1. , 0. , 0. , 0.  ],
-                         [ 0. , 0. , 1. , 0.  ] ],
+    # [ XX, Xx, xx ] ( Index using males [ XY, xY ] )
+    with_combo = np.array( [ [ [ 1. , 0. , 0. , 0.  ],
+                               [ 0. , 0. , 1. , 0.  ] ],
 
-                       [ [ 0.5, 0.5, 0. , 0.  ],
-                         [ 0. , 0. , 0.5, 0.5 ] ],
+                             [ [ 0.5, 0.5, 0. , 0.  ],
+                               [ 0. , 0. , 0.5, 0.5 ] ],
 
-                       [ [ 0.5, 0.5, 0. , 0.  ],
-                         [ 0. , 0. , 0.5, 0.5 ] ],
+                             [ [ 0.5, 0.5, 0. , 0.  ],
+                               [ 0. , 0. , 0.5, 0.5 ] ],
 
-                       [ [ 0. , 1. , 0. , 0.  ],
-                         [ 0. , 0. , 0. , 1.  ] ] ] )
+                             [ [ 0. , 1. , 0. , 0.  ],
+                               [ 0. , 0. , 0. , 1.  ] ] ] )
+
+    without_combo = np.zeros_like( with_combo[ ..., [ 0, 1, 3 ] ] )
+    without_combo[ ..., [ 0, 2 ] ] = with_combo[ ..., [ 0, 3 ] ]
+    without_combo[ ..., [ 1 ] ] = with_combo[ ..., [ 1 ] ]  + with_combo[ ..., [ 2 ] ]
+
+    without_combo = np.delete( without_combo, 1, axis=0 )
+
+    return without_combo
 
 def xLinkedMaleTransitionPrior():
     # Female, male, male child
@@ -101,34 +118,40 @@ def xLinkedMaleTransitionPrior():
                        [ [ 0.5, 0.5 ],
                          [ 0.5, 0.5 ] ],
 
-                       [ [ 0.5, 0.5 ],
-                         [ 0.5, 0.5 ] ],
-
                        [ [ 0. , 1.  ],
                          [ 0. , 1.  ] ] ] )
 
 def xLinkedUnknownTransitionPrior():
     # Female, male, unknown sex child
     # [ XX, Xx, xX, xx, XY, xY ]
-    return np.array( [ [ [ 0.5 , 0.  , 0.  , 0.  , 0.5 , 0.   ] ,
-                         [ 0.  , 0.  , 0.5 , 0.  , 0.5 , 0.   ] ] ,
+    # [ XX, Xx, xx, XY, xY ]
+    with_combo = np.array( [ [ [ 0.5 , 0.  , 0.  , 0.  , 0.5 , 0.   ] ,
+                               [ 0.  , 0.  , 0.5 , 0.  , 0.5 , 0.   ] ] ,
 
-                       [ [ 0.25, 0.25, 0.  , 0.  , 0.25, 0.25 ] ,
-                         [ 0.  , 0.  , 0.25, 0.25, 0.25, 0.25 ] ] ,
+                             [ [ 0.25, 0.25, 0.  , 0.  , 0.25, 0.25 ] ,
+                               [ 0.  , 0.  , 0.25, 0.25, 0.25, 0.25 ] ] ,
 
-                       [ [ 0.25, 0.25, 0.  , 0.  , 0.25, 0.25 ] ,
-                         [ 0.  , 0.  , 0.25, 0.25, 0.25, 0.25 ] ] ,
+                             [ [ 0.25, 0.25, 0.  , 0.  , 0.25, 0.25 ] ,
+                               [ 0.  , 0.  , 0.25, 0.25, 0.25, 0.25 ] ] ,
 
-                       [ [ 0.  , 0.5 , 0.  , 0.  , 0.  , 0.5  ] ,
-                         [ 0.  , 0.  , 0.  , 0.5 , 0.  , 0.5  ] ] ] )
+                             [ [ 0.  , 0.5 , 0.  , 0.  , 0.  , 0.5  ] ,
+                               [ 0.  , 0.  , 0.  , 0.5 , 0.  , 0.5  ] ] ] )
+
+    without_combo = np.zeros_like( with_combo[ ..., [ 0, 1, 3, 4, 5 ] ] )
+    without_combo[ ..., [ 0, 2, 3, 4 ] ] = with_combo[ ..., [ 0, 3, 4, 5 ] ]
+    without_combo[ ..., [ 1 ] ] = with_combo[ ..., [ 1 ] ]  + with_combo[ ..., [ 2 ] ]
+
+    without_combo = np.delete( without_combo, 1, axis=0 )
+
+
+    return without_combo
 
 # Going to ignore the ( unknown, unknown ) -> unknown case
 
 def xLinkedFemaleEmissionPrior():
-    # [ XX, Xx, xX, xx ]
+    # [ XX, Xx, xx ]
     # [ Not affected, affected ]
     return np.array( [ [ 0, 1 ],
-                       [ 1, 0 ],
                        [ 1, 0 ],
                        [ 1, 0 ] ] )
 
@@ -139,25 +162,24 @@ def xLinkedMaleEmissionPrior():
                        [ 1, 0 ] ] )
 
 def xLinkedUnknownEmissionPrior():
-    # [ XX, Xx, xX, xx, XY, xY ]
+    # [ XX, Xx, xx, XY, xY ]
     # [ Not affected, affected ]
     return np.array( [ [ 0, 1 ],
                        [ 1, 0 ],
                        [ 1, 0 ],
-                       [ 1, 0 ],
                        [ 0, 1 ],
-                       [ 0, 0 ] ] )
+                       [ 1, 0 ] ] )
 
 ######################################################################
 
 class AutosomalParameters():
 
     def __init__( self, transition_prior, emission_prior ):
-        assert transition_prior.shape == ( 4, 4, 4 )
-        assert emission_prior.shape == ( 4, 2 )
+        assert transition_prior.shape == ( 3, 3, 3 )
+        assert emission_prior.shape == ( 3, 2 )
 
         # Initial dist
-        self.initial_dist = Categorical( hypers=dict( alpha=np.ones( 4 ) ) )
+        self.initial_dist = Categorical( hypers=dict( alpha=np.ones( 3 ) ) )
 
         # Create the transition distribution
         self.transition_dist = TensorTransition( hypers=dict( alpha=transition_prior ) )
@@ -174,9 +196,9 @@ class XLinkedParameters():
 
     def __init__( self, transition_priors, emission_priors ):
         # Initial dist
-        self.initial_dists = { 0: Categorical( hypers=dict( alpha=np.ones( 4 ) ) ),
+        self.initial_dists = { 0: Categorical( hypers=dict( alpha=np.ones( 3 ) ) ),
                                1: Categorical( hypers=dict( alpha=np.ones( 2 ) ) ),
-                               2: Categorical( hypers=dict( alpha=np.ones( 6 ) ) ) }
+                               2: Categorical( hypers=dict( alpha=np.ones( 5 ) ) ) }
 
         # Create the transition distribution
         self.transition_dists = { 0: TensorTransition( hypers=dict( alpha=transition_priors[ 0 ] ) ),
@@ -327,8 +349,8 @@ class AutosomalParametersEM( AutosomalParameters ):
 
     def updateTransitionDist( self, msg, parents_smoothed, node_parents_smoothed ):
 
-        trans_dist_numerator = np.zeros( ( 4, 4, 4 ) )
-        trans_dist_denominator = np.zeros( ( 4, 4 ) )
+        trans_dist_numerator = np.zeros( ( 3, 3, 3 ) )
+        trans_dist_denominator = np.zeros( ( 3, 3 ) )
 
         # Update the transition distributions
         for node in filter( lambda n: msg.nParents( n ) > 0, msg.nodes ):
@@ -429,7 +451,7 @@ class AutosomalParametersVI( AutosomalParameters ):
 
     def updatedTransitionPrior( self, msg, node_parents_smoothed ):
 
-        expected_transition_stats = np.zeros( ( 4, 4, 4 ) )
+        expected_transition_stats = np.zeros( ( 3, 3, 3 ) )
 
         # Update the transition distributions
         for node in msg.nodes:
@@ -591,6 +613,9 @@ class Gibbs( Optimizer ):
         self.params.resampleTransitionDist( self.msg, self.graph_state )
         self.params.resampleEmissionDist( self.msg, self.graph_state )
 
+    def stateUpdate( self ):
+        self.resampleStates()
+
     def fitStep( self ):
         self.resampleStates()
         self.resampleParameters()
@@ -668,6 +693,10 @@ class EM( Optimizer ):
         self.params.updateInitialDist( self.msg, node_smoothed )
         self.params.updateTransitionDist( self.msg, parents_smoothed, node_parents_smoothed )
         self.params.updateEmissionDist( self.msg, node_smoothed )
+
+    def stateUpdate( self ):
+        node_smoothed, parents_smoothed, node_parents_smoothed, marginal = self.EStep()
+        return node_smoothed, marginal
 
     def fitStep( self ):
         node_smoothed, parents_smoothed, node_parents_smoothed, marginal = self.EStep()
@@ -750,6 +779,10 @@ class CAVI( Optimizer ):
         emission_prior_mfnp   = self.params.updatedEmissionPrior( self.msg, node_smoothed )
 
         return initial_prior_mfnp, transition_prior_mfnp, emission_prior_mfnp
+
+    def stateUpdate( self ):
+        node_smoothed, node_parents_smoothed, elbo = self.variationalEStep( self.initial_prior_mfnp, self.transition_prior_mfnp, self.emission_prior_mfnp )
+        return elbo
 
     def fitStep( self ):
         node_smoothed, node_parents_smoothed, elbo = self.variationalEStep( self.initial_prior_mfnp, self.transition_prior_mfnp, self.emission_prior_mfnp )
@@ -906,6 +939,21 @@ class _Autosomal():
         if( method != 'SVI' ):
             self.msg.preprocessData( self.graphs )
 
+    def stateUpdate( self, **kwargs ):
+
+        if( self.method != 'SVI' ):
+            return self.model.stateUpdate()
+
+        minibatch_indices = np.random.randint( len( self.graphs ), size=self.minibatch_size )
+        minibatch = [ self.graphs[ i ] for i in minibatch_indices ]
+        self.msg.preprocessData( minibatch )
+
+        # Compute minibatch ratio
+        minibatch_nodes = sum( [ len( graph.nodes ) for graph, fbs in minibatch ] )
+        self.params.setMinibatchRatio( self.total_nodes / minibatch_nodes )
+
+        return self.model.stateUpdate()
+
     def fitStep( self, **kwargs ):
 
         if( self.method != 'SVI' ):
@@ -1003,6 +1051,22 @@ class XLinkedRecessive():
 
         if( method != 'SVI' ):
             self.msg.preprocessData( self.graphs )
+
+    def stateUpdate( self, **kwargs ):
+
+        if( self.method != 'SVI' ):
+            return self.model.stateUpdate()
+
+        minibatch_indices = np.random.randint( len( self.graphs ), size=self.minibatch_size )
+        minibatch = [ self.graphs[ i ] for i in minibatch_indices ]
+        self.msg.preprocessData( minibatch )
+
+        # Compute minibatch ratio
+        minibatch_nodes = sum( [ len( graph.nodes ) for graph, fbs in minibatch ] )
+        self.params.setMinibatchRatio( self.total_nodes / minibatch_nodes )
+
+        return self.model.stateUpdate()
+
 
     def fitStep( self, **kwargs ):
 

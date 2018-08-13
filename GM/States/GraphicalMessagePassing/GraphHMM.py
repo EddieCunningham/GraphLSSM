@@ -630,18 +630,20 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
 
         # Don't need to change emission dist because all of the emission stuff
         # is done here
-        if( hasattr( self, 'emission_dists' ) ):
-            self.L_set = True
-            ys = np.array( self.ys ).T
-            L = []
-            for node, y in zip( self.nodes, ys ):
-                group = self.node_groups[ node ]
-                if( not np.any( np.isnan( y ) ) ):
-                    L.append( self.emission_dists[ group ][ :, y ] )
-                else:
-                    L.append( np.zeros_like( self.emission_dists[ group ][ :, 0 ] ) )
+        # if( hasattr( self, 'emission_dists' ) ):
+        #     self.L_set = True
+        #     ys = np.array( self.ys ).T
+        #     L = []
+        #     for node, y in zip( self.nodes, ys ):
+        #         group = self.node_groups[ node ]
+        #         if( not np.any( np.isnan( y ) ) ):
+        #             L.append( self.emission_dists[ group ][ :, y ] )
+        #         else:
+        #             L.append( np.zeros_like( self.emission_dists[ group ][ :, 0 ] ) )
 
-            self.L = np.array( L ).sum( axis=0 ).T
+        #     for l in L:
+        #         print( l.shape )
+        #     self.L = np.array( L ).sum( axis=0 ).T
 
     def updateParams( self, initial_dists, transition_dists, emission_dists, group_graphs=None, compute_marginal=True ):
 
@@ -691,18 +693,18 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
         if( group_graphs is not None ):
             self.preprocessData( group_graphs )
 
-        if( self.L_set == False ):
-            self.L_set = True
-            ys = np.array( self.ys ).T
-            L = []
-            for node, y in zip( self.nodes, ys ):
-                group = self.node_groups[ node ]
-                if( not np.any( np.isnan( y ) ) ):
-                    L.append( self.emission_dists[ group ][ :, y ] )
-                else:
-                    L.append( np.zeros_like( self.emission_dists[ group ][ :, 0 ] ) )
+        # if( self.L_set == False ):
+        #     self.L_set = True
+        #     ys = np.array( self.ys ).T
+        #     L = []
+        #     for node, y in zip( self.nodes, ys ):
+        #         group = self.node_groups[ node ]
+        #         if( not np.any( np.isnan( y ) ) ):
+        #             L.append( self.emission_dists[ group ][ :, y ] )
+        #         else:
+        #             L.append( np.zeros_like( self.emission_dists[ group ][ :, 0 ] ) )
 
-            self.L = np.array( L ).sum( axis=0 ).T
+        #     self.L = np.array( L ).sum( axis=0 ).T
 
     ######################################################################
 

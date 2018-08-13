@@ -6,6 +6,11 @@ from collections import Iterable
 from GenModels.GM.Utility import fbsData
 import copy
 
+__all__ = [ 'Pedigree',
+            'PedigreeSexMatters',
+            'PedigreeHMMFilter',
+            'PedigreeHMMFilterSexMatters' ]
+
 ######################################################################
 
 class _pedigreeMixin():
@@ -15,6 +20,21 @@ class _pedigreeMixin():
         self.attrs = {}
         self.studyID = None
         self.pedigree_obj = None
+
+    def useDiagnosisImplication( self, ip_type ):
+        addLatentStateFromDiagnosis( self, ip_type )
+
+    def useSingleCarrierRoot( self, ip_type ):
+        setGraphRootStates( self, ip_type )
+
+    def toNetworkX( self ):
+        graph = super().toNetworkX()
+
+        for node, attr in self.attrs.items():
+            graph.nodes[ node ][ 'sex' ] = attr[ 'sex' ]
+            graph.nodes[ node ][ 'affected' ] = attr[ 'affected' ]
+
+        return graph
 
     def setNodeAttrs( self, nodes, attrs ):
         if( isinstance( nodes, int ) ):
@@ -188,3 +208,102 @@ class PedigreeHMMFilter( _pedigreeFilterMixin, GraphHMMFBS ):
 
 class PedigreeHMMFilterSexMatters( _pedigreeFilterMixin, GraphHMMFBSMultiGroups ):
     pass
+
+######################################################################
+
+def addLatentStateFromDiagnosis( graph, ip_type ):
+
+    if( ip_type == 'AD' ):
+        for node in graph.nodes:
+            if( graph.data[ node ] == 1 ):
+                # Affected
+                graph.setPossibleLatentStates( node, [ 0, 1 ] )
+    elif( ip_type == 'AR' ):
+        for node in graph.nodes:
+            if( graph.data[ node ] == 1 ):
+                # Affected
+                graph.setPossibleLatentStates( node, [ 0 ] )
+    elif( ip_type == 'XL' ):
+        for node in graph.nodes:
+            if( graph.groups[ node ] == 0 ):
+                # Female
+                if( graph.data[ node ] == 1 ):
+                    graph.setPossibleLatentStates( node, [ 0 ] )
+            elif( graph.groups[ node ] == 1 ):
+                # Male
+                if( graph.data[ node ] == 1 ):
+                    graph.setPossibleLatentStates( node, [ 0 ] )
+            else:
+                # Unknown sex
+                if( graph.data[ node ] == 1 ):
+                    graph.setPossibleLatentStates( node, [ 0, 3 ] )
+
+######################################################################
+
+# Algorithm that sets a single root to be a carrier or affected
+# and the other roots to not a carrier.
+# Chooses the root with the most diagnosed ancestors.
+
+def selectAffectedRoot( graph ):
+    n_affected_below = {}
+    n_unaffected_below = {}
+    for node in graph.backwardPass():
+        n_affected_below[ node ] = 0
+        n_unaffected_below[ node ] = 0
+        if( graph.data[ node ] == 1 ):
+            n_affected_below[ node ] += 1
+        else:
+            n_unaffected_below[ node ] += 1
+        for children in graph.getChildren( node ):
+            for child in children:
+                if( child in n_affected_below ):
+                    n_affected_below[ node ] += n_affected_below[ child ]
+                    n_unaffected_below[ node ] += n_unaffected_below[ child ]
+
+    n_affected_below_roots = dict( [ ( root, n_affected_below[ root ] ) for root in graph.roots ] )
+    n_unaffected_below_roots = dict( [ ( root, n_unaffected_below[ root ] ) for root in graph.roots ] )
+
+    max_val = np.max( np.array( list( n_affected_below_roots.values() ) ) )
+    selections = [ root for root, val in n_affected_below_roots.items() if val == max_val ]
+
+    if( len( selections ) > 1 ):
+        # Use n_unaffected_below_roots as a tie breaker
+        n_unaffected_below_roots = dict( [ ( root, val ) for root, val in n_unaffected_below_roots.items() if root in selections ] )
+        min_val = np.min( np.array( list( n_unaffected_below_roots.values() ) ) )
+        selections = [ root for root, val in n_unaffected_below_roots.items() if val == min_val and root in selections ]
+
+        # If there are still multiple possibilities, just pick the first one
+    return selections[ 0 ]
+
+def sexToCarrierState( graph, node ):
+    if( graph.groups[ node ] == 0 ):
+        return [ 0, 1 ]
+    elif( graph.groups[ node ] == 1 ):
+        return [ 0 ]
+    elif( graph.groups[ node ] == 2 ):
+        return [ 0, 1, 3 ]
+
+def sexToNotCarrierState( graph, node ):
+    if( graph.groups[ node ] == 0 ):
+        return [ 2 ]
+    elif( graph.groups[ node ] == 1 ):
+        return [ 1 ]
+    elif( graph.groups[ node ] == 2 ):
+        return [ 2, 4 ]
+
+def setGraphRootStates( graph, ip_type ):
+    if( ip_type == 'AD' ):
+        affected_root = selectAffectedRoot( graph )
+        graph.setPossibleLatentStates( affected_root, [ 0, 1 ] )
+        for root in filter( lambda x: x!=affected_root, graph.roots ):
+            graph.setPossibleLatentStates( root, [ 2 ] )
+    elif( ip_type == 'AR' ):
+        affected_root = selectAffectedRoot( graph )
+        graph.setPossibleLatentStates( affected_root, [ 0, 1 ] )
+        for root in filter( lambda x: x!=affected_root, graph.roots ):
+            graph.setPossibleLatentStates( root, [ 2 ] )
+    elif( ip_type == 'XL' ):
+        affected_root = selectAffectedRoot( graph )
+        graph.setPossibleLatentStates( affected_root, sexToCarrierState( graph, affected_root ) )
+        for root in filter( lambda x: x!=affected_root, graph.roots ):
+            graph.setPossibleLatentStates( root, sexToNotCarrierState( graph, root ) )
