@@ -426,8 +426,6 @@ def bokehPlot( doc, pedigree, fbs ):
     weights_a_emiss, = bokeh_state.ad_params.emission_dist.params
     hinton_a = [ genHintonDiagram( weights_a_trans ), genHintonDiagram( weights_a_emiss ) ]
 
-
-
     # Button to resample the parameters
     resample_button = Button( label='Resample parameters', button_type='success' )
 

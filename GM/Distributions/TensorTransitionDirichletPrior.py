@@ -70,6 +70,11 @@ class TensorTransitionDirichletPrior( ExponentialFam ):
     def constParams( self ):
         return self.Ds
 
+    @property
+    def shape( self ):
+        return tuple( self.Ds )
+
+
     ##########################################################################
 
     @classmethod
