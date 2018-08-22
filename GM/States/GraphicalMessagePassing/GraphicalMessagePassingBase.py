@@ -3,7 +3,7 @@ import scipy as sp
 from scipy.sparse import coo_matrix
 import graphviz
 from collections import Iterable, namedtuple
-from functools import partial
+from functools import partial, lru_cache
 import itertools
 from .Graph import Graph
 
@@ -866,9 +866,13 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
 
     ######################################################################
 
-    def inFeedbackSet( self, node, is_partial_graph_index ):
+    @lru_cache()
+    def _infbs( self, node, is_partial_graph_index ):
         full_node = self.partialGraphIndexToFullGraphIndex( node ) if is_partial_graph_index else node
         return full_node in self.fbs
+
+    def inFeedbackSet( self, node, is_partial_graph_index ):
+        return self._infbs( int( node ), is_partial_graph_index )
 
     def fbsIndex( self, node, is_partial_graph_index, within_graph=True ):
         full_node = self.partialGraphIndexToFullGraphIndex( node ) if is_partial_graph_index else node

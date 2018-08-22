@@ -64,7 +64,7 @@ class _filterMixin():
     def assignV( self, V, node, val, keep_shape=False ):
         V_row, V_col, V_data = V
         N = V_row.shape[ 0 ]
-        VIndices = np.arange( N )[ np.in1d( V_row, node ) ].astype( np.int )
+        VIndices = np.where( np.in1d( V_row, node ) )[ 0 ]
         for i in VIndices:
             if( keep_shape is False ):
                 V_data[ i ] = val
@@ -506,7 +506,7 @@ class __FBSFilterMixin():
     def assignV( self, V, node, val, keep_shape=False ):
         V_row, V_col, V_data = V
         N = V_row.shape[ 0 ]
-        VIndices = np.arange( N )[ np.in1d( V_row, node ) ].astype( np.int )
+        VIndices = np.where( np.in1d( V_row, node ) )[ 0 ]
         for i in VIndices:
             if( keep_shape is False ):
                 V_data[ i ] = val
@@ -516,9 +516,11 @@ class __FBSFilterMixin():
     def vDataFromMask( self, V, mask ):
         _, _, V_data = V
         ans = []
-        for i, mask_value in enumerate( mask ):
-            if( mask_value == True ):
-                ans.append( V_data[ i ] )
+
+        indices = np.where( mask )[ 0 ]
+        for i in indices:
+            ans.append( V_data[ i ] )
+
         return ans
 
     ######################################################################
