@@ -3,6 +3,7 @@ from GenModels.GM.States.GraphicalMessagePassing import GraphHMMFBS, GraphHMMFBS
 
 import numpy as np
 from collections import Iterable
+from functools import partial
 
 __all__ = [
     'GHMM',
@@ -67,7 +68,6 @@ class TransitionBins():
     def __init__( self, msg, graph_state ):
         self.msg = msg
         self.graph_state = graph_state
-        self.counts = [ [] for _ in range( 3 ) ]
         self.counts = {}
 
     def __call__( self, node_list ):
@@ -89,8 +89,9 @@ class GibbsParameters( Parameters ):
     def resampleTransitionDist( self, msg, graph_state ):
         transition_bins = TransitionBins( msg, graph_state )
         msg.forwardPass( transition_bins )
-        for counts, dist in zip( transition_bins.counts, self.transition_dists ):
-            x = [ np.array( count ) for count in counts ]
+        for dist in self.transition_dists:
+            ndim = dist.pi.ndim
+            x = [ np.array( count ) for count in transition_bins.counts[ ndim ] ]
             dist.resample( x )
 
     def resampleEmissionDist( self, msg, graph_state ):
@@ -209,16 +210,16 @@ class EMParameters( Parameters ):
 
         for ndim, val in msg.pis.items():
             trans_dist_numerator[ ndim ] = np.zeros_like( val )
-            trans_dist_denominator[ ndim ] = np.zeros( vals.shape[ :-1 ] )
+            trans_dist_denominator[ ndim ] = np.zeros( val.shape[ :-1 ] )
 
         # Update the transition distributions
         for node in filter( lambda n: msg.nParents( n ) > 0, msg.nodes ):
-            ndim = msg.nParents( n ) + 1
+            ndim = msg.nParents( node ) + 1
             trans_dist_numerator[ ndim ] += node_parents_smoothed[ node ]
             trans_dist_denominator[ ndim ] += parents_smoothed[ node ]
 
         for dist in self.transition_dists:
-            ndim = dist.pi.shape
+            ndim = dist.pi.ndim
             dist.params = ( trans_dist_numerator[ ndim ] / trans_dist_denominator[ ndim ][ ..., None ], )
             assert np.allclose( dist.params[ 0 ].sum( axis=-1 ), 1.0 )
 
@@ -328,16 +329,12 @@ class VIParameters( Parameters ):
         for ndim, val in msg.pis.items():
             expected_transition_stats[ ndim ] = np.zeros_like( val )
 
-
         # Update the transition distributions
-        for node in msg.nodes:
-            n_parents = msg.nParents( node )
-            if( n_parents == 0 ):
-                continue
+        for node in filter( lambda n: msg.nParents( n ) > 0, msg.nodes ):
+            ndim = msg.nParents( node ) + 1
+            expected_transition_stats[ ndim ] += node_parents_smoothed[ node ]
 
-            expected_transition_stats += node_parents_smoothed[ n_parents + 1 ][ node ]
-
-        return [ dist.prior.mf_nat_params[ 0 ] + self.s * expected_transition_stats[ ndim ] for ndim, dist in self.transition_dists.items() ]
+        return [ ( dist.prior.mf_nat_params[ 0 ] + self.s * expected_transition_stats[ dist.pi.ndim ], ) for dist in self.transition_dists ]
 
     def updatedEmissionPrior( self, msg, node_smoothed ):
 
@@ -491,23 +488,27 @@ class Gibbs( Optimizer ):
             state = Categorical.sample( nat_params=( prob, ) )[ 0 ]
             self.graph_state.node_states[ node ] = state
 
-    def resampleStates( self ):
+    def resampleStates( self, return_marginal=False ):
         self.msg.updateParams( self.params.sampleInitialDist(), self.params.sampleTransitionDist(), self.params.sampleEmissionDist() )
         self.runFilter()
         self.graph_state = GraphSmoothedState( self.msg, self.U, self.V )
         self.msg.forwardPass( self.resampleStateHelper )
+        if( return_marginal ):
+            return self.msg.marginalProb( self.U, self.V )
+        return None
 
     def resampleParameters( self ):
         self.params.resampleInitialDist( self.msg, self.graph_state )
         self.params.resampleTransitionDist( self.msg, self.graph_state )
         self.params.resampleEmissionDist( self.msg, self.graph_state )
 
-    def stateUpdate( self ):
-        self.resampleStates()
+    def stateUpdate( self, return_marginal=False ):
+        return self.resampleStates( return_marginal=return_marginal )
 
-    def fitStep( self ):
-        self.resampleStates()
+    def fitStep( self, return_marginal=False ):
+        ret_val = self.resampleStates( return_marginal=return_marginal )
         self.resampleParameters()
+        return ret_val
 
     def genProbHelper( self, node_list ):
         # Compute P( X, Y | Θ )
@@ -665,9 +666,9 @@ class CAVI( Optimizer ):
         return dict( node_smoothed ), dict( node_parents_smoothed ), elbo
 
     def variationalMStep( self, node_smoothed, node_parents_smoothed ):
-        initial_prior_mfnp    = self.params.updatedInitialPrior( self.msg, node_smoothed )
+        initial_prior_mfnp     = self.params.updatedInitialPrior( self.msg, node_smoothed )
         transition_prior_mfnps = self.params.updatedTransitionPrior( self.msg, node_parents_smoothed )
-        emission_prior_mfnp   = self.params.updatedEmissionPrior( self.msg, node_smoothed )
+        emission_prior_mfnp    = self.params.updatedEmissionPrior( self.msg, node_smoothed )
 
         return initial_prior_mfnp, transition_prior_mfnps, emission_prior_mfnp
 
@@ -743,14 +744,14 @@ class SVI( CAVI ):
 
     def variationalMStep( self, node_smoothed, node_parents_smoothed ):
         initial_prior_mfnp_update,    = self.params.updatedInitialPrior( self.msg, node_smoothed )
-        transition_prior_mfnp_update, = self.params.updatedTransitionPrior( self.msg, node_parents_smoothed )
+        transition_prior_mfnp_update  = self.params.updatedTransitionPrior( self.msg, node_parents_smoothed )
         emission_prior_mfnp_update,   = self.params.updatedEmissionPrior( self.msg, node_smoothed )
 
         # Take a natural gradient step
-        initial_prior_mfnp = ( 1 - self.p ) * self.initial_prior_mfnp[ 0 ] + self.p * initial_prior_mfnp_update
-        transition_prior_mfnps = [ ( 1 - self.p ) * mfnp + self.p * update for mfnp, update in zip( self.transition_prior_mfnps, transition_prior_mfnp_update ) ]
-        emission_prior_mfnp = ( 1 - self.p ) * self.emission_prior_mfnp[ 0 ] + self.p * emission_prior_mfnp_update
-        return ( initial_prior_mfnp, ), ( transition_prior_mfnps, ), ( emission_prior_mfnp, )
+        initial_prior_mfnp     = ( 1 - self.p ) * self.initial_prior_mfnp[ 0 ] + self.p * initial_prior_mfnp_update
+        transition_prior_mfnps = [ ( ( 1 - self.p ) * mfnp[ 0 ] + self.p * update[ 0 ], ) for mfnp, update in zip( self.transition_prior_mfnps, transition_prior_mfnp_update ) ]
+        emission_prior_mfnp    = ( 1 - self.p ) * self.emission_prior_mfnp[ 0 ] + self.p * emission_prior_mfnp_update
+        return ( initial_prior_mfnp, ), transition_prior_mfnps, ( emission_prior_mfnp, )
 
 ######################################################################
 
@@ -781,9 +782,12 @@ class GroupSVI( GroupCAVI ):
 
 class GHMM():
 
-    def __init__( self, graphs, prior_strength=1.0, method='SVI', priors=None, params=None, **kwargs ):
+    def __init__( self, graphs=None, prior_strength=1.0, method='SVI', priors=None, params=None, **kwargs ):
         assert method in [ 'EM', 'Gibbs', 'CAVI', 'SVI' ]
-        self.graphs = graphs
+
+        if( graphs is not None ):
+            self.graphs = graphs
+
         self.msg = GraphHMMFBS()
         self.method = method
 
@@ -809,13 +813,40 @@ class GHMM():
         elif( method == 'CAVI' ):
             self.model = CAVI( msg=self.msg, parameters=self.params )
         else:
-            step_size = kwargs[ 'step_size' ]
+            self.step_size = kwargs[ 'step_size' ]
             self.minibatch_size = kwargs[ 'minibatch_size' ]
-            self.model = SVI( msg=self.msg, parameters=self.params, minibatch_ratio=None, step_size=step_size )
-            self.total_nodes = sum( [ len( graph.nodes ) for graph, fbs in self.graphs ] )
+            if( graphs is not None ):
+                self.setData( graphs )
 
         if( method != 'SVI' ):
+            if( graphs is not None ):
+                self.msg.preprocessData( self.graphs )
+
+        self.initModel()
+
+    ###########################################
+
+    def initModel( self ):
+        initial = self.params.initial_dist.pi
+        transition = [ dist.pi for dist in self.params.transition_dists ]
+        emission = self.params.emission_dist.pi
+        self.msg.updateParams( initial, transition, emission )
+
+    ###########################################
+
+    def setGraphs( self, graphs ):
+        self.graphs = graphs
+        self.msg.updateGraphs( graphs )
+
+    def setData( self, graphs ):
+        self.graphs = graphs
+
+        if( self.method != 'SVI' ):
             self.msg.preprocessData( self.graphs )
+        else:
+            self.total_nodes = sum( [ len( graph.nodes ) for graph, fbs in self.graphs ] )
+            minibatch_ratio = self.minibatch_size / len( self.graphs )
+            self.model = SVI( msg=self.msg, parameters=self.params, minibatch_ratio=minibatch_ratio, step_size=self.step_size )
 
     ###########################################
 
@@ -868,7 +899,7 @@ class GHMM():
     def fitStep( self, **kwargs ):
 
         if( self.method != 'SVI' ):
-            return self.model.fitStep()
+            return self.model.fitStep( **kwargs )
 
         minibatch_indices = np.random.randint( len( self.graphs ), size=self.minibatch_size )
         minibatch = [ self.graphs[ i ] for i in minibatch_indices ]
@@ -882,7 +913,7 @@ class GHMM():
 
     ###########################################
 
-    def stateSampleHelper( self, node_list, node_states, node_emissions ):
+    def stateSampleHelper( self, node_list, node_states, node_emissions, measurements=1 ):
         # Compute P( x_c | x_p1..pN ) and P( y_c | x_c )
 
         for node in node_list:
@@ -891,12 +922,12 @@ class GHMM():
             if( len( parents ) == 0 ):
                 prob = self.msg.pi0
             else:
-                indices = [ [ node_states[ o ] ] for o in parent_order ]
+                indices = tuple( [ [ node_states[ o ] ] for o in parent_order ] )
                 prob = self.msg.pis[ ndim ][ indices ].ravel()
 
             state = Categorical.sample( nat_params=( prob, ) )[ 0 ]
             node_states[ node ] = state
-            node_emissions[ node ] = Categorical.sample( nat_params=( self.msg.emission_dist[ state ], ) )[ 0 ]
+            node_emissions[ node ] = Categorical.sample( nat_params=( self.msg.emission_dist[ state ], ), size=measurements )
 
     def sampleStates( self ):
 
@@ -931,7 +962,10 @@ class GroupGHMM():
 
     def __init__( self, graphs, prior_strength=1.0, method='SVI', priors=None, params=None, **kwargs ):
         assert method in [ 'EM', 'Gibbs', 'CAVI', 'SVI' ]
-        self.graphs = graphs
+
+        if( graphs is not None ):
+            self.graphs = graphs
+
         self.msg = GraphHMMFBSMultiGroups()
         self.method = method
 
@@ -958,14 +992,44 @@ class GroupGHMM():
         elif( method == 'CAVI' ):
             self.model = GroupCAVI( msg=self.msg, parameters=self.params )
         else:
-            step_size = kwargs[ 'step_size' ]
+            self.step_size = kwargs[ 'step_size' ]
             self.minibatch_size = kwargs[ 'minibatch_size' ]
-            minibatch_ratio = self.minibatch_size / len( self.graphs )
-            self.model = GroupSVI( msg=self.msg, parameters=self.params, minibatch_ratio=minibatch_ratio, step_size=step_size )
-            self.total_nodes = sum( [ len( graph.nodes ) for graph, fbs in self.graphs ] )
+            if( graphs is not None ):
+                self.setData( graphs )
 
         if( method != 'SVI' ):
+            if( graphs is not None ):
+                self.msg.preprocessData( self.graphs )
+
+        self.initModel()
+
+    ###########################################
+
+    def initModel( self ):
+        initial = {}
+        transition = {}
+        emission = {}
+        for group in self.params.initial_dist.keys():
+            initial[ group ] = self.params.initial_dists[ group ].pi
+            transition[ group ] = [ dist.pi for dist in self.params.transition_dists[ group ] ]
+            emission[ group ] = self.params.emission_dists[ group ].pi
+        self.msg.updateParams( initial, transition, emission )
+
+    ###########################################
+
+    def setGraphs( self, graphs ):
+        self.graphs = graphs
+        self.msg.updateGraphs( graphs )
+
+    def setData( self, graphs ):
+        self.graphs = graphs
+
+        if( self.method != 'SVI' ):
             self.msg.preprocessData( self.graphs )
+        else:
+            self.total_nodes = sum( [ len( graph.nodes ) for graph, fbs in self.graphs ] )
+            minibatch_ratio = self.minibatch_size / len( self.graphs )
+            self.model = GroupSVI( msg=self.msg, parameters=self.params, minibatch_ratio=minibatch_ratio, step_size=self.step_size )
 
     ###########################################
 
@@ -1029,7 +1093,7 @@ class GroupGHMM():
     def fitStep( self, **kwargs ):
 
         if( self.method != 'SVI' ):
-            return self.model.fitStep()
+            return self.model.fitStep( **kwargs )
 
         minibatch_indices = np.random.randint( len( self.graphs ), size=self.minibatch_size )
         minibatch = [ self.graphs[ i ] for i in minibatch_indices ]
@@ -1043,7 +1107,7 @@ class GroupGHMM():
 
     ###########################################
 
-    def stateSampleHelper( self, node_list, node_states, node_emissions ):
+    def stateSampleHelper( self, node_list, node_states, node_emissions, measurements=1 ):
         # Compute P( x_c | x_p1..pN ) and P( y_c | x_c )
 
         for node in node_list:
@@ -1064,7 +1128,7 @@ class GroupGHMM():
 
             state = Categorical.sample( nat_params=( prob, ) )[ 0 ]
             node_states[ node ] = state
-            node_emissions[ node ] = Categorical.sample( nat_params=( self.msg.emission_dist[ group ][ state ], ) )[ 0 ]
+            node_emissions[ node ] = Categorical.sample( nat_params=( self.msg.emission_dist[ group ][ state ], ), size=measurements )
 
     def sampleStates( self ):
 

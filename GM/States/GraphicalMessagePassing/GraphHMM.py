@@ -138,7 +138,7 @@ class _graphHMMMixin():
         if( data_graphs is not None ):
             self.preprocessData( data_graphs )
 
-        if( self.L_set == False ):
+        if( hasattr( self, 'ys' ) and self.L_set == False ):
             self.L_set = True
             ys = np.array( self.ys ).T
             assert ys.ndim == 2, 'If there is only 1 measurement, add an extra dim!'
