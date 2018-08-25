@@ -2,20 +2,31 @@ import numpy as np
 import scipy as sp
 from scipy.sparse import coo_matrix
 import graphviz
-from collections import Iterable, namedtuple
+from collections import Iterable, Sequence, namedtuple
 from functools import partial, lru_cache
 import itertools
 from .Graph import Graph
+from .NumbaWrappers import *
 
 __all__ = [ 'GraphMessagePasser',
             'GraphMessagePasserFBS' ]
 
 ######################################################################
 
-class GraphMessagePasser():
+def makeHashable( obj ):
+    if( isinstance( obj, np.ndarray ) ):
+        if( obj.ndim == 0 ):
+            return tuple( [] )
+        return tuple( obj )
+    elif( isinstance( obj, Iterable ) ):
+        return tuple( obj )
+    elif obj is not None:
+        return int( obj )
+    return None
 
-    def __init__( self ):
-        self.attr_cache = {}
+######################################################################
+
+class GraphMessagePasser():
 
     def toGraph( self ):
         return Graph.fromParentChildMask( self.pmask, self.cmask )
@@ -94,14 +105,9 @@ class GraphMessagePasser():
     ######################################################################
 
     def getUpEdges( self, nodes, split=False ):
-        if( nodes.__hash__ and nodes in self.attr_cache and split == False ):
-            return self.attr_cache[ nodes ].up_edge
         return GraphMessagePasser._upEdges( self.cmask, nodes, split=split )
 
     def getDownEdges( self, nodes, skip_edges=None, split=False ):
-        if( nodes.__hash__ and nodes in self.attr_cache and split == False ):
-            down_edges = self.attr_cache[ nodes ].down_edges
-            return np.setdiff1d( down_edges, skip_edges )
         return GraphMessagePasser._downEdges( self.pmask, nodes, skip_edges=skip_edges, split=split )
 
     ######################################################################
@@ -261,9 +267,6 @@ class GraphMessagePasser():
     ######################################################################
 
     def getParents( self, nodes, split=False, get_order=False ):
-        if( nodes.__hash__ and split == False and nodes in self.attr_cache ):
-            return self.attr_cache[ nodes ].parents if get_order else self.attr_cache[ nodes ].parents[ 0 ]
-
         return GraphMessagePasser._parents( self.cmask,
                                             self.pmask,
                                             nodes,
@@ -271,25 +274,12 @@ class GraphMessagePasser():
                                             get_order=get_order )
 
     def getSiblings( self, nodes, split=False ):
-        if( nodes.__hash__ and split == False and nodes in self.attr_cache ):
-            return self.attr_cache[ nodes ].siblings
-
         return GraphMessagePasser._siblings( self.cmask,
                                              self.pmask,
                                              nodes,
                                              split=split )
 
     def getChildren( self, nodes, edges=None, split_by_edge=False, split=False ):
-        if( nodes.__hash__ and split == False and nodes in self.attr_cache ):
-            children = self.attr_cache[ nodes ].children
-            if( edges is not None ):
-                children = [ [ edge, nodes ] for edge, nodes in children if edge == edges ]
-            if( split_by_edge ):
-                return children
-            if( len( children ) == 0 ):
-                return children
-            return np.hstack( [ nodes for edges, nodes in children ] )
-
         return GraphMessagePasser._children( self.cmask,
                                              self.pmask,
                                              nodes,
@@ -298,28 +288,6 @@ class GraphMessagePasser():
                                              split=split )
 
     def getMates( self, nodes, edges=None, split_by_edge=False, split=False, get_order=False ):
-        if( nodes.__hash__ and split == False and nodes in self.attr_cache ):
-            mates_order = self.attr_cache[ nodes ].mates
-
-            if( edges is not None ):
-                mates_order = [ [ edge, nodes_order ] for edge, nodes_order in mates_order if edge == edges ]
-
-            if( get_order == False ):
-                mates = [ [ edge, nodes ] for edge, ( nodes, order ) in mates_order ]
-                if( split_by_edge ):
-                    return mates
-                if( len( mates ) == 0 ):
-                    return mates
-                return np.hstack( [ nodes for edges, nodes in mates ] )
-
-            if( split_by_edge ):
-                return mates_order
-            if( len( mates_order ) == 0 ):
-                return mates_order
-
-            mates, order = zip( *[ nodes_order for edge, nodes_order in mates_order ] )
-            return np.hstack( mates ), np.hstack( order )
-
         return GraphMessagePasser._mates( self.cmask,
                                           self.pmask,
                                           nodes,
@@ -645,10 +613,6 @@ class GraphMessagePasser():
             u_list = self.readyForU( u_semaphore, u_done )
             v_list = self.readyForV( v_semaphore, v_done )
 
-            # Cache everything about the next nodes
-            self.cacheAttributes( u_list )
-            self.cacheAttributes( v_list[ 0 ] )
-
             i += 1
 
             # Check if we need to do loopy propagation belief
@@ -680,23 +644,6 @@ class GraphMessagePasser():
         if( loopy == False ):
             assert np.any( u_semaphore != 0 ) == False
             assert np.any( v_semaphore.data != 0 ) == False
-
-    ######################################################################
-
-    def cacheAttributes( self, nodes ):
-        # Cache everything we might need to know about a node.
-        # Disclaimer, this basically has no effect on runtime
-        CachedAttrs = namedtuple( 'CachedAttrs', [ 'parents', 'mates', 'siblings', 'children', 'up_edge', 'down_edges' ] )
-        self.attr_cache = {}
-        for node in nodes:
-            parents = self.getParents( node, get_order=True )
-            siblings = self.getSiblings( node )
-            mates = self.getMates( node, split_by_edge=True, get_order=True )
-            children = self.getChildren( node, split_by_edge=True )
-            up_edge = self.getUpEdges( node )
-            down_edges = self.getDownEdges( node )
-            cached_attrs = CachedAttrs( parents, mates, siblings, children, up_edge, down_edges )
-            self.attr_cache[ node ] = cached_attrs
 
     ######################################################################
 
@@ -1147,7 +1094,7 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
 
         fetchFunc = partial( self.full_graph.getSiblings, split=split )
         filterFunc = lambda n: not self.inFeedbackSet( n, is_partial_graph_index=False )
-        return self.fetchGraphNodes( nodes, fetchFunc, get_order=False, split=split, split_by_edge=False, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=return_partial_graph_index, use_partial_graph=False )
+        return self.fetchGraphNodes( nodes, fetchFunc, filterFunc=filterFunc, get_order=False, split=split, split_by_edge=False, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=return_partial_graph_index, use_partial_graph=False )
 
     def getPartialChildren( self,
                             nodes,
@@ -1167,7 +1114,7 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
 
         fetchFunc = partial( self.full_graph.getChildren, edges=edges, split_by_edge=split_by_edge, split=split )
         filterFunc = lambda n: not self.inFeedbackSet( n, is_partial_graph_index=False )
-        return self.fetchGraphNodes( nodes, fetchFunc, get_order=False, split=split, split_by_edge=split_by_edge, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=return_partial_graph_index, use_partial_graph=False )
+        return self.fetchGraphNodes( nodes, fetchFunc, filterFunc=filterFunc, get_order=False, split=split, split_by_edge=split_by_edge, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=return_partial_graph_index, use_partial_graph=False )
 
     def getPartialMates( self,
                          nodes,
@@ -1188,7 +1135,7 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
 
         fetchFunc = partial( self.full_graph.getMates, edges=edges, split_by_edge=split_by_edge, split=split, get_order=get_order )
         filterFunc = lambda n: not self.inFeedbackSet( n, is_partial_graph_index=False )
-        return self.fetchGraphNodes( nodes, fetchFunc, get_order=get_order, split=split, split_by_edge=split_by_edge, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=return_partial_graph_index, use_partial_graph=False )
+        return self.fetchGraphNodes( nodes, fetchFunc, filterFunc=filterFunc, get_order=get_order, split=split, split_by_edge=split_by_edge, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=return_partial_graph_index, use_partial_graph=False )
 
     ######################################################################
 

@@ -1034,18 +1034,17 @@ class GroupGHMM():
     ###########################################
 
     @staticmethod
-    def parameterShapes( graphs, d_latents, d_obs ):
+    def parameterShapes( graphs, d_latents, d_obs, groups ):
         # Returns the shapes of the parameters that fit graph
 
         assert isinstance( d_latents, dict )
-        assert isinstance( d_obs, dict )
 
         # Initial dist
-        initial_shapes = dict( [ ( g, d_latents[ g ] ) for g in range( groups ) ] )
+        initial_shapes = dict( [ ( g, d_latents[ g ] ) for g in groups ] )
 
         # Check how many transition distributions we need
-        all_transition_counts = dict( [ ( group, set() ) for group in range( groups ) ] )
-        for graph in group_graphs:
+        all_transition_counts = dict( [ ( group, set() ) for group in groups ] )
+        for graph in graphs:
             if( isinstance( graph, Iterable ) ):
                 graph, fbs = graph
             for children, parents in zip( graph.edge_children, graph.edge_parents ):
@@ -1067,7 +1066,7 @@ class GroupGHMM():
                 transition_shapes[ group ].append( shape )
 
         # Emission dist
-        emission_shapes = dict( [ ( g, [ d_latents[ g ], d_obs ] ) for g in range( groups ) ] )
+        emission_shapes = dict( [ ( g, [ d_latents[ g ], d_obs ] ) for g in groups ] )
 
         return initial_shapes, transition_shapes, emission_shapes
 

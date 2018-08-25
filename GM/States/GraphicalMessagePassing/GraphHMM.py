@@ -1,54 +1,30 @@
 from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import *
 from GenModels.GM.States.GraphicalMessagePassing.GraphFilterBase import *
+from GenModels.GM.States.GraphicalMessagePassing.GraphFilterParallel import *
 import numpy as np
 from functools import partial
 from scipy.sparse import coo_matrix
 from collections import Iterable
 from GenModels.GM.Utility import fbsData
 import joblib
+from .NumbaWrappers import *
 
 __all__ = [ 'GraphHMM',
             'GraphHMMFBS',
+            'GraphHMMFBSParallel',
             'GraphHMMFBSMultiGroups' ]
-
-######################################################################
-
-# def unwrappedUBaseCase( cls, self, node ):
-#     return cls.uBaseCase( self, node )
-
-# def unwrappedU( cls, self, U, V, node ):
-#     return cls.u( self, U, V, node )
-
-# def unwrappedVBaseCase( cls, self, node ):
-#     return cls.vBaseCase( self, node )
-
-# def unwrappedV( cls, self, U, V, node, edge ):
-#     return cls.v( self, U, V, node, edge )
-
-######################################################################
 
 class _graphHMMMixin():
 
-    # def uFilter( self, is_base_case, nodes, U, V, parallel=False ):
-    #     # Parallel version
-
-    #     if( parallel == True ):
-    #         # self_it = itertools.repeat( self, nodes.shape[ 0 ] )
-    #         new_u = joblib.Parallel( n_jobs=-1 )( [ joblib.delayed( unwrappedUBaseCase )( GraphHMM, self, node ) if is_base_case else
-    #                                                 joblib.delayed( unwrappedU )( GraphHMM, self, U, V, node ) for node in nodes ] )
-    #         self.updateU( nodes, new_u, U )
-    #     else:
-    #         super().uFilter( is_base_case, nodes, U, V )
-
-    # def vFilter( self, is_base_case, nodes_and_edges, U, V, parallel=False ):
-
-    #     if( parallel == True ):
-    #         nodes, edges = nodes_and_edges
-    #         new_v = joblib.Parallel( n_jobs=-1 )( [ joblib.delayed( unwrappedVBaseCase )( GraphHMM, self, node ) if is_base_case else
-    #                                                 joblib.delayed( unwrappedV )( GraphHMM, self, U, V, node, edge ) for node, edge in zip( nodes, edges ) ] )
-    #         self.updateV( nodes, edges, new_v, V )
-    #     else:
-    #         super().vFilter( is_base_case, nodes_and_edges, U, V )
+    def assignV( self, V, node, val, keep_shape=False ):
+        V_row, V_col, V_data = V
+        N = V_row.shape[ 0 ]
+        VIndices = np.where( np.in1d( V_row, node ) )[ 0 ]
+        for i in VIndices:
+            if( keep_shape is False ):
+                V_data[ i ] = val
+            else:
+                V_data[ i ][ : ] = val
 
     ######################################################################
 
@@ -90,7 +66,6 @@ class _graphHMMMixin():
             pis.add( ndim )
 
     def preprocessData( self, data_graphs ):
-
         super( _graphHMMMixin, self ).updateGraphs( data_graphs )
 
         self.possible_latent_states = {}
@@ -152,12 +127,30 @@ class _graphHMMMixin():
         pi = np.copy( self.pis[ ndim ] )
 
         # If we know the latent state for child, then ensure that we
-        # transition there
+        # transition there.  Also make sure we're only using the possible
+        # parent latent states!!!!
+        modified = False
+        for parent, order in zip( parents, parent_order ):
+            if( int( parent ) in self.possible_latent_states ):
+                parent_states = self.possible_latent_states[ int( parent ) ]
+                impossible_parent_axes = np.setdiff1d( np.arange( pi.shape[ order ] ), parent_states )
+                index = [ slice( 0, s ) for s in pi.shape ]
+                index[ order ] = impossible_parent_axes
+                pi[ tuple( index ) ] = np.NINF
+                modified = True
+
         if( int( child ) in self.possible_latent_states ):
-            states = self.possible_latent_states[ int( child ) ]
-            impossible_axes = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
-            pi[ ..., impossible_axes ] = np.NINF
-            pi[ ..., states ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+            child_states = self.possible_latent_states[ int( child ) ]
+            impossible_child_axes = np.setdiff1d( np.arange( pi.shape[ -1 ] ), child_states )
+            pi[ ..., impossible_child_axes ] = np.NINF
+            modified = True
+
+        if( modified == True ):
+            with np.errstate( invalid='ignore' ):
+                pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+
+        # In case entire rows summed to -inf
+        pi[ np.isnan( pi ) ] = np.NINF
 
         # Reshape pi's axes to match parent order
         assert len( parents ) + 1 == pi.ndim
@@ -286,35 +279,7 @@ class _graphHMMMixin():
 
 ######################################################################
 
-class GraphHMM( _graphHMMMixin, GraphFilter ):
-    pass
-
-######################################################################
-
-class GraphHMMFBS( _graphHMMMixin, GraphFilterFBS ):
-
-    # def uFilter( self, is_base_case, nodes, U, V, parallel=False ):
-    #     # Parallel version
-
-    #     if( parallel == True ):
-    #         # self_it = itertools.repeat( self, nodes.shape[ 0 ] )
-    #         new_u = joblib.Parallel( n_jobs=-1 )( [ joblib.delayed( unwrappedUBaseCase )( GraphHMMFBS, self, node ) if is_base_case else
-    #                                                 joblib.delayed( unwrappedU )( GraphHMMFBS, self, U, V, node ) for node in nodes ] )
-    #         self.updateU( nodes, new_u, U )
-    #     else:
-    #         super().uFilter( is_base_case, nodes, U, V )
-
-    # def vFilter( self, is_base_case, nodes_and_edges, U, V, parallel=False ):
-
-    #     if( parallel == True ):
-    #         nodes, edges = nodes_and_edges
-    #         new_v = joblib.Parallel( n_jobs=-1 )( [ joblib.delayed( unwrappedVBaseCase )( GraphHMMFBS, self, node ) if is_base_case else
-    #                                                 joblib.delayed( unwrappedV )( GraphHMMFBS, self, U, V, node, edge ) for node, edge in zip( nodes, edges ) ] )
-    #         self.updateV( nodes, edges, new_v, V )
-    #     else:
-    #         super().vFilter( is_base_case, nodes_and_edges, U, V )
-
-    ######################################################################
+class _graphHMMFBSMixin( _graphHMMMixin ):
 
     def preprocessData( self, data_graphs ):
 
@@ -377,12 +342,30 @@ class GraphHMMFBS( _graphHMMMixin, GraphFilterFBS ):
 
         # If we know the latent state for child, then ensure that we
         # transition there
-        node_full = self.partialGraphIndexToFullGraphIndex( child ) if is_partial_graph_index == True else child
-        if( int( node_full ) in self.possible_latent_states ):
-            states = self.possible_latent_states[ int( node_full ) ]
+        modified = False
+        for parent, order in zip( parents, parent_order ):
+            parent_full = self.partialGraphIndexToFullGraphIndex( parent )
+            if( int( parent_full ) in self.possible_latent_states ):
+                parent_states = self.possible_latent_states[ int( parent_full ) ]
+                impossible_parent_axes = np.setdiff1d( np.arange( pi.shape[ order ] ), parent_states )
+                index = [ slice( 0, s ) for s in pi.shape ]
+                index[ order ] = impossible_parent_axes
+                pi[ tuple( index ) ] = np.NINF
+                modified = True
+
+        child_full = self.partialGraphIndexToFullGraphIndex( child ) if is_partial_graph_index == True else child
+        if( int( child_full ) in self.possible_latent_states ):
+            states = self.possible_latent_states[ int( child_full ) ]
             impossible_axes = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
             pi[ ..., impossible_axes ] = np.NINF
-            pi[ ..., states ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+            modified = True
+
+        if( modified == True ):
+            with np.errstate( invalid='ignore' ):
+                pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+
+        # In case entire rows summed to -inf
+        pi[ np.isnan( pi ) ] = np.NINF
 
         # Check if there are nodes in [ child, *parents ] that are in the fbs.
         # If there are, then move their axes
@@ -556,6 +539,21 @@ class GraphHMMFBS( _graphHMMMixin, GraphFilterFBS ):
 
 ######################################################################
 
+class GraphHMM( _graphHMMMixin, GraphFilter ):
+    pass
+
+######################################################################
+
+class GraphHMMFBS( _graphHMMFBSMixin, GraphFilterFBS ):
+    pass
+
+######################################################################
+
+class GraphHMMFBSParallel( _graphHMMFBSMixin, GraphFilterFBSParallel ):
+    pass
+
+######################################################################
+
 class GraphHMMFBSMultiGroups( GraphHMMFBS ):
 
     # This variant lets the user specify which set of parameters to apply to a node
@@ -683,9 +681,9 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
 
     def transitionProb( self, child, is_partial_graph_index=False ):
         parents, parent_order = self.getFullParents( child, get_order=True, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True )
-        node_full = self.partialGraphIndexToFullGraphIndex( child ) if is_partial_graph_index == True else child
+        child_full = self.partialGraphIndexToFullGraphIndex( child ) if is_partial_graph_index == True else child
         ndim = len( parents ) + 1
-        group = self.node_groups[ int( node_full ) ]
+        group = self.node_groups[ int( child_full ) ]
         shape = []
         for p, _ in sorted( zip( parents, parent_order ), key=lambda po: po[ 1 ] ):
             full_p = int( self.partialGraphIndexToFullGraphIndex( p ) )
@@ -704,11 +702,26 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
 
         # If we know the latent state for child, then ensure that we
         # transition there
-        if( int( node_full ) in self.possible_latent_states ):
-            states = self.possible_latent_states[ int( node_full ) ]
+        modified = False
+        for parent, order in zip( parents, parent_order ):
+            parent_full = self.partialGraphIndexToFullGraphIndex( parent )
+            if( int( parent_full ) in self.possible_latent_states ):
+                parent_states = self.possible_latent_states[ int( parent_full ) ]
+                impossible_parent_axes = np.setdiff1d( np.arange( pi.shape[ order ] ), parent_states )
+                index = [ slice( 0, s ) for s in pi.shape ]
+                index[ order ] = impossible_parent_axes
+                pi[ tuple( index ) ] = np.NINF
+                modified = True
+
+        if( int( child_full ) in self.possible_latent_states ):
+            states = self.possible_latent_states[ int( child_full ) ]
             impossible_axes = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
             pi[ ..., impossible_axes ] = np.NINF
-            pi[ ..., states ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+            modified = True
+
+        if( modified == True ):
+            with np.errstate( invalid='ignore' ):
+                pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
 
         # Check if there are nodes in [ child, *parents ] that are in the fbs.
         # If there are, then move their axes

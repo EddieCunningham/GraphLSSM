@@ -1,5 +1,5 @@
 from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import GraphMessagePasser
-from GenModels.GM.States.GraphicalMessagePassing.Graph import Graph
+from GenModels.GM.States.GraphicalMessagePassing.Graph import DataGraph
 import numpy as np
 from scipy.sparse import coo_matrix
 
@@ -22,13 +22,13 @@ __all__ = [ 'graph1',
             'cycleGraph12' ]
 
 def graph1():
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 2 ] )
     return graph
 
 def graph2():
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 4 ] )
     graph.addEdge( parents=[ 2, 3 ], children=[ 5 ] )
@@ -37,7 +37,7 @@ def graph2():
     return graph
 
 def graph3():
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 3 ] )
     graph.addEdge( parents=[ 1, 2 ], children=[ 4 ] )
@@ -45,7 +45,7 @@ def graph3():
     return graph
 
 def graph4():
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1, 2 ], children=[ 4, 5 ] )
     graph.addEdge( parents=[ 2, 3 ], children=[ 6 ] )
@@ -53,7 +53,7 @@ def graph4():
     return graph
 
 def graph5():
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 6, 7 ] )
     graph.addEdge( parents=[ 2 ], children=[ 8 ] )
@@ -66,14 +66,14 @@ def graph5():
     return graph
 
 def graph6():
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0 ], children=[ 1 ] )
 
     return graph
 
 def graph7():
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 2 ] )
     graph.addEdge( parents=[ 2 ], children=[ 3 ] )
@@ -82,7 +82,7 @@ def graph7():
     return graph
 
 def graph8():
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0 ], children=[ 1 ] )
     graph.addEdge( parents=[ 1 ], children=[ 2 ] )
@@ -103,7 +103,7 @@ def graph8():
 
 def cycleGraph1():
 
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 2, 3 ] )
     graph.addEdge( parents=[ 2, 3 ], children=[ 4 ] )
@@ -114,7 +114,7 @@ def cycleGraph1():
 
 def cycleGraph2():
 
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 3 ] )
     graph.addEdge( parents=[ 1, 2 ], children=[ 4 ] )
@@ -126,7 +126,7 @@ def cycleGraph2():
 
 def cycleGraph3():
 
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 2, 3, 9 ] )
     graph.addEdge( parents=[ 2, 3 ], children=[ 4 ] )
@@ -140,7 +140,7 @@ def cycleGraph3():
 
 def cycleGraph4():
 
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0 ], children=[ 1 ] )
     graph.addEdge( parents=[ 1 ], children=[ 0 ] )
@@ -153,7 +153,7 @@ def cycleGraph4():
 
 def cycleGraph5():
 
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 2, 3, 9 ] )
     graph.addEdge( parents=[ 2, 3 ], children=[ 4 ] )
@@ -169,7 +169,7 @@ def cycleGraph5():
 
 def cycleGraph6():
 
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0, 1 ], children=[ 2 ] )
     graph.addEdge( parents=[ 2, 3 ], children=[ 0 ] )
@@ -182,7 +182,7 @@ def cycleGraph6():
 
 def cycleGraph7():
 
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0 ], children=[ 1, 2 ] )
     graph.addEdge( parents=[ 1, 2 ], children=[ 3 ] )
@@ -193,7 +193,7 @@ def cycleGraph7():
 
 def cycleGraph8():
 
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0 ], children=[ 1, 2 ] )
     graph.addEdge( parents=[ 1, 2 ], children=[ 3 ] )
@@ -204,7 +204,7 @@ def cycleGraph8():
 
 def cycleGraph9():
 
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 7, 8 ], children=[ 0 ] )
     graph.addEdge( parents=[ 0, 1 ], children=[ 3 ] )
@@ -217,7 +217,7 @@ def cycleGraph9():
 
 def cycleGraph10():
 
-    graph = Graph()
+    graph = DataGraph()
 
     graph.addEdge( parents=[ 0 ], children=[ 1, 2 ] )
     graph.addEdge( parents=[ 1, 2 ], children=[ 3 ] )
@@ -229,7 +229,7 @@ def cycleGraph10():
     return graph, fbs
 
 def cycleGraph11():
-    graph = Graph()
+    graph = DataGraph()
     graph.addEdge( parents=[ 0 ], children=[ 1 ] )
     graph.addEdge( parents=[ 1, 2 ], children=[ 3, 4, 5 ] )
     graph.addEdge( parents=[ 3, 4 ], children=[ 6 ] )
@@ -241,7 +241,7 @@ def cycleGraph11():
     return graph, fbs
 
 def cycleGraph12():
-    graph = Graph()
+    graph = DataGraph()
     graph.addEdge( parents=[ 0, 1, 2 ], children=[ 6, 7 ] )
     graph.addEdge( parents=[ 3 ], children=[ 8 ] )
     graph.addEdge( parents=[ 4, 5 ], children=[ 9 ] )

@@ -1,6 +1,7 @@
 import numpy as np
 from GenModels.GM.States.GraphicalMessagePassing import *
 from GenModels.GM.Distributions import *
+from GenModels.GM.Models.DiscreteGraphModels import *
 import time
 from collections import Iterable
 import itertools
@@ -34,250 +35,6 @@ def graphToDataGraph( graphs, dataPerNode, with_fbs=False, random_latent_states=
     return data_graphs
 
 ##################################################################################################
-##################################################################################################
-##################################################################################################
-
-def testGraphHMMNoFBS():
-
-    d_latent = 2
-    d_obs = 5
-    D = 2
-
-    # Create the dataset
-    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5(), graph6(), graph7() ]
-    def dataPerNode( node ):
-        return Categorical.generate( D=d_obs, size=D )
-    data_graphs = graphToDataGraph( graphs, dataPerNode, with_fbs=False )
-
-    # Initial dist
-    initial_dists = Dirichlet.generate( D=d_latent )
-
-    # Check how many transition distributions we need
-    all_transition_counts = set()
-    for graph in graphs:
-        if( isinstance( graph, Iterable ) ):
-            graph, fbs = graph
-        for parents in graph.edge_parents:
-            ndim = len( parents ) + 1
-            all_transition_counts.add( ndim )
-
-    # Create the transition distribution
-    transition_dists = []
-    for ndim in all_transition_counts:
-        shape = [ d_latent for _ in range( ndim ) ]
-        trans = np.empty( shape )
-        for indices in itertools.product( *[ range( s ) for s in shape[ 1: ] ] ):
-            trans[ indices ] = Dirichlet.generate( D=d_latent )
-
-        transition_dists.append( trans )
-
-    # Emission dist
-    emission_dist = Dirichlet.generate( D=d_obs, size=d_latent )
-
-    # Create the message passer and initialize
-    msg = GraphHMM()
-    msg.updateParams( initial_dists, transition_dists, emission_dist, data_graphs )
-
-    # Draw the graphs
-    msg.draw()
-
-    # Filter
-    U, V = msg.filter()
-
-    print( 'Done with filter' )
-
-    def totalLogReduce( probs ):
-        reduced = probs
-        while( reduced.ndim >= 1 ):
-            reduced = np.logaddexp.reduce( reduced )
-        return reduced
-
-    print( '\nJoint' )
-    for n, probs in msg.nodeJoint( U, V, msg.nodes ):
-        reduced = totalLogReduce( probs )
-        print( 'P( x_%d, Y )'%( n ), ':', probs, '->', reduced )
-
-    print( '\nJoint parents' )
-    for n, probs in msg.jointParents( U, V, msg.nodes ):
-        reduced = totalLogReduce( probs )
-        print( 'P( x_p1..pN, Y ) for %d'%( n ), '->', reduced )
-
-    print( '\nJoint parent child' )
-    for n, probs in msg.jointParentChild( U, V, msg.nodes ):
-        reduced = totalLogReduce( probs )
-        print( 'P( x_%d, x_p1..pN, Y )'%( n ), '->', reduced )
-
-    print( '\nSmoothed' )
-    for n, probs in msg.nodeSmoothed( U, V, msg.nodes ):
-        # If we reduce over the last axis, we should have everything sum to 1
-        reduced = np.logaddexp.reduce( probs, axis=-1 )
-        print( 'P( x_%d | Y )'%( n ), ':', probs, '->', reduced )
-        # assert np.allclose( reduced, 0.0 )
-
-    print( '\nChild given parents' )
-    for n, probs in msg.conditionalParentChild( U, V, msg.nodes ):
-        # If we reduce over the last axis, we should have everything sum to 1
-        reduced = np.logaddexp.reduce( probs, axis=-1 )
-        print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', reduced )
-        # assert np.allclose( reduced, 0.0 )
-
-    print( 'Done with the testGraphHMMNoFBS test!!\n' )
-
-##################################################################################################
-##################################################################################################
-##################################################################################################
-
-def testGraphHMM():
-
-    np.random.seed( 2 )
-
-    graphs = [ graph1(),
-               graph2(),
-               graph3(),
-               graph4(),
-               graph5(),
-               graph6(),
-               graph7(),
-               cycleGraph1(),
-               cycleGraph2(),
-               cycleGraph3(),
-               cycleGraph7(),
-               cycleGraph8(),
-               cycleGraph9(),
-               cycleGraph10(),
-               cycleGraph11(),
-               cycleGraph12() ]
-
-    d_latent = 2
-    d_obs = 5
-    D = 2
-
-    # Create the dataset
-    def dataPerNode( node ):
-        return Categorical.generate( D=d_obs, size=D )
-    data_graphs = graphToDataGraph( graphs, dataPerNode, with_fbs=True, random_latent_states=True, d_latent=d_latent )
-
-    # Initial dist
-    initial_dists = Dirichlet.generate( D=d_latent )
-
-    # Check how many transition distributions we need
-    all_transition_counts = set()
-    for graph in graphs:
-        if( isinstance( graph, Iterable ) ):
-            graph, fbs = graph
-        for parents in graph.edge_parents:
-            ndim = len( parents ) + 1
-            all_transition_counts.add( ndim )
-
-    # Create the transition distribution
-    transition_dists = []
-    for ndim in all_transition_counts:
-        shape = [ d_latent for _ in range( ndim ) ]
-        trans = np.empty( shape )
-        for indices in itertools.product( *[ range( s ) for s in shape[ 1: ] ] ):
-            trans[ indices ] = Dirichlet.generate( D=d_latent )
-
-        transition_dists.append( trans )
-
-    # Emission dist
-    emission_dist = Dirichlet.generate( D=d_obs, size=d_latent )
-
-    # Create the message passer and initialize
-    msg = GraphHMMFBS()
-    msg.updateParams( initial_dists, transition_dists, emission_dist, data_graphs )
-
-    # Draw the graphs
-    # msg.draw( styles={ 0:dict( style='filled', color='red' ) }, node_to_style_key=dict( [ ( n, 0 ) for n in msg.fbs ] ) )
-    msg.draw( use_partial=True )
-
-    # Filter
-    U, V = msg.filter()
-
-    print( 'Done with filter' )
-
-    def totalLogReduce( probs ):
-        reduced = probs
-        while( reduced.ndim >= 1 ):
-            reduced = np.logaddexp.reduce( reduced )
-        return reduced
-
-    ####################################################
-
-    print( '\nJoint' )
-    for n, probs in msg.nodeJoint( U, V, msg.nodes ):
-        reduced = msg.integrate( probs, axes=range( probs.ndim ) )
-        print( 'P( x_%d, Y )'%( n ), ':', probs, '->', reduced )
-
-    # assert 0
-    ####################################################
-
-    print( '\nJoint parents' )
-    for n, probs in msg.jointParents( U, V, msg.nodes ):
-        reduced = msg.integrate( probs, axes=range( probs.ndim ) )
-        print( 'P( x_p1..pN, Y ) for %d'%( n ), '->', probs.shape, reduced )
-
-    ####################################################
-
-    print( '\nJoint parents should marginalize out to joint probs' )
-    for n, probs in msg.jointParents( U, V, msg.nodes ):
-        parents, parent_order = msg.getParents( n, get_order=True )
-        joints = msg.nodeJoint( U, V, parents )
-        for i, ( ( p, j ), o ) in enumerate( zip( joints, parent_order ) ):
-            # Marginalize out the other parents from probs
-            int_axes = np.setdiff1d( parent_order, o )
-            reduced = msg.integrate( probs, axes=int_axes )
-            print( 'sum_{ parents except %d }P( x_p1..pN, Y ) for node %d - P( x_%d, Y ) : ->'%( p, n, p ), ( j - reduced ).sum() )
-            assert np.allclose( reduced, j ), 'reduced: %s, j: %s'%( reduced, j )
-
-    ####################################################
-
-    print( '\nJoint parent child' )
-    for n, probs in msg.jointParentChild( U, V, msg.nodes ):
-        reduced = msg.integrate( probs, axes=range( probs.ndim ) )
-        print( 'P( x_%d, x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
-
-    ####################################################
-
-    print( '\nJoint parent child should marginalize out to joint probs' )
-    for n, probs in msg.jointParentChild( U, V, msg.nodes ):
-        parents, parent_order = msg.getParents( n, get_order=True )
-        n_parents = parents.shape[ 0 ]
-
-        joints = msg.nodeJoint( U, V, parents )
-        for i, ( ( p, j ), o ) in enumerate( zip( joints, parent_order ) ):
-            # Marginalize out the other parents from probs
-            int_axes = np.setdiff1d( np.hstack( ( n_parents, parent_order ) ), o )
-            reduced = msg.integrate( probs, axes=int_axes )
-            print( 'sum_{ parents except %d }P( x_%d, x_p1..pN, Y ) for node %d - P( x_%d, Y ) : ->'%( p, p, n, p ), ( j - reduced ).sum() )
-            assert np.allclose( reduced, j ), 'reduced: %s, j: %s'%( reduced, j )
-
-        ( _, joint ), = msg.nodeJoint( U, V, [ n ] )
-        # Marginalize out all of the parents
-        reduced = msg.integrate( probs, axes=parent_order )
-        print( 'sum_{ parents }P( x_%d, x_p1..pN, Y ) - P( x_%d, Y ) : ->'%( n, n ), ( joint - reduced ).sum() )
-        assert np.allclose( reduced, joint ), 'reduced: %s, j: %s'%( reduced, j )
-
-    ####################################################
-
-    print( '\nSmoothed' )
-    for n, probs in msg.nodeSmoothed( U, V, msg.nodes ):
-        # If we reduce over the last axis, we should have everything sum to 1
-        reduced = msg.integrate( probs, axes=[ -1 ] )
-        print( 'P( x_%d | Y )'%( n ), ':', probs, '->', probs.shape, reduced )
-        # assert np.allclose( reduced, 0.0 )
-
-    ####################################################
-
-    print( '\nChild given parents' )
-    for n, probs in msg.conditionalParentChild( U, V, msg.nodes ):
-        # If we reduce over the last axis, we should have everything sum to 1
-        reduced = msg.integrate( probs, axes=[ -1 ] )
-        print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
-        # assert np.allclose( reduced, 0.0 )
-
-##################################################################################################
-##################################################################################################
-##################################################################################################
 
 def graphToGroupGraph( graphs, dataPerNode, groupPerNode, with_fbs=False, random_latent_states=False, d_latents=None ):
     assert isinstance( graphs, list )
@@ -307,6 +64,250 @@ def graphToGroupGraph( graphs, dataPerNode, groupPerNode, with_fbs=False, random
             group_graphs.append( group_graph )
     return group_graphs
 
+##################################################################################################
+
+class MarginalizationTester():
+
+    def __init__( self, graphs, d_latent=3, d_obs=4, measurements=2 ):
+        self.d_latent = d_latent
+        self.d_obs = d_obs
+        self.measurements = measurements
+        self.graphs = self.fillInGraphs( graphs )
+
+    def fillInGraphs( self, graphs ):
+        def dataPerNode( node ):
+            return Categorical.generate( D=self.d_obs, size=self.measurements )
+        return graphToDataGraph( graphs, dataPerNode, with_fbs=False )
+
+    def generateDists( self ):
+        initial_shape, transition_shapes, emission_shape = GHMM.parameterShapes( self.graphs, self.d_latent, self.d_obs )
+        initial_dist = Dirichlet.generate( D=initial_shape )
+        transition_dists = [ TensorTransitionDirichletPrior.generate( Ds=s ) for s in transition_shapes ]
+        emission_dist = TensorTransitionDirichletPrior.generate( Ds=emission_shape )
+        return initial_dist, transition_dists, emission_dist
+
+    @property
+    def msg( self ):
+        return GraphHMM()
+
+    def run( self ):
+        initial_dist, transition_dists, emission_dist = self.generateDists()
+        graphs = self.graphs
+
+        msg = self.msg
+        msg.updateParams( initial_dist, transition_dists, emission_dist, graphs )
+        msg.draw()
+        U, V = msg.filter()
+
+        ####################################################
+
+        print( '\nJoint' )
+        for n, probs in msg.nodeJoint( U, V, msg.nodes ):
+            reduced = msg.integrate( probs, axes=range( probs.ndim ) )
+            print( 'P( x_%d, Y )'%( n ), ':', probs, '->', reduced )
+
+        # assert 0
+        ####################################################
+
+        print( '\nJoint parents' )
+        for n, probs in msg.jointParents( U, V, msg.nodes ):
+            reduced = msg.integrate( probs, axes=range( probs.ndim ) )
+            print( 'P( x_p1..pN, Y ) for %d'%( n ), '->', probs.shape, reduced )
+
+        ####################################################
+
+        print( '\nJoint parents should marginalize out to joint probs' )
+        for n, probs in msg.jointParents( U, V, msg.nodes ):
+            parents, parent_order = msg.getParents( n, get_order=True )
+            joints = msg.nodeJoint( U, V, parents )
+            for i, ( ( p, j ), o ) in enumerate( zip( joints, parent_order ) ):
+                # Marginalize out the other parents from probs
+                int_axes = np.setdiff1d( parent_order, o )
+                reduced = msg.integrate( probs, axes=int_axes )
+                print( 'sum_{ parents except %d }P( x_p1..pN, Y ) for node %d - P( x_%d, Y ) : ->'%( p, n, p ), ( j - reduced ).sum() )
+                assert np.allclose( reduced, j ), 'reduced: %s, j: %s'%( reduced, j )
+
+        ####################################################
+
+        print( '\nJoint parent child' )
+        for n, probs in msg.jointParentChild( U, V, msg.nodes ):
+            reduced = msg.integrate( probs, axes=range( probs.ndim ) )
+            print( 'P( x_%d, x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
+
+        ####################################################
+
+        print( '\nJoint parent child should marginalize out to joint probs' )
+        for n, probs in msg.jointParentChild( U, V, msg.nodes ):
+            parents, parent_order = msg.getParents( n, get_order=True )
+            n_parents = parents.shape[ 0 ]
+
+            joints = msg.nodeJoint( U, V, parents )
+            for i, ( ( p, j ), o ) in enumerate( zip( joints, parent_order ) ):
+                # Marginalize out the other parents from probs
+                int_axes = np.setdiff1d( np.hstack( ( n_parents, parent_order ) ), o )
+                reduced = msg.integrate( probs, axes=int_axes )
+                print( 'sum_{ parents except %d }P( x_%d, x_p1..pN, Y ) for node %d - P( x_%d, Y ) : ->'%( p, p, n, p ), ( j - reduced ).sum() )
+                assert np.allclose( reduced, j ), 'reduced: %s, j: %s'%( reduced, j )
+
+            ( _, joint ), = msg.nodeJoint( U, V, [ n ] )
+            # Marginalize out all of the parents
+            reduced = msg.integrate( probs, axes=parent_order )
+            print( 'sum_{ parents }P( x_%d, x_p1..pN, Y ) - P( x_%d, Y ) : ->'%( n, n ), ( joint - reduced ).sum() )
+            assert np.allclose( reduced, joint ), 'reduced: %s, j: %s'%( reduced, j )
+
+        ####################################################
+
+        print( '\nSmoothed' )
+        for n, probs in msg.nodeSmoothed( U, V, msg.nodes ):
+            # If we reduce over the last axis, we should have everything sum to 1
+            reduced = msg.integrate( probs, axes=[ -1 ] )
+            print( 'P( x_%d | Y )'%( n ), ':', probs, '->', probs.shape, reduced )
+            # assert np.allclose( reduced, 0.0 )
+
+        ####################################################
+
+        print( '\nChild given parents' )
+        for n, probs in msg.conditionalParentChild( U, V, msg.nodes ):
+            # If we reduce over the last axis, we should have everything sum to 1
+            reduced = msg.integrate( probs, axes=[ -1 ] )
+            print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
+            # assert np.allclose( reduced, 0.0 )
+
+##################################################################################################
+
+class MarginalizationTesterFBS( MarginalizationTester ):
+
+    @property
+    def msg( self ):
+        return GraphHMMFBS()
+
+    def fillInGraphs( self, graphs ):
+        def dataPerNode( node ):
+            return Categorical.generate( D=self.d_obs, size=self.measurements )
+        return graphToDataGraph( graphs, dataPerNode, with_fbs=True, random_latent_states=True, d_latent=self.d_latent )
+
+##################################################################################################
+
+class MarginalizationTesterFBSParallel( MarginalizationTesterFBS ):
+
+    @property
+    def msg( self ):
+        return GraphHMMFBSParallel()
+
+##################################################################################################
+
+class MarginalizationTesterFBSGroup( MarginalizationTesterFBS ):
+
+    def __init__( self, graphs, d_latents=[ 2, 3, 4 ], d_obs=4, measurements=2, groups=3 ):
+
+        self.d_latents = d_latents
+        self.d_obs = d_obs
+        self.measurements = measurements
+        self.groups = groups
+        self.graphs = self.fillInGraphs( graphs )
+
+    @property
+    def msg( self ):
+        return GraphHMMFBSMultiGroups()
+
+    def fillInGraphs( self, graphs ):
+        def dataPerNode( node ):
+            return Categorical.generate( D=self.d_obs, size=self.measurements )
+        def groupPerNode( node ):
+            return Categorical.generate( D=len( self.groups ) )
+        return graphToGroupGraph( graphs, dataPerNode, groupPerNode, with_fbs=True, random_latent_states=False, d_latents=self.d_latents )
+
+    def generateDists( self ):
+        initial_shapes, transition_shapes, emission_shapes = GroupGHMM.parameterShapes( self.graphs, self.d_latents, self.d_obs, self.groups )
+
+        initial_dists = dict( [ ( group, Dirichlet.generate( D=shape ) ) for group, shape in initial_shapes.items() ] )
+
+        transition_dists = {}
+        for group, shapes in transition_shapes.items():
+            transition_dists[ group ] = []
+            for shape in shapes:
+                trans = TensorTransitionDirichletPrior.generate( Ds=shape )
+                transition_dists[ group ].append( trans )
+
+        emission_dists = dict( [ ( g, TensorTransitionDirichletPrior.generate( Ds=[ self.d_latents[ g ], self.d_obs ] ) ) for g, shape in emission_shapes.items() ] )
+
+        return initial_dists, transition_dists, emission_dists
+
+##################################################################################################
+
+def testGraphHMMNoFBS():
+
+    d_latent = 2
+    d_obs = 5
+    measurements = 2
+
+    # Create the dataset
+    graphs = [ graph1(), graph2(), graph3(), graph4(), graph5(), graph6(), graph7() ]
+
+    tester = MarginalizationTester( graphs, d_latent, d_obs, measurements )
+    tester.run()
+
+##################################################################################################
+
+def testGraphHMM():
+
+    np.random.seed( 2 )
+
+    graphs = [ graph1(),
+               graph2(),
+               graph3(),
+               graph4(),
+               graph5(),
+               graph6(),
+               graph7(),
+               cycleGraph1(),
+               cycleGraph2(),
+               cycleGraph3(),
+               cycleGraph7(),
+               cycleGraph8(),
+               cycleGraph9(),
+               cycleGraph10(),
+               cycleGraph11(),
+               cycleGraph12() ]
+
+    d_latent = 2
+    d_obs = 5
+    measurements = 2
+
+    tester = MarginalizationTesterFBS( graphs, d_latent, d_obs, measurements )
+    tester.run()
+
+##################################################################################################
+
+def testGraphHMMParallel():
+
+    np.random.seed( 2 )
+
+    graphs = [ graph1(),
+               graph2(),
+               graph3(),
+               graph4(),
+               graph5(),
+               graph6(),
+               graph7(),
+               cycleGraph1(),
+               cycleGraph2(),
+               cycleGraph3(),
+               cycleGraph7(),
+               cycleGraph8(),
+               cycleGraph9(),
+               cycleGraph10(),
+               cycleGraph11(),
+               cycleGraph12() ]
+
+    d_latent = 2
+    d_obs = 5
+    measurements = 2
+
+    tester = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements )
+    tester.run()
+
+##################################################################################################
 
 def testGraphGroupHMM():
 
@@ -330,142 +331,18 @@ def testGraphGroupHMM():
                cycleGraph12() ]
 
     d_obs = 5
-    D = 2
-    groups = 3
-    d_latents = [ 2, 3, 4 ]
+    measurements = 2
+    groups = [ 0, 1, 2 ]
+    d_latents = dict( zip( groups, [ 2, 3, 4 ] ) )
 
-    # Create the dataset
-    def dataPerNode( node ):
-        return Categorical.generate( D=d_obs, size=D )
-    def groupPerNode( node ):
-        return Categorical.generate( D=groups )
-    group_graphs = graphToGroupGraph( graphs, dataPerNode, groupPerNode, with_fbs=True, random_latent_states=True, d_latents=d_latents )
+    tester = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups )
+    tester.run()
 
-    # Initial dist
-    initial_dists = dict( [ ( g, Dirichlet.generate( D=d_latents[ g ] ) ) for g in range( groups ) ] )
-
-    # Check how many transition distributions we need
-    all_transition_counts = dict( [ ( group, set() ) for group in range( groups ) ] )
-    for graph in group_graphs:
-        if( isinstance( graph, Iterable ) ):
-            graph, fbs = graph
-        for children, parents in zip( graph.edge_children, graph.edge_parents ):
-            ndim = len( parents ) + 1
-
-            parent_groups = [ graph.groups[ parent ] for parent in parents ]
-
-            for child in children:
-                child_group = graph.groups[ child ]
-                family_groups = parent_groups + [ child_group ]
-                shape = tuple( [ d_latents[ group ] for group in family_groups ] )
-                all_transition_counts[ child_group ].add( shape )
-
-    # Create the transition distribution
-    transition_dists = {}
-    for group in all_transition_counts:
-        transition_dists[ group ] = []
-        for shape in all_transition_counts[ group ]:
-            trans = TensorTransitionDirichletPrior.generate( Ds=shape )
-
-            transition_dists[ group ].append( trans )
-
-    # Emission dist
-    emission_dist = dict( [ ( g, TensorTransitionDirichletPrior.generate( Ds=[ d_latents[ g ], d_obs ] ) ) for g in range( groups ) ] )
-
-    # Create the message passer and initialize
-    msg = GraphHMMFBSMultiGroups()
-    msg.updateParams( initial_dists, transition_dists, emission_dist, group_graphs )
-
-    # Draw the graphs
-    # msg.draw( styles={ 0:dict( style='filled', color='red' ) }, node_to_style_key=dict( [ ( n, 0 ) for n in msg.fbs ] ) )
-    msg.draw()
-
-    # Filter
-    U, V = msg.filter()
-
-    print( 'Done with filter' )
-
-    def totalLogReduce( probs ):
-        reduced = probs
-        while( reduced.ndim >= 1 ):
-            reduced = np.logaddexp.reduce( reduced )
-        return reduced
-
-    ####################################################
-
-    print( '\nJoint' )
-    for n, probs in msg.nodeJoint( U, V, msg.nodes ):
-        reduced = msg.integrate( probs, axes=range( probs.ndim ) )
-        print( 'P( x_%d, Y )'%( n ), ':', probs, '->', reduced )
-
-    ####################################################
-
-    print( '\nJoint parents' )
-    for n, probs in msg.jointParents( U, V, msg.nodes ):
-        reduced = msg.integrate( probs, axes=range( probs.ndim ) )
-        print( 'P( x_p1..pN, Y ) for %d'%( n ), '->', probs.shape, reduced )
-
-    ####################################################
-
-    print( '\nJoint parents should marginalize out to joint probs' )
-    for n, probs in msg.jointParents( U, V, msg.nodes ):
-        parents, parent_order = msg.getParents( n, get_order=True )
-        joints = msg.nodeJoint( U, V, parents )
-        for i, ( ( p, j ), o ) in enumerate( zip( joints, parent_order ) ):
-            # Marginalize out the other parents from probs
-            int_axes = np.setdiff1d( parent_order, o )
-            reduced = msg.integrate( probs, axes=int_axes )
-            print( 'sum_{ parents except %d }P( x_p1..pN, Y ) for node %d - P( x_%d, Y ) : ->'%( p, n, p ), ( j - reduced ).sum() )
-            assert np.allclose( reduced, j ), 'reduced: %s, j: %s'%( reduced, j )
-
-    ####################################################
-
-    print( '\nJoint parent child' )
-    for n, probs in msg.jointParentChild( U, V, msg.nodes ):
-        reduced = msg.integrate( probs, axes=range( probs.ndim ) )
-        print( 'P( x_%d, x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
-
-    ####################################################
-
-    print( '\nJoint parent child should marginalize out to joint probs' )
-    for n, probs in msg.jointParentChild( U, V, msg.nodes ):
-        parents, parent_order = msg.getParents( n, get_order=True )
-        n_parents = parents.shape[ 0 ]
-
-        joints = msg.nodeJoint( U, V, parents )
-        for i, ( ( p, j ), o ) in enumerate( zip( joints, parent_order ) ):
-            # Marginalize out the other parents from probs
-            int_axes = np.setdiff1d( np.hstack( ( n_parents, parent_order ) ), o )
-            reduced = msg.integrate( probs, axes=int_axes )
-            print( 'sum_{ parents except %d }P( x_%d, x_p1..pN, Y ) for node %d - P( x_%d, Y ) : ->'%( p, p, n, p ), ( j - reduced ).sum() )
-            assert np.allclose( reduced, j ), 'reduced: %s, j: %s'%( reduced, j )
-
-        ( _, joint ), = msg.nodeJoint( U, V, [ n ] )
-        # Marginalize out all of the parents
-        reduced = msg.integrate( probs, axes=parent_order )
-        print( 'sum_{ parents }P( x_%d, x_p1..pN, Y ) - P( x_%d, Y ) : ->'%( n, n ), ( joint - reduced ).sum() )
-        assert np.allclose( reduced, joint ), 'reduced: %s, j: %s'%( reduced, j )
-
-    ####################################################
-
-    print( '\nSmoothed' )
-    for n, probs in msg.nodeSmoothed( U, V, msg.nodes ):
-        # If we reduce over the last axis, we should have everything sum to 1
-        reduced = msg.integrate( probs, axes=[ -1 ] )
-        print( 'P( x_%d | Y )'%( n ), ':', probs, '->', probs.shape, reduced )
-        # assert np.allclose( reduced, 0.0 )
-
-    ####################################################
-
-    print( '\nChild given parents' )
-    for n, probs in msg.conditionalParentChild( U, V, msg.nodes ):
-        # If we reduce over the last axis, we should have everything sum to 1
-        reduced = np.abs( msg.integrate( probs, axes=[ -1 ] ) ).sum()
-        print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
-        # assert np.allclose( reduced, 0.0 )
+##################################################################################################
 
 def graphMarginalizationTest():
-    testGraphHMMNoFBS()
-    testGraphHMM()
+    # testGraphHMMNoFBS()
+    # testGraphHMM()
     testGraphGroupHMM()
+    # testGraphHMMParallel()
     # assert 0

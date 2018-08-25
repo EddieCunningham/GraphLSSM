@@ -4,23 +4,9 @@ from scipy.sparse import coo_matrix
 from functools import partial
 from collections import Iterable
 import itertools
-import inspect
 from GenModels.GM.Utility import fbsData
-import joblib
 
 __all__ = [ 'GraphFilter', 'GraphFilterFBS' ]
-
-def unwrappedUBaseCase( self, node ):
-    return GraphFilter.uBaseCase( self, node )
-
-def unwrappedU( self, U, V, node ):
-    return GraphFilter.u( self, U, V, node )
-
-def unwrappedUBaseCaseFBS( self, node ):
-    return GraphFilterFBS.uBaseCase( self, node )
-
-def unwrappedUFBS( self, U, V, node ):
-    return GraphFilterFBS.u( self, U, V, node )
 
 ######################################################################
 
@@ -60,16 +46,6 @@ class _filterMixin():
         assert 0
 
     ######################################################################
-
-    def assignV( self, V, node, val, keep_shape=False ):
-        V_row, V_col, V_data = V
-        N = V_row.shape[ 0 ]
-        VIndices = np.where( np.in1d( V_row, node ) )[ 0 ]
-        for i in VIndices:
-            if( keep_shape is False ):
-                V_data[ i ] = val
-            else:
-                V_data[ i ][ : ] = val
 
     def vDataFromMask( self, V, mask ):
         _, _, V_data = V
@@ -503,16 +479,6 @@ class __FBSFilterMixin():
 
     ######################################################################
 
-    def assignV( self, V, node, val, keep_shape=False ):
-        V_row, V_col, V_data = V
-        N = V_row.shape[ 0 ]
-        VIndices = np.where( np.in1d( V_row, node ) )[ 0 ]
-        for i in VIndices:
-            if( keep_shape is False ):
-                V_data[ i ] = val
-            else:
-                V_data[ i ][ : ] = val
-
     def vDataFromMask( self, V, mask ):
         _, _, V_data = V
         ans = []
@@ -606,7 +572,7 @@ class __FBSFilterMixin():
 
         u = self.uData( U, V, node )
 
-        down_edges = self.getDownEdges( node, skip_edges=down_edge, is_partial_graph_index=True, use_partial_graph=True  )
+        down_edges = self.getDownEdges( node, skip_edges=down_edge, is_partial_graph_index=True, use_partial_graph=True )
         vs = self.vData( U, V, node, edges=down_edges )
 
         ans = self.multiplyTerms( terms=( u, *vs ) )
@@ -654,11 +620,14 @@ class __FBSFilterMixin():
         # Use full siblings here so that we can use transition information
         siblings = self.getFullSiblings( node, is_partial_graph_index=True, return_partial_graph_index=True )
 
+        # Get the up edge on full graph
+        up_edge = self.getUpEdges( node, is_partial_graph_index=True, use_partial_graph=False )
+
         # Transition prob to node
         node_transition = self.transitionProb( node, is_partial_graph_index=True )
 
         # A over each parent (aligned according to ordering of parents)
-        parent_as = [ self.a( U, V, p, self.getUpEdges( node, is_partial_graph_index=True, use_partial_graph=False ) ) for p in parents ]
+        parent_as = [ self.a( U, V, p, up_edge ) for p in parents ]
         parent_as = [ self.extendAxes( p, a, i, n_parents ) for p, a, i in zip( parents, parent_as, parent_order ) if a.size > 0 ]
 
         # B over each sibling
@@ -1112,5 +1081,7 @@ class __FBSFilterMixin():
 class GraphFilter( _filterMixin, GraphMessagePasser ):
     pass
 
-class GraphFilterFBS(  __FBSFilterMixin, GraphMessagePasserFBS ):
+class GraphFilterFBS( __FBSFilterMixin, GraphMessagePasserFBS ):
     pass
+
+######################################################################
