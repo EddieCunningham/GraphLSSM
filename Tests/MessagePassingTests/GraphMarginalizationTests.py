@@ -68,16 +68,17 @@ def graphToGroupGraph( graphs, dataPerNode, groupPerNode, with_fbs=False, random
 
 class MarginalizationTester():
 
-    def __init__( self, graphs, d_latent=3, d_obs=4, measurements=2 ):
+    def __init__( self, graphs, d_latent=3, d_obs=4, measurements=2, random_latent_states=False ):
         self.d_latent = d_latent
         self.d_obs = d_obs
         self.measurements = measurements
+        self.random_latent_states = random_latent_states
         self.graphs = self.fillInGraphs( graphs )
 
     def fillInGraphs( self, graphs ):
         def dataPerNode( node ):
             return Categorical.generate( D=self.d_obs, size=self.measurements )
-        return graphToDataGraph( graphs, dataPerNode, with_fbs=False )
+        return graphToDataGraph( graphs, dataPerNode, with_fbs=False, random_latent_states=self.random_latent_states, d_latent=self.d_latent )
 
     def generateDists( self ):
         initial_shape, transition_shapes, emission_shape = GHMM.parameterShapes( self.graphs, self.d_latent, self.d_obs )
@@ -184,7 +185,7 @@ class MarginalizationTesterFBS( MarginalizationTester ):
     def fillInGraphs( self, graphs ):
         def dataPerNode( node ):
             return Categorical.generate( D=self.d_obs, size=self.measurements )
-        return graphToDataGraph( graphs, dataPerNode, with_fbs=True, random_latent_states=True, d_latent=self.d_latent )
+        return graphToDataGraph( graphs, dataPerNode, with_fbs=True, random_latent_states=self.random_latent_states, d_latent=self.d_latent )
 
 ##################################################################################################
 
@@ -198,12 +199,13 @@ class MarginalizationTesterFBSParallel( MarginalizationTesterFBS ):
 
 class MarginalizationTesterFBSGroup( MarginalizationTesterFBS ):
 
-    def __init__( self, graphs, d_latents=[ 2, 3, 4 ], d_obs=4, measurements=2, groups=3 ):
+    def __init__( self, graphs, d_latents=[ 2, 3, 4 ], d_obs=4, measurements=2, groups=3, random_latent_states=False ):
 
         self.d_latents = d_latents
         self.d_obs = d_obs
         self.measurements = measurements
         self.groups = groups
+        self.random_latent_states = random_latent_states
         self.graphs = self.fillInGraphs( graphs )
 
     @property
@@ -215,7 +217,7 @@ class MarginalizationTesterFBSGroup( MarginalizationTesterFBS ):
             return Categorical.generate( D=self.d_obs, size=self.measurements )
         def groupPerNode( node ):
             return Categorical.generate( D=len( self.groups ) )
-        return graphToGroupGraph( graphs, dataPerNode, groupPerNode, with_fbs=True, random_latent_states=False, d_latents=self.d_latents )
+        return graphToGroupGraph( graphs, dataPerNode, groupPerNode, with_fbs=True, random_latent_states=self.random_latent_states, d_latents=self.d_latents )
 
     def generateDists( self ):
         initial_shapes, transition_shapes, emission_shapes = GroupGHMM.parameterShapes( self.graphs, self.d_latents, self.d_obs, self.groups )
@@ -343,6 +345,6 @@ def testGraphGroupHMM():
 def graphMarginalizationTest():
     # testGraphHMMNoFBS()
     # testGraphHMM()
-    testGraphGroupHMM()
-    # testGraphHMMParallel()
+    # testGraphGroupHMM()
+    testGraphHMMParallel()
     # assert 0

@@ -302,6 +302,16 @@ class _filterMixin():
 
     ######################################################################
 
+    def uBaseCase( self, node ):
+        initial_dist = self.initialProb( node )
+        emission = self.emissionProb( node )
+        return self.multiplyTerms( terms=( emission, initial_dist ) )
+
+    def vBaseCase( self, node ):
+        return np.array( [] )
+
+    ######################################################################
+
     def uFilter( self, is_base_case, nodes, U, V, parallel=False ):
         # Compute P( ↑( n )_y, n_x )
         # Probability of all emissions that can be reached by going up node's up edge
@@ -515,7 +525,7 @@ class __FBSFilterMixin():
     def uData( self, U, V, node ):
         return U[ node ]
 
-    def vData( self, U, V, node, edges=None, ndim=None ):
+    def vData( self, U, V, node, edges=None ):
         V_row, V_col, V_data = V
 
         if( self.inFeedbackSet( node, is_partial_graph_index=True ) ):
@@ -572,7 +582,9 @@ class __FBSFilterMixin():
 
         u = self.uData( U, V, node )
 
-        down_edges = self.getDownEdges( node, skip_edges=down_edge, is_partial_graph_index=True, use_partial_graph=True )
+        down_edges = self.getDownEdges( node, skip_edges=down_edge,
+                                              is_partial_graph_index=True,
+                                              use_partial_graph=True )
         vs = self.vData( U, V, node, edges=down_edges )
 
         ans = self.multiplyTerms( terms=( u, *vs ) )
@@ -589,7 +601,8 @@ class __FBSFilterMixin():
             node_emission = self.emissionProb( node, is_partial_graph_index=True )
             return self.multiplyTerms( terms=( node_transition, node_emission ) )
 
-        n_parents = self.nParents( node, is_partial_graph_index=True, use_partial_graph=False )
+        n_parents = self.nParents( node, is_partial_graph_index=True,
+                                         use_partial_graph=False )
 
         # Transition prob to node
         # Emission prob of node (aligned on last axis)
@@ -614,14 +627,19 @@ class __FBSFilterMixin():
     def u( self, U, V, node ):
 
         # Don't use full parents here
-        parents, parent_order = self.getPartialParents( node, get_order=True, is_partial_graph_index=True, return_partial_graph_index=True )
-        n_parents = self.nParents( node, is_partial_graph_index=True, use_partial_graph=False )
+        parents, parent_order = self.getPartialParents( node, get_order=True,
+                                                              is_partial_graph_index=True,
+                                                              return_partial_graph_index=True )
+        n_parents = self.nParents( node, is_partial_graph_index=True,
+                                         use_partial_graph=False )
 
         # Use full siblings here so that we can use transition information
-        siblings = self.getFullSiblings( node, is_partial_graph_index=True, return_partial_graph_index=True )
+        siblings = self.getFullSiblings( node, is_partial_graph_index=True,
+                                               return_partial_graph_index=True )
 
         # Get the up edge on full graph
-        up_edge = self.getUpEdges( node, is_partial_graph_index=True, use_partial_graph=False )
+        up_edge = self.getUpEdges( node, is_partial_graph_index=True,
+                                         use_partial_graph=False )
 
         # Transition prob to node
         node_transition = self.transitionProb( node, is_partial_graph_index=True )
@@ -659,11 +677,17 @@ class __FBSFilterMixin():
 
         # Use the full children here because if a child is in the fbs, we should use
         # transition information
-        children = self.getFullChildren( node, edges=edge, is_partial_graph_index=True, return_partial_graph_index=True )
+        children = self.getFullChildren( node, edges=edge,
+                                               is_partial_graph_index=True,
+                                               return_partial_graph_index=True )
 
         # Don't get the full mates here
-        mates, mate_order = self.getPartialMates( node, get_order=True, edges=edge, is_partial_graph_index=True, return_partial_graph_index=True )
-        n_parents = self.nParents( children[ 0 ], is_partial_graph_index=True, use_partial_graph=False )
+        mates, mate_order = self.getPartialMates( node, get_order=True,
+                                                        edges=edge,
+                                                        is_partial_graph_index=True,
+                                                        return_partial_graph_index=True )
+        n_parents = self.nParents( children[ 0 ], is_partial_graph_index=True,
+                                                  use_partial_graph=False )
 
         # A values over each mate (aligned according to ordering of mates)
         mate_as = [ self.a( U, V, m, edge ) for m in mates ]
@@ -685,6 +709,16 @@ class __FBSFilterMixin():
             ans = ans.squeeze( axis=0 )
 
         return ans
+
+    ######################################################################
+
+    def uBaseCase( self, node ):
+        initial_dist = self.initialProb( node, is_partial_graph_index=True )
+        emission = self.emissionProb( node, is_partial_graph_index=True )
+        return self.multiplyTerms( terms=( emission, initial_dist ) )
+
+    def vBaseCase( self, node ):
+        return fbsData( np.array( [] ), -1 )
 
     ######################################################################
 

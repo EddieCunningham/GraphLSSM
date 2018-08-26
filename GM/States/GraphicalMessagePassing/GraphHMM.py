@@ -6,7 +6,6 @@ from functools import partial
 from scipy.sparse import coo_matrix
 from collections import Iterable
 from GenModels.GM.Utility import fbsData
-import joblib
 from .NumbaWrappers import *
 
 __all__ = [ 'GraphHMM',
@@ -166,6 +165,19 @@ class _graphHMMMixin():
 
     ######################################################################
 
+    def initialProb( self, node ):
+        pi = np.copy( self.pi0 )
+        if( int( node ) in self.possible_latent_states ):
+            states = self.possible_latent_states[ int( node ) ]
+            impossible_states = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
+            for state in impossible_states:
+                pi[ state ] = np.NINF
+            pi[ states ] -= np.logaddexp.reduce( pi )
+
+        return pi
+
+    ######################################################################
+
     @classmethod
     def multiplyTerms( cls, terms ):
         # Basically np.einsum but in log space
@@ -221,25 +233,6 @@ class _graphHMMMixin():
             integrand = np.logaddexp.reduce( integrand, axis=ax )
 
         return integrand
-
-    ######################################################################
-
-    def uBaseCase( self, node, debug=True ):
-        pi = np.copy( self.pi0 )
-        if( int( node ) in self.possible_latent_states ):
-            states = self.possible_latent_states[ int( node ) ]
-            impossible_states = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
-            for state in impossible_states:
-                pi[ state ] = np.NINF
-            pi[ states ] -= np.logaddexp.reduce( pi )
-
-        initial_dist = pi
-        emission = self.emissionProb( node )
-        newU = self.multiplyTerms( terms=( emission, initial_dist ) )
-        return newU
-
-    def vBaseCase( self, node, debug=True ):
-        return np.zeros( self.K )
 
     ######################################################################
 
@@ -404,6 +397,21 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
 
     ######################################################################
 
+    def initialProb( self, node, is_partial_graph_index=False ):
+        pi = np.copy( self.pi0 )
+        node_full = self.partialGraphIndexToFullGraphIndex( node ) if is_partial_graph_index == True else node
+        if( int( node_full ) in self.possible_latent_states ):
+            states = self.possible_latent_states[ int( node_full ) ]
+            impossible_states = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
+            for state in impossible_states:
+                pi[ impossible_states ] = np.NINF
+            pi[ states ] -= np.logaddexp.reduce( pi )
+
+        initial_dist = fbsData( pi, -1 )
+        return initial_dist
+
+    ######################################################################
+
     @classmethod
     def multiplyTerms( cls, terms ):
         # Basically np.einsum but in log space
@@ -517,25 +525,6 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
             # assert fbs_axis > -1, adjusted_axes
 
         return fbsData( integrand, fbs_axis )
-
-    ######################################################################
-
-    def uBaseCase( self, node ):
-        pi = np.copy( self.pi0 )
-        node_full = self.partialGraphIndexToFullGraphIndex( node )
-        if( int( node_full ) in self.possible_latent_states ):
-            states = self.possible_latent_states[ int( node_full ) ]
-            impossible_states = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
-            for state in impossible_states:
-                pi[ impossible_states ] = np.NINF
-            pi[ states ] -= np.logaddexp.reduce( pi )
-
-        initial_dist = fbsData( pi, -1 )
-        emission = self.emissionProb( node, is_partial_graph_index=True )
-        return self.multiplyTerms( terms=( emission, initial_dist ) )
-
-    def vBaseCase( self, node ):
-        return fbsData( np.zeros( self.K ), -1 )
 
 ######################################################################
 
@@ -770,8 +759,8 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
 
     ######################################################################
 
-    def uBaseCase( self, node ):
-        node_full = self.partialGraphIndexToFullGraphIndex( node )
+    def initialProb( self, node, is_partial_graph_index=False ):
+        node_full = self.partialGraphIndexToFullGraphIndex( node ) if is_partial_graph_index == True else node
         group = self.node_groups[ int( node_full ) ]
         pi = np.copy( self.pi0s[ group ] )
         if( int( node_full ) in self.possible_latent_states ):
@@ -781,11 +770,4 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
                 pi[ impossible_states ] = np.NINF
             pi[ states ] -= np.logaddexp.reduce( pi )
 
-        initial_dist = fbsData( pi, -1 )
-        emission = self.emissionProb( node, is_partial_graph_index=True )
-        return self.multiplyTerms( terms=( emission, initial_dist ) )
-
-    def vBaseCase( self, node ):
-        node_full = self.partialGraphIndexToFullGraphIndex( node )
-        group = self.node_groups[ int( node_full ) ]
-        return fbsData( np.zeros( self.Ks[ group ] ), -1 )
+        return fbsData( pi, -1 )
