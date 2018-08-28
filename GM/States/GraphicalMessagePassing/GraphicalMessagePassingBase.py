@@ -580,6 +580,18 @@ class GraphMessagePasser():
 
     ######################################################################
 
+    @property
+    def lock( self ):
+        if( hasattr( self, '_lock' ) == False ):
+            self._lock = lambda : 1
+        return self._lock
+
+    @lock.setter
+    def lock( self, val ):
+        self._lock = val
+
+    ######################################################################
+
     def upDown( self, uWork, vWork, enable_loopy=False, loopyHasConverged=None, **kwargs ):
         # Run the up down algorithm for latent state space models
 
@@ -598,9 +610,13 @@ class GraphMessagePasser():
         while( u_list.size > 0 or v_list[ 0 ].size > 0 ):
 
             if( i > 1 ):
-              # Do work for each of the nodes
-              uWork( False, u_list, **kwargs )
-              vWork( False, v_list, **kwargs )
+
+                # In case we're pre-fetching values
+                self.lock()
+
+                # Do work for each of the nodes
+                uWork( False, u_list, **kwargs )
+                vWork( False, v_list, **kwargs )
 
             # Mark that we're done with the current nodes
             self.UDone( u_list, u_semaphore, v_semaphore, u_done )
@@ -640,6 +656,9 @@ class GraphMessagePasser():
 
                 loopy = True
                 break
+
+        # Wait for all of the filter values to be written
+        self.lock()
 
         if( loopy == False ):
             assert np.any( u_semaphore != 0 ) == False

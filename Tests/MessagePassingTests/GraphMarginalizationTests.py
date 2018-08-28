@@ -80,6 +80,8 @@ class MarginalizationTester():
             return Categorical.generate( D=self.d_obs, size=self.measurements )
         return graphToDataGraph( graphs, dataPerNode, with_fbs=False, random_latent_states=self.random_latent_states, d_latent=self.d_latent )
 
+    #################################################
+
     def generateDists( self ):
         initial_shape, transition_shapes, emission_shape = GHMM.parameterShapes( self.graphs, self.d_latent, self.d_obs )
         initial_dist = Dirichlet.generate( D=initial_shape )
@@ -87,9 +89,95 @@ class MarginalizationTester():
         emission_dist = TensorTransitionDirichletPrior.generate( Ds=emission_shape )
         return initial_dist, transition_dists, emission_dist
 
+    #################################################
+
     @property
     def msg( self ):
         return GraphHMM()
+
+    #################################################
+
+    def timeFilter( self ):
+        initial_dist, transition_dists, emission_dist = self.generateDists()
+        graphs = self.graphs
+
+        msg = self.msg
+        msg.updateParams( initial_dist, transition_dists, emission_dist, graphs )
+
+        start = time.time()
+        U, V = msg.filter()
+        end = time.time()
+        print( 'Filter took', end - start, 'seconds' )
+
+    #################################################
+
+    def runNodeJoint( self ):
+        initial_dist, transition_dists, emission_dist = self.generateDists()
+        graphs = self.graphs
+
+        msg = self.msg
+        msg.updateParams( initial_dist, transition_dists, emission_dist, graphs )
+        print( 'About to filter' )
+        U, V = msg.filter()
+
+        print( '\nJoint' )
+        for n, probs in msg.nodeJoint( U, V, msg.nodes ):
+            reduced = msg.integrate( probs, axes=range( probs.ndim ) )
+            print( 'P( x_%d, Y )'%( n ), ':', probs, '->', reduced )
+
+    #################################################
+
+    def runJointParents( self ):
+        initial_dist, transition_dists, emission_dist = self.generateDists()
+        graphs = self.graphs
+
+        msg = self.msg
+        msg.updateParams( initial_dist, transition_dists, emission_dist, graphs )
+        print( 'About to filter' )
+        U, V = msg.filter()
+
+        print( '\nJoint parents should marginalize out to joint probs' )
+        for n, probs in msg.jointParents( U, V, msg.nodes ):
+            parents, parent_order = msg.getParents( n, get_order=True )
+            joints = msg.nodeJoint( U, V, parents )
+            for i, ( ( p, j ), o ) in enumerate( zip( joints, parent_order ) ):
+                # Marginalize out the other parents from probs
+                int_axes = np.setdiff1d( parent_order, o )
+                reduced = msg.integrate( probs, axes=int_axes )
+                print( 'sum_{ parents except %d }P( x_p1..pN, Y ) for node %d - P( x_%d, Y ) : ->'%( p, n, p ), ( j - reduced ).sum() )
+                assert np.allclose( reduced, j ), 'reduced: %s, j: %s'%( reduced, j )
+
+    #################################################
+
+    def runJointParentChild( self ):
+        initial_dist, transition_dists, emission_dist = self.generateDists()
+        graphs = self.graphs
+
+        msg = self.msg
+        msg.updateParams( initial_dist, transition_dists, emission_dist, graphs )
+        print( 'About to filter' )
+        U, V = msg.filter()
+
+        print( '\nJoint parent child should marginalize out to joint probs' )
+        for n, probs in msg.jointParentChild( U, V, msg.nodes ):
+            parents, parent_order = msg.getParents( n, get_order=True )
+            n_parents = parents.shape[ 0 ]
+
+            joints = msg.nodeJoint( U, V, parents )
+            for i, ( ( p, j ), o ) in enumerate( zip( joints, parent_order ) ):
+                # Marginalize out the other parents from probs
+                int_axes = np.setdiff1d( np.hstack( ( n_parents, parent_order ) ), o )
+                reduced = msg.integrate( probs, axes=int_axes )
+                print( 'sum_{ parents except %d }P( x_%d, x_p1..pN, Y ) for node %d - P( x_%d, Y ) : ->'%( p, p, n, p ), ( j - reduced ).sum() )
+                assert np.allclose( reduced, j ), 'reduced: %s, j: %s'%( reduced, j )
+
+            ( _, joint ), = msg.nodeJoint( U, V, [ n ] )
+            # Marginalize out all of the parents
+            reduced = msg.integrate( probs, axes=parent_order )
+            print( 'sum_{ parents }P( x_%d, x_p1..pN, Y ) - P( x_%d, Y ) : ->'%( n, n ), ( joint - reduced ).sum() )
+            assert np.allclose( reduced, joint ), 'reduced: %s, j: %s'%( reduced, j )
+
+    #################################################
 
     def run( self ):
         initial_dist, transition_dists, emission_dist = self.generateDists()
@@ -107,14 +195,6 @@ class MarginalizationTester():
             reduced = msg.integrate( probs, axes=range( probs.ndim ) )
             print( 'P( x_%d, Y )'%( n ), ':', probs, '->', reduced )
 
-        # assert 0
-        ####################################################
-
-        print( '\nJoint parents' )
-        for n, probs in msg.jointParents( U, V, msg.nodes ):
-            reduced = msg.integrate( probs, axes=range( probs.ndim ) )
-            print( 'P( x_p1..pN, Y ) for %d'%( n ), '->', probs.shape, reduced )
-
         ####################################################
 
         print( '\nJoint parents should marginalize out to joint probs' )
@@ -127,13 +207,6 @@ class MarginalizationTester():
                 reduced = msg.integrate( probs, axes=int_axes )
                 print( 'sum_{ parents except %d }P( x_p1..pN, Y ) for node %d - P( x_%d, Y ) : ->'%( p, n, p ), ( j - reduced ).sum() )
                 assert np.allclose( reduced, j ), 'reduced: %s, j: %s'%( reduced, j )
-
-        ####################################################
-
-        print( '\nJoint parent child' )
-        for n, probs in msg.jointParentChild( U, V, msg.nodes ):
-            reduced = msg.integrate( probs, axes=range( probs.ndim ) )
-            print( 'P( x_%d, x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
 
         ####################################################
 
@@ -342,9 +415,49 @@ def testGraphGroupHMM():
 
 ##################################################################################################
 
+def testSpeed():
+    np.random.seed( 2 )
+
+    graphs = [ graph1(),
+               graph2(),
+               graph3(),
+               graph4(),
+               graph5(),
+               graph6(),
+               graph7(),
+               cycleGraph1(),
+               cycleGraph2(),
+               cycleGraph3(),
+               cycleGraph7(),
+               cycleGraph8(),
+               cycleGraph9(),
+               cycleGraph10(),
+               cycleGraph11(),
+               cycleGraph12() ]
+
+    d_latent = 5
+    d_obs = 4
+    measurements = 3
+
+    regular = MarginalizationTesterFBS( graphs, d_latent, d_obs, measurements )
+    start_regular = time.time()
+    regular.timeFilter()
+    end_regular = time.time()
+
+    parallel = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements )
+    start_parallel = time.time()
+    parallel.run()
+    end_parallel = time.time()
+
+    print( 'parallel:', end_parallel - start_parallel )
+    print( 'regular:', end_regular - start_regular )
+
+##################################################################################################
+
 def graphMarginalizationTest():
     # testGraphHMMNoFBS()
     # testGraphHMM()
     # testGraphGroupHMM()
-    testGraphHMMParallel()
+    # testGraphHMMParallel()
+    testSpeed()
     # assert 0

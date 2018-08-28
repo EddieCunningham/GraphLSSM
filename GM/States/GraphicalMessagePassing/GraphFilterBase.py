@@ -75,9 +75,13 @@ class _filterMixin():
     ######################################################################
 
     def uData( self, U, V, node ):
+        # THESE MUST NOT MODIFY U OR V!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # VERY IMPORTANT!!!!!! PROBABLY ENFORCE THIS SOMEHOW IN THE FURURE
         return U[ node ]
 
     def vData( self, U, V, node, edges=None, ndim=None ):
+        # THESE MUST NOT MODIFY U OR V!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # VERY IMPORTANT!!!!!! PROBABLY ENFORCE THIS SOMEHOW IN THE FURURE
         V_row, V_col, V_data = V
 
         if( ~np.any( np.in1d( V_row, node ) ) ):
@@ -523,10 +527,14 @@ class __FBSFilterMixin():
     ######################################################################
 
     def uData( self, U, V, node ):
+        # THESE MUST NOT MODIFY U OR V!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # VERY IMPORTANT!!!!!! PROBABLY ENFORCE THIS SOMEHOW IN THE FURURE
         return U[ node ]
 
     def vData( self, U, V, node, edges=None ):
-        V_row, V_col, V_data = V
+        # THESE MUST NOT MODIFY U OR V!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        # VERY IMPORTANT!!!!!! PROBABLY ENFORCE THIS SOMEHOW IN THE FURURE
+        V_row, V_col, _ = V
 
         if( self.inFeedbackSet( node, is_partial_graph_index=True ) ):
             # This is going to be empty because by construction,
@@ -779,23 +787,9 @@ class __FBSFilterMixin():
 
     def jointParentsSingleNodeComputation( self, U, V, node, is_partial_graph_index=True ):
         # P( x_p1..pN, Y )
-        parents, parent_order = self.getPartialParents( node, get_order=True, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True )
         n_parents = self.nParents( node, is_partial_graph_index=is_partial_graph_index, use_partial_graph=False )
-        siblings = self.getFullSiblings( node, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True )
-        up_edge = self.getUpEdges( node, is_partial_graph_index=is_partial_graph_index, use_partial_graph=False )
-
-        # Down each sibling
-        sigling_bs = [ self.b( U, V, s ) for s in siblings ]
-
-        # Down this node
-        node_term = self.b( U, V, node )
-
-        # Out from each parent
-        parent_as = [ self.a( U, V, p, up_edge ) for p in parents ]
-        parent_as = [ self.extendAxes( p, a, i, n_parents ) for p, a, i in zip( parents, parent_as, parent_order ) ]
-
-        joint = self.multiplyTerms( terms=( node_term, *parent_as, *sigling_bs ) )
-        return joint
+        joint_with_child = self.jointParentChildSingleNodeComputation( U, V, node, is_partial_graph_index=is_partial_graph_index )
+        return self.integrate( joint_with_child, axes=[ n_parents ] )
 
     ######################################################################
 
@@ -863,8 +857,8 @@ class __FBSFilterMixin():
                 # out other fbs nodes in this case
                 joint_fbs = self.u( U, V, node_partial )
                 fbs_index = self.fbsIndex( node, is_partial_graph_index=is_partial_graph_index, within_graph=True )
-                keepAxis = fbs_index + joint_fbs.fbs_axis
-                int_axes = np.setdiff1d( np.arange( joint_fbs.ndim ), keepAxis )
+                keep_axis = fbs_index + joint_fbs.fbs_axis
+                int_axes = np.setdiff1d( np.arange( joint_fbs.ndim ), keep_axis )
             return self.integrate( joint_fbs, axes=int_axes ).data
 
         elif( method == 'integrate' ):
@@ -884,8 +878,8 @@ class __FBSFilterMixin():
             else:
                 # Integrate out all the nodes but this one, which is somewhere in the fbs axes
                 fbs_index = self.fbsIndex( node, is_partial_graph_index=is_partial_graph_index, within_graph=True )
-                keepAxis = fbs_index + joint_fbs.fbs_axis
-                int_axes = np.setdiff1d( np.arange( joint_fbs.ndim ), keepAxis )
+                keep_axis = fbs_index + joint_fbs.fbs_axis
+                int_axes = np.setdiff1d( np.arange( joint_fbs.ndim ), keep_axis )
 
             # Integrate the joint and return only the data portion
             return self.integrate( joint_fbs, axes=int_axes ).data

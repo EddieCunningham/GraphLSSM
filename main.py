@@ -1,6 +1,6 @@
 from GenModels.Tests import *
 
-messagePassingTest()
+# messagePassingTest()
 graphMarginalizationTest()
 
 # distributionTest()
