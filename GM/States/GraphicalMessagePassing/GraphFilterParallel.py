@@ -756,10 +756,12 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
     def uFilter( self, is_base_case, nodes, U, V ):
 
         if( is_base_case ):
-            data = self.data_thread_pool.map( self.uBaseLocalInfo, nodes )
+            # data = self.data_thread_pool.map( self.uBaseLocalInfo, nodes )
+            data = [ self.uBaseLocalInfo( node ) for node in nodes ]
             work = uBaseCaseWork
         else:
-            data = self.data_thread_pool.starmap( self.uLocalInfo, zip( nodes, itertools.repeat( U ), itertools.repeat( V ) ) )
+            # data = self.data_thread_pool.starmap( self.uLocalInfo, zip( nodes, itertools.repeat( U ), itertools.repeat( V ) ) )
+            data = [ self.uLocalInfo( node, U, V ) for node in nodes ]
             work = uWork
 
         self.u_filter_result = self.u_filter_process_pool.map_async( work, data )
@@ -818,7 +820,8 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
             return
 
         # Processing can't pickle this class
-        data = self.data_thread_pool.starmap( self.vLocalInfo, zip( *nodes_and_edges, itertools.repeat( U ), itertools.repeat( V ) ) )
+        # data = self.data_thread_pool.starmap( self.vLocalInfo, zip( *nodes_and_edges, itertools.repeat( U ), itertools.repeat( V ) ) )
+        data = [ self.vLocalInfo( node, edge, U, V ) for node, edge in zip( *nodes_and_edges ) ]
         self.v_filter_result = self.v_filter_process_pool.map_async( vWork, data )
 
         nodes, edges = nodes_and_edges
@@ -866,6 +869,7 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
     def nodeJoint( self, U, V, nodes ):
         # P( x, Y )
         data = self.data_thread_pool.starmap( self.nodeJointLocalInfo, zip( nodes, itertools.repeat( U ), itertools.repeat( V ) ) )
+        # data = [ self.nodeJointLocalInfo( node, U, V ) for node in nodes ]
         joints = self.u_filter_process_pool.map( nodeJointSingleNode, data )
         return zip( nodes, joints )
 
@@ -974,12 +978,13 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         return JointParentChildData( in_fbs, fbs_index, *other_args )
 
     def jointParentChild( self, U, V, nodes ):
-        # P( x_p1..pN, Y )
+        # P( x_c, x_p1..pN, Y )
         non_roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) > 0 ]
+        roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) == 0 ]
 
         data = self.data_thread_pool.starmap( self.jointParentChildLocalInfo, zip( non_roots, itertools.repeat( U ), itertools.repeat( V ) ) )
         joints = self.u_filter_process_pool.map( jointParentChildSingleNode, data )
-        return zip( non_roots, joints )
+        return itertools.chain( zip( non_roots, joints ), self.nodeJoint( U, V, roots ) )
 
     ######################################################################
 
@@ -997,16 +1002,32 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         joint = nodeJointSingleNode( node_data )
         return nonFBSIntegrate( joint, axes=range( joint.ndim ) )
 
-    def nodeSmoothed( self, U, V, nodes ):
+    def nodeSmoothed( self, U, V, nodes, parent_child_smoothed=None ):
         # P( x | Y )
-        marginal = self.marginalProb( U, V )
-        return [ ( node, val - marginal ) for node, val in self.nodeJoint( U, V, nodes ) ]
-        # return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.nodeJoint( U, V, nodes ) ]
+        # marginal = self.marginalProb( U, V )
+        # return [ ( node, val - marginal ) for node, val in self.nodeJoint( U, V, nodes ) ]
+        if( parent_child_smoothed is None ):
+            return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.nodeJoint( U, V, nodes ) ]
 
-    def parentsSmoothed( self, U, V, nodes ):
+        # Don't need to repeat computations.  In this case, just integrate out the child axis
+        ans = []
+        for node, with_parents in parent_child_smoothed:
+            n_parents = self.nParents( node )
+            if( n_parents == 0 ):
+                ans.append( ( node, with_parents ) )
+            else:
+                ans.append( ( node, nonFBSIntegrate( with_parents, axes=np.arange( with_parents.ndim - 1 ) ) ) )
+
+        return ans
+
+    def parentsSmoothed( self, U, V, nodes, parent_child_smoothed=None ):
         # P( x_p1..pN | Y )
         # Mostly assuming that these will be called from within the graph
-        return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.jointParents( U, V, nodes ) ]
+        if( parent_child_smoothed is None ):
+            return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.jointParents( U, V, nodes ) ]
+
+        # Don't need to repeat computations.  In this case, just integrate out the child axis
+        return [ ( node, nonFBSIntegrate( with_child, axes=[ -1 ] ) ) for node, with_child in parent_child_smoothed ]
 
     def parentChildSmoothed( self, U, V, nodes ):
         # P( x_c, x_p1..pN | Y )
@@ -1017,7 +1038,9 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         # P( x_c | x_p1..pN, Y )
 
         non_roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) > 0 ]
+        roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) == 0 ]
 
         data = self.data_thread_pool.starmap( self.jointParentChildLocalInfo, zip( non_roots, itertools.repeat( U ), itertools.repeat( V ) ) )
+        # data = [ self.jointParentChildLocalInfo( node, U, V ) for node in non_roots ]
         joints = self.u_filter_process_pool.map( conditionalParentChildSingleNode, data )
-        return zip( non_roots, joints )
+        return itertools.chain( zip( non_roots, joints ), self.nodeSmoothed( U, V, roots ) )

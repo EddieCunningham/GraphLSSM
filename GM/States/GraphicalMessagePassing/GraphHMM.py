@@ -323,7 +323,7 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
     ######################################################################
 
     def transitionProb( self, child, is_partial_graph_index=False ):
-        parents, parent_order = self.getFullParents( child, get_order=True, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True )
+        parents, parent_order = self.getFullParents( child, get_order=True, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=False )
         ndim = len( parents ) + 1
         pi = np.copy( self.pis[ ndim ] )
         # Reshape pi's axes to match parent order
@@ -337,9 +337,9 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
         # transition there
         modified = False
         for parent, order in zip( parents, parent_order ):
-            parent_full = self.partialGraphIndexToFullGraphIndex( parent )
-            if( int( parent_full ) in self.possible_latent_states ):
-                parent_states = self.possible_latent_states[ int( parent_full ) ]
+            # parent_full = self.partialGraphIndexToFullGraphIndex( parent )
+            if( int( parent ) in self.possible_latent_states ):
+                parent_states = self.possible_latent_states[ int( parent ) ]
                 impossible_parent_axes = np.setdiff1d( np.arange( pi.shape[ order ] ), parent_states )
                 index = [ slice( 0, s ) for s in pi.shape ]
                 index[ order ] = impossible_parent_axes
@@ -362,11 +362,12 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
 
         # Check if there are nodes in [ child, *parents ] that are in the fbs.
         # If there are, then move their axes
-        fbsOffset = lambda x: self.fbsIndex( x, is_partial_graph_index=True, within_graph=True ) + 1
-        fbs_indices = [ fbsOffset( parent ) for parent in parents if self.inFeedbackSet( parent, is_partial_graph_index=True ) ]
+        fbsOffset = lambda x: self.fbsIndex( x, is_partial_graph_index=False, within_graph=True ) + 1
+        fbs_indices = [ fbsOffset( parent ) for parent in parents if self.inFeedbackSet( parent, is_partial_graph_index=False ) ]
 
-        if( self.inFeedbackSet( child, is_partial_graph_index=is_partial_graph_index ) ):
-            fbs_indices.append( self.fbsIndex( child, is_partial_graph_index=is_partial_graph_index, within_graph=True ) + 1 )
+        if( self.inFeedbackSet( child_full, is_partial_graph_index=False ) ):
+            fbs_indices.append( fbsOffset( child_full ) )
+            # fbs_indices.append( self.fbsIndex( child_full, is_partial_graph_index=False, within_graph=True ) + 1 )
 
         if( len( fbs_indices ) > 0 ):
             expand_by = max( fbs_indices )
@@ -375,12 +376,14 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
 
             # If there are parents in the fbs, move them to the appropriate axes
             for i, parent in enumerate( parents ):
-                if( self.inFeedbackSet( parent, is_partial_graph_index=True ) ):
+                if( self.inFeedbackSet( parent, is_partial_graph_index=False ) ):
                     pi = np.swapaxes( pi, i, fbsOffset( parent ) + ndim - 1 )
 
-            if( self.inFeedbackSet( child, is_partial_graph_index=is_partial_graph_index ) ):
+            if( self.inFeedbackSet( child_full, is_partial_graph_index=False ) ):
                 # If the child is in the fbs, then move it to the appropriate axis
-                pi = np.swapaxes( pi, ndim - 1, fbsOffset( child ) + ndim - 1 )
+                pi = np.swapaxes( pi, ndim - 1, fbsOffset( child_full ) + ndim - 1 )
+                # pi = np.swapaxes( pi, ndim - 1, self.fbsIndex( child_full, is_partial_graph_index=False, within_graph=True ) + ndim )
+
 
             return fbsData( pi, ndim )
         return fbsData( pi, -1 )

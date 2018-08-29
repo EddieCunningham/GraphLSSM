@@ -1,5 +1,5 @@
 from GenModels.GM.Distributions import Categorical, Dirichlet, TensorTransition, TensorTransitionDirichletPrior
-from GenModels.GM.States.GraphicalMessagePassing import GraphHMMFBS, GraphHMMFBSMultiGroups
+from GenModels.GM.States.GraphicalMessagePassing import GraphHMMFBS, GraphHMMFBSMultiGroups, GraphHMMFBSParallel
 
 import numpy as np
 from collections import Iterable
@@ -567,9 +567,9 @@ class EM( Optimizer ):
         marginal = self.msg.marginalProb( self.U, self.V )
 
         # Compute log P( x | Y ), log P( x_p1..pN | Y ) and log P( x_c, x_p1..pN | Y )
-        node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes )
-        parents_smoothed = self.msg.parentsSmoothed( self.U, self.V, self.msg.nodes )
         node_parents_smoothed = self.msg.parentChildSmoothed( self.U, self.V, self.msg.nodes )
+        parents_smoothed = self.msg.parentsSmoothed( self.U, self.V, self.msg.nodes, node_parents_smoothed )
+        node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes, node_parents_smoothed )
 
         # The probabilities are normalized, so don't need them in log space anymore
         node_smoothed = [ ( n, np.exp( val ) ) for n, val in node_smoothed ]
@@ -788,7 +788,7 @@ class GHMM():
         if( graphs is not None ):
             self.graphs = graphs
 
-        self.msg = GraphHMMFBS()
+        self.msg = GraphHMMFBSParallel()
         self.method = method
 
         assert priors is not None

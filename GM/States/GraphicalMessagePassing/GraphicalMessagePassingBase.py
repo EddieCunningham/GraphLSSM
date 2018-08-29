@@ -425,14 +425,14 @@ class GraphMessagePasser():
         children = self.getChildren( nodes, split=True )
         for children_for_nodes in children:
             u_semaphore[ children_for_nodes ] -= 1
-            assert np.all( u_semaphore[ children_for_nodes ] >= 0 )
+            # assert np.all( u_semaphore[ children_for_nodes ] >= 0 )
 
         # Decrement v_semaphore for all mates over down edges that node and mate are a part of
         mates_and_edges = self.getMates( nodes, split_by_edge=True, split=True )
         for mate_and_edge in mates_and_edges:
             for e, m in mate_and_edge:
                 v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] -= 1
-                assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
+                # assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
 
         # Update u_done
         u_done[ nodes ] = True
@@ -448,7 +448,7 @@ class GraphMessagePasser():
                 if( e == edge ):
                     continue
                 u_semaphore[ c ] -= 1
-                assert np.all( u_semaphore[ c ] >= 0 )
+                # assert np.all( u_semaphore[ c ] >= 0 )
 
         # Decrement u_semaphore for all siblings
         siblings = self.getSiblings( nodes, split=True )
@@ -457,7 +457,7 @@ class GraphMessagePasser():
                 # If this node doesn't have a down edge, then we don't want to decrement
                 continue
             u_semaphore[ siblings_for_node ] -= 1
-            assert np.all( u_semaphore[ siblings_for_node ] >= 0 )
+            # assert np.all( u_semaphore[ siblings_for_node ] >= 0 )
 
         # Decrement v_semaphore for mates that aren't current edge
         mates_and_edges = self.getMates( nodes, split_by_edge=True, split=True )
@@ -466,7 +466,7 @@ class GraphMessagePasser():
                 if( e == edge ):
                     continue
                 v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] -= 1
-                assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
+                # assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, m ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
 
         # Decrement v_semaphore for parents over up edges
         parents = self.getParents( nodes, split=True )
@@ -476,7 +476,7 @@ class GraphMessagePasser():
                 # If this node doesn't have a down edge, then we don't want to decrement
                 continue
             v_semaphore.data[ np.in1d( v_semaphore.row, p ) & np.in1d( v_semaphore.col, e ) ] -= 1
-            assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, p ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
+            # assert np.all( v_semaphore.data[ np.in1d( v_semaphore.row, p ) & np.in1d( v_semaphore.col, e ) ] >= 0 )
 
         # Update v_done
         edges_without_none = np.array( [ e for e in edges if e is not None ] )
@@ -762,6 +762,12 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
         # Get the indices in the full graph of the feedback set
         self.fbs = self.full_graph.nodes[ self.fbs_mask ]
 
+        # It turns out that finding the fbs index is VERY expensive at runtime.  Going to precompute everything here
+        self.fbs_indices = {}
+        for fbs in self.feedback_sets:
+            for i, node in enumerate( fbs ):
+                self.fbs_indices[ node ] = i
+
         # Create a mapping from the full graph indices to the partial graph indices
         non_fbs = self.full_graph.nodes[ ~self.fbs_mask ]
         non_fbs_reindexed = ( self.full_graph.nodes - self.fbs_mask.cumsum() )[ ~self.fbs_mask ]
@@ -847,11 +853,7 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
         if( within_graph == False ):
             return self.fbs.tolist().index( node )
 
-        for fbs in self.feedback_sets:
-            if( full_node in fbs ):
-                return fbs.tolist().index( full_node )
-
-        assert 0, 'This is not a fbs node'
+        return self.fbs_indices[ int( full_node ) ]
 
     ######################################################################
 
