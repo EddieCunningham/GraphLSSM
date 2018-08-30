@@ -10,3 +10,4 @@ graphMarginalizationTest()
 # priorTests()
 
 # modelTests()
+# graphModelTests()

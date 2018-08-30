@@ -1,4 +1,4 @@
-from GenModels.GM.States.GraphicalMessagePassing import DataGraph, GroupGraph, GraphHMMFBS, GraphHMMFBSMultiGroups
+from GenModels.GM.States.GraphicalMessagePassing import DataGraph, GroupGraph, GraphHMMFBS, GraphHMMFBSGroup
 import numpy as np
 from functools import reduce
 from scipy.sparse import coo_matrix
@@ -139,7 +139,7 @@ class PedigreeSexMatters( _pedigreeMixin, GroupGraph ):
 class _pedigreeFilterMixin():
 
     def preprocessData( self, data_graphs ):
-        if( isinstance( self, GraphHMMFBSMultiGroups ) ):
+        if( isinstance( self, GraphHMMFBSGroup ) ):
             updated_graphs = []
             for graph, fbs in data_graphs:
                 if( not isinstance( graph, PedigreeSexMatters ) ):
@@ -207,7 +207,7 @@ class _pedigreeFilterMixin():
 class PedigreeHMMFilter( _pedigreeFilterMixin, GraphHMMFBS ):
     pass
 
-class PedigreeHMMFilterSexMatters( _pedigreeFilterMixin, GraphHMMFBSMultiGroups ):
+class PedigreeHMMFilterSexMatters( _pedigreeFilterMixin, GraphHMMFBSGroup ):
     pass
 
 ######################################################################

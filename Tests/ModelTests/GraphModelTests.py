@@ -6,7 +6,7 @@ import time
 from collections import Iterable
 import itertools
 
-__all__ = [ 'graphMarginalizationTest' ]
+__all__ = [ 'graphModelTests' ]
 
 def graphToDataGraph( graphs, dataPerNode, with_fbs=False, random_latent_states=False, d_latent=None ):
     assert isinstance( graphs, list )
@@ -310,14 +310,6 @@ class MarginalizationTesterFBSGroup( MarginalizationTesterFBS ):
 
 ##################################################################################################
 
-class MarginalizationTesterGroupFBSParallel( MarginalizationTesterFBSGroup ):
-
-    @property
-    def msg( self ):
-        return GraphHMMFBSGroupParallel()
-
-##################################################################################################
-
 def testGraphHMMNoFBS():
 
     d_latent = 2
@@ -423,37 +415,6 @@ def testGraphGroupHMM():
 
 ##################################################################################################
 
-def testGraphGroupHMMParallel():
-
-    np.random.seed( 2 )
-
-    graphs = [ graph1(),
-               graph2(),
-               graph3(),
-               graph4(),
-               graph5(),
-               graph6(),
-               graph7(),
-               cycleGraph1(),
-               cycleGraph2(),
-               cycleGraph3(),
-               cycleGraph7(),
-               cycleGraph8(),
-               cycleGraph9(),
-               cycleGraph10(),
-               cycleGraph11(),
-               cycleGraph12() ]
-
-    d_obs = 5
-    measurements = 2
-    groups = [ 0, 1, 2 ]
-    d_latents = dict( zip( groups, [ 2, 3, 4 ] ) )
-
-    tester = MarginalizationTesterGroupFBSParallel( graphs, d_latents, d_obs, measurements, groups )
-    tester.run()
-
-##################################################################################################
-
 def testSpeed():
     np.random.seed( 2 )
 
@@ -478,9 +439,6 @@ def testSpeed():
     d_obs = 4
     measurements = 3
 
-    groups = [ 0, 1, 2 ]
-    d_latents = dict( zip( groups, [ 2, 3, 4 ] ) )
-
     regular = MarginalizationTesterFBS( graphs, d_latent, d_obs, measurements )
     start_regular = time.time()
     regular.timeFilter()
@@ -491,29 +449,10 @@ def testSpeed():
     parallel.run()
     end_parallel = time.time()
 
-    group_regular = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups )
-    start_regular_group = time.time()
-    group_regular.timeFilter()
-    end_regular_group = time.time()
-
-    group_parallel = MarginalizationTesterGroupFBSParallel( graphs, d_latents, d_obs, measurements, groups )
-    start_parallel_group = time.time()
-    group_parallel.run()
-    end_parallel_group = time.time()
-
-    print( 'Non-group parallel:', end_parallel - start_parallel )
-    print( 'Non-group regular:', end_regular - start_regular )
-
-    print( 'Group regular:', end_regular_group - start_regular_group )
-    print( 'Group parallel:', end_parallel_group - start_parallel_group )
+    print( 'parallel:', end_parallel - start_parallel )
+    print( 'regular:', end_regular - start_regular )
 
 ##################################################################################################
 
-def graphMarginalizationTest():
-    # testGraphHMMNoFBS()
-    # testGraphHMM()
-    # testGraphHMMParallel()
-    # testGraphGroupHMM()
-    # testGraphGroupHMMParallel()
-    testSpeed()
-    # assert 0
+def graphModelTests():
+    pass

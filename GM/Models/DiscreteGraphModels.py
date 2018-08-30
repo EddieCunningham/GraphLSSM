@@ -1,5 +1,5 @@
 from GenModels.GM.Distributions import Categorical, Dirichlet, TensorTransition, TensorTransitionDirichletPrior
-from GenModels.GM.States.GraphicalMessagePassing import GraphHMMFBS, GraphHMMFBSMultiGroups, GraphHMMFBSParallel
+from GenModels.GM.States.GraphicalMessagePassing import GraphHMMFBS, GraphHMMFBSGroup, GraphHMMFBSParallel, GraphHMMFBSGroupParallel
 
 import numpy as np
 from collections import Iterable
@@ -48,10 +48,10 @@ class GroupParameters():
             self.transition_dists[ group ] = {}
             for prior in priors:
                 shape = prior.shape
-                self.transition_dists[ group ][ shape ] = Categorical( hypers=dict( alpha=prior ) )
+                self.transition_dists[ group ][ shape ] = TensorTransition( hypers=dict( alpha=prior ) )
 
         # Emission dist
-        self.emission_dists = dict( [ ( group, Categorical( hypers=dict( alpha=prior ) ) ) for group, prior in emission_priors.items() ] )
+        self.emission_dists = dict( [ ( group, TensorTransition( hypers=dict( alpha=prior ) ) ) for group, prior in emission_priors.items() ] )
 
     def paramProb( self ):
         ans = 0.0
@@ -127,7 +127,11 @@ class GroupTransitionBins():
             group = self.msg.node_groups[ node ]
 
             parents, order = self.msg.getParents( node, get_order=True )
-            shape = parents.shape + ( node.shape[ 0 ], )
+            shape = []
+            for p in parents:
+                shape.append( self.msg.getNodeDim( p ) )
+            shape.append( self.msg.getNodeDim( node ) )
+            shape = tuple( shape )
 
             if( shape not in self.counts[ group ] ):
                 self.counts[ group ][ shape ] = [ [] for _ in shape ]
@@ -151,9 +155,10 @@ class GroupGibbsParameters( GroupParameters ):
         transition_bins = GroupTransitionBins( msg, graph_state, self.transition_dists.keys() )
         msg.forwardPass( transition_bins )
 
-        for group, counts in transition_bins.counts.items():
-            for _counts, ( shape, dist ) in zip( counts, self.transition_dists[ group ].items() ):
-                x = [ np.array( count ) for count in _counts[ shape ] ]
+        for group, count_and_shapes in transition_bins.counts.items():
+            for shape, counts in count_and_shapes.items():
+                dist = self.transition_dists[ group ][ shape ]
+                x = [ np.array( count ) for count in counts ]
                 dist.resample( x )
 
     def resampleEmissionDist( self, msg, graph_state ):
@@ -179,7 +184,8 @@ class GroupGibbsParameters( GroupParameters ):
     def sampleTransitionDist( self ):
         sample = {}
         for group, dists in self.transition_dists.items():
-            sample[ group ] = [ dist.iparamSample()[ 0 ] for dist in dists ]
+            sample[ group ] = [ dist.iparamSample()[ 0 ] for shape, dist in dists.items() ]
+            # sample[ group ] = dict( [ ( shape, dist.iparamSample()[ 0 ] ) for shape, dist in dists.items() ] )
         return sample
 
     def sampleEmissionDist( self ):
@@ -267,8 +273,7 @@ class GroupEMParameters( GroupParameters ):
         for group, dists in self.transition_dists.items():
             trans_dist_numerator[ group ] = {}
             trans_dist_denominator[ group ] = {}
-            for dist in dists:
-                shape = dist.shape
+            for shape, dist in dists.items():
                 trans_dist_numerator[ group ][ shape ] = np.zeros( shape )
                 trans_dist_denominator[ group ][ shape ] = np.zeros( shape[ :-1 ] )
 
@@ -381,8 +386,7 @@ class GroupVIParameters( GroupParameters ):
         expected_transition_stats = {}
         for group, dists in self.transition_dists.items():
             expected_transition_stats[ group ] = {}
-            for dist in dists:
-                shape = dist.shape
+            for shape, dist in dists.items():
                 expected_transition_stats[ group ][ shape ] = np.zeros( shape )
 
         # Update the transition distributions
@@ -390,14 +394,14 @@ class GroupVIParameters( GroupParameters ):
             group = msg.node_groups[ node ]
             shape = node_parents_smoothed[ node ].shape
 
-            expected_transition_stats[ group ][ shape ] += node_parents_smoothed[ shape ][ node ]
+            expected_transition_stats[ group ][ shape ] += node_parents_smoothed[ node ]
 
         ans = {}
 
         for group in self.transition_dists.keys():
             ans[ group ] = {}
             for shape, dist in self.transition_dists[ group ].items():
-                ans[ group ][ shape ] = dist.prior.mf_nat_params[ 0 ] + self.s * expected_transition_stats[ group ]
+                ans[ group ][ shape ] = ( dist.prior.mf_nat_params[ 0 ] + self.s * expected_transition_stats[ group ][ shape ], )
 
         return ans
 
@@ -414,10 +418,10 @@ class GroupVIParameters( GroupParameters ):
 
         return dict( [ ( group, ( dist.prior.mf_nat_params[ 0 ] + self.s * expected_emission_stats[ group ], ) ) for group, dist in self.emission_dists.items() ] )
 
-class CAVIGroupParameters( GroupParameters ):
+class GroupCAVIParameters( GroupVIParameters ):
     pass
 
-class SVIGroupParameters( GroupParameters ):
+class GroupSVIParameters( GroupVIParameters ):
     def setMinibatchRatio( self, s ):
         self.s = s
 
@@ -599,7 +603,7 @@ class GroupEM( EM ):
 
     def EStep( self ):
         pi0s = dict( [ ( group, dist.pi ) for group, dist in self.params.initial_dists.items() ] )
-        pis = dict( [ ( group, [ dist.pi for dist in dists ] ) for group, dists in self.params.transition_dists.items() ] )
+        pis = dict( [ ( group, [ dist.pi for shape, dist in dists.items() ] ) for group, dists in self.params.transition_dists.items() ] )
         Ls = dict( [ ( group, dist.pi ) for group, dist in self.params.emission_dists.items() ] )
         self.msg.updateParams( pi0s, pis, Ls )
         self.runFilter()
@@ -656,8 +660,8 @@ class CAVI( Optimizer ):
         elbo = self.ELBO( initial_prior_mfnp, transition_prior_mfnps, emission_prior_mfnp )
 
         # Compute log P( x | Y ) and log P( x_c, x_p1..pN | Y )
-        node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes )
         node_parents_smoothed = self.msg.parentChildSmoothed( self.U, self.V, self.msg.nodes )
+        node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes, node_parents_smoothed )
 
         # The probabilities are normalized, so don't need them in log space anymore
         node_smoothed = [ ( n, np.exp( val ) ) for n, val in node_smoothed ]
@@ -691,7 +695,8 @@ class GroupCAVI( CAVI ):
 
         # Initialize the expected mf nat params using the prior
         self.initial_prior_mfnp    = dict( [ ( group, dist.prior.nat_params ) for group, dist in self.params.initial_dists.items() ] )
-        self.transition_prior_mfnps = dict( [ ( group, [ dist.prior.nat_params for dist in dists ] ) for group, dists in self.params.transition_dists.items() ] )
+        self.transition_prior_mfnps = dict( [ ( group, dict( [ ( shape, dist.prior.nat_params ) for shape, dist in dists.items() ] ) )
+                                                                                                for group, dists in self.params.transition_dists.items() ] )
         self.emission_prior_mfnp   = dict( [ ( group, dist.prior.nat_params ) for group, dist in self.params.emission_dists.items() ] )
 
     def ELBO( self, initial_prior_mfnp, transition_prior_mfnps, emission_prior_mfnp ):
@@ -700,9 +705,11 @@ class GroupCAVI( CAVI ):
         initial_kl_divergence, transition_kl_divergence, emission_kl_divergence = 0, 0, 0
 
         for group in self.params.initial_dists.keys():
-            initial_kl_divergence    += Dirichlet.KLDivergence( nat_params1=initial_prior_mfnp[ group ], nat_params2=self.params.initial_dists[ group ].prior.nat_params )
+            initial_kl_divergence += Dirichlet.KLDivergence( nat_params1=initial_prior_mfnp[ group ], nat_params2=self.params.initial_dists[ group ].prior.nat_params )
             transition_kl_divergence = 0
-            for mfnp, dist in zip( transition_prior_mfnps[ group ], self.params.transition_dists[ group ] ):
+            for shape in transition_prior_mfnps[ group ].keys():
+                mfnp = transition_prior_mfnps[ group ][ shape ]
+                dist = self.params.transition_dists[ group ][ shape ]
                 transition_kl_divergence += TensorTransitionDirichletPrior.KLDivergence( nat_params1=mfnp, nat_params2=dist.prior.nat_params )
             emission_kl_divergence   += TensorTransitionDirichletPrior.KLDivergence( nat_params1=emission_prior_mfnp[ group ], nat_params2=self.params.emission_dists[ group ].prior.nat_params )
 
@@ -712,7 +719,8 @@ class GroupCAVI( CAVI ):
 
         # Filter using the expected natural parameters
         expected_initial_nat_params    = dict( [ ( group, dist.prior.expectedSufficientStats( nat_params=initial_prior_mfnp[ group ] )[ 0 ] ) for group, dist in self.params.initial_dists.items() ] )
-        expected_transition_nat_params = dict( [ ( group, [ dist.prior.expectedSufficientStats( nat_params=transition_prior_mfnps[ group ] )[ 0 ] for dist in dists ] ) for group, dists in self.params.transition_dists.items() ] )
+        expected_transition_nat_params = dict( [ ( group, [ dist.prior.expectedSufficientStats( nat_params=transition_prior_mfnps[ group ][ shape ] )[ 0 ] for shape, dist in dists.items() ] )
+                                                                                                   for group, dists in self.params.transition_dists.items() ] )
         expected_emission_nat_params   = dict( [ ( group, dist.prior.expectedSufficientStats( nat_params=emission_prior_mfnp[ group ] )[ 0 ] ) for group, dist in self.params.emission_dists.items() ] )
 
         self.msg.updateNatParams( expected_initial_nat_params, expected_transition_nat_params, expected_emission_nat_params, check_parameters=False )
@@ -747,6 +755,10 @@ class SVI( CAVI ):
         transition_prior_mfnp_update  = self.params.updatedTransitionPrior( self.msg, node_parents_smoothed )
         emission_prior_mfnp_update,   = self.params.updatedEmissionPrior( self.msg, node_smoothed )
 
+        # print( initial_prior_mfnp_update )
+        # print( transition_prior_mfnp_update )
+        # print( emission_prior_mfnp_update )
+
         # Take a natural gradient step
         initial_prior_mfnp     = ( 1 - self.p ) * self.initial_prior_mfnp[ 0 ] + self.p * initial_prior_mfnp_update
         transition_prior_mfnps = [ ( ( 1 - self.p ) * mfnp[ 0 ] + self.p * update[ 0 ], ) for mfnp, update in zip( self.transition_prior_mfnps, transition_prior_mfnp_update ) ]
@@ -774,8 +786,15 @@ class GroupSVI( GroupCAVI ):
         for group in initial_prior_mfnp_update.keys():
 
             initial_prior_mfnp[ group ] = ( ( 1 - self.p ) * self.initial_prior_mfnp[ group ][ 0 ] + self.p * initial_prior_mfnp_update[ group ][ 0 ], )
-            transition_prior_mfnps[ group ] = [ ( 1 - self.p ) * mfnp + self.p * update for mfnp, update in zip( self.transition_prior_mfnps[ group ], transition_prior_mfnp_update[ group ] ) ]
+
+            transition_prior_mfnps[ group ] = {}
+            for shape in transition_prior_mfnp_update[ group ].keys():
+                update, = transition_prior_mfnp_update[ group ][ shape ]
+                mfnp, = self.transition_prior_mfnps[ group ][ shape ]
+                transition_prior_mfnps[ group ][ shape ] = ( ( 1 - self.p ) * mfnp + self.p * update, )
+
             emission_prior_mfnp[ group ] = ( ( 1 - self.p ) * self.emission_prior_mfnp[ group ][ 0 ] + self.p * emission_prior_mfnp_update[ group ][ 0 ], )
+
         return initial_prior_mfnp, transition_prior_mfnps, emission_prior_mfnp
 
 ######################################################################
@@ -960,13 +979,14 @@ class GHMM():
 
 class GroupGHMM():
 
-    def __init__( self, graphs, prior_strength=1.0, method='SVI', priors=None, params=None, **kwargs ):
+    def __init__( self, graphs=None, prior_strength=1.0, method='SVI', priors=None, params=None, **kwargs ):
         assert method in [ 'EM', 'Gibbs', 'CAVI', 'SVI' ]
 
         if( graphs is not None ):
             self.graphs = graphs
 
-        self.msg = GraphHMMFBSMultiGroups()
+        # self.msg = GraphHMMFBSGroupParallel()
+        self.msg = GraphHMMFBSGroup()
         self.method = method
 
         assert priors is not None
@@ -976,13 +996,13 @@ class GroupGHMM():
 
         # Generate the parameters objects
         if( method == 'EM' ):
-            self.params = GroupEMParameters( root_priors, transition_priors, emiss_priors ) if params is None else params
+            self.params = GroupEMParameters( root_priors, trans_priors, emiss_priors ) if params is None else params
         elif( method == 'Gibbs' ):
-            self.params = GroupGibbsParameters( root_priors, transition_priors, emiss_priors ) if params is None else params
+            self.params = GroupGibbsParameters( root_priors, trans_priors, emiss_priors ) if params is None else params
         elif( method == 'CAVI' ):
-            self.params = GroupCAVIParameters( root_priors, transition_priors, emiss_priors ) if params is None else params
+            self.params = GroupCAVIParameters( root_priors, trans_priors, emiss_priors ) if params is None else params
         else:
-            self.params = GroupSVIParameters( root_priors, transition_priors, emiss_priors ) if params is None else params
+            self.params = GroupSVIParameters( root_priors, trans_priors, emiss_priors ) if params is None else params
 
         # Generate the model objects
         if( method == 'EM' ):
@@ -1009,9 +1029,9 @@ class GroupGHMM():
         initial = {}
         transition = {}
         emission = {}
-        for group in self.params.initial_dist.keys():
+        for group in self.params.initial_dists.keys():
             initial[ group ] = self.params.initial_dists[ group ].pi
-            transition[ group ] = [ dist.pi for dist in self.params.transition_dists[ group ] ]
+            transition[ group ] = [ dist.pi for shape, dist in self.params.transition_dists[ group ].items() ]
             emission[ group ] = self.params.emission_dists[ group ].pi
         self.msg.updateParams( initial, transition, emission )
 
@@ -1113,7 +1133,7 @@ class GroupGHMM():
             parents, parent_order = self.msg.getParents( node, get_order=True )
             group = self.msg.node_groups[ node ]
             if( len( parents ) == 0 ):
-                prob = self.msg.pi0[ group ]
+                prob = self.msg.pi0s[ group ]
             else:
                 shape = []
                 for p, _ in sorted( zip( parents, parent_order ), key=lambda po: po[ 1 ] ):
@@ -1122,12 +1142,14 @@ class GroupGHMM():
                 shape.append( self.msg.pi0s[ group ].shape[ 0 ] )
                 shape = tuple( shape )
 
-                indices = [ [ node_states[ o ] ] for o in parent_order ]
+                indices = tuple( [ [ node_states[ p ] ] for p in parents ] )
+                self.msg.pis[ group ]
+                self.msg.pis[ group ][ shape ][ indices ]
                 prob = self.msg.pis[ group ][ shape ][ indices ].ravel()
 
             state = Categorical.sample( nat_params=( prob, ) )[ 0 ]
             node_states[ node ] = state
-            node_emissions[ node ] = Categorical.sample( nat_params=( self.msg.emission_dist[ group ][ state ], ), size=measurements )
+            node_emissions[ node ] = Categorical.sample( nat_params=( self.msg.emission_dists[ group ][ state ], ), size=measurements )
 
     def sampleStates( self ):
 

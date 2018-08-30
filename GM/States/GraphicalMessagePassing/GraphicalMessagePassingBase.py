@@ -28,6 +28,10 @@ def makeHashable( obj ):
 
 class GraphMessagePasser():
 
+    def clearCache( self ):
+        # Clear the functools.lru_cache
+        pass
+
     def toGraph( self ):
         return Graph.fromParentChildMask( self.pmask, self.cmask )
 
@@ -72,6 +76,8 @@ class GraphMessagePasser():
         self.updateMasks( parent_masks, child_masks )
 
     def updateMasks( self, parent_masks, child_masks ):
+
+        self.clearCache()
 
         assert len( parent_masks ) == len( child_masks )
         for child_mask, parent_mask in zip( child_masks, parent_masks ):
@@ -682,6 +688,10 @@ class GraphMessagePasser():
 
 class GraphMessagePasserFBS( GraphMessagePasser ):
 
+    def clearCache( self ):
+        super().clearCache()
+        self._infbs.cache_clear()
+
     def toGraph( self, use_partial=False ):
         if( use_partial ):
             return self.partial_graph.toGraph()
@@ -726,6 +736,8 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
         self.updateMasks( parent_masks, child_masks, feedback_sets=feedback_sets )
 
     def updateMasks( self, parent_masks, child_masks, feedback_sets=None ):
+
+        self.clearCache()
 
         # The main idea with this class is to have 2 different graphs.  The full
         # graph will cycles, and a graph without the feedback nodes which will

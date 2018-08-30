@@ -1,5 +1,5 @@
 import itertools
-from functools import partial
+from functools import partial, lru_cache
 import numpy as np
 from GenModels.GM.Utility import fbsData
 from collections import namedtuple, Iterable
@@ -575,6 +575,13 @@ def conditionalParentChildSingleNode( node_data ):
 
 class GraphFilterFBSParallel( GraphFilterFBS ):
 
+    def clearCache( self ):
+        super().clearCache()
+        self.cachedTransition.cache_clear()
+        self.cachedEmission.cache_clear()
+
+    ######################################################################
+
     @property
     def u_filter_process_pool( self ):
         if( hasattr( self, '_u_filter_process_pool' ) == False ):
@@ -701,9 +708,19 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
 
     ######################################################################
 
+    @lru_cache()
+    def cachedTransition( self, node ):
+        return self.transitionProb( node, is_partial_graph_index=True )
+
+    @lru_cache()
+    def cachedEmission( self, node ):
+        return self.emissionProb( node, is_partial_graph_index=True )
+
+    ######################################################################
+
     def uBaseLocalInfo( self, node ):
         shape_corrected_initial_distribution = self.initialProb( node, is_partial_graph_index=True )
-        shape_corrected_emission_distribution = self.emissionProb( node, is_partial_graph_index=True )
+        shape_corrected_emission_distribution = self.cachedEmission( node )
         return UBaseNodeData( shape_corrected_initial_distribution, shape_corrected_emission_distribution )
 
     def uLocalInfo( self, node, U, V ):
@@ -712,8 +729,8 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
                                               use_partial_graph=False )
         up_edge = self.getUpEdges( node, is_partial_graph_index=True,
                                          use_partial_graph=False )
-        shape_corrected_transition_distribution = self.transitionProb( node, is_partial_graph_index=True )
-        shape_corrected_emission_distribution = self.emissionProb( node, is_partial_graph_index=True )
+        shape_corrected_transition_distribution = self.cachedTransition( int( node ) )
+        shape_corrected_emission_distribution = self.cachedEmission( int( node ) )
 
         # Parent information
         partial_parents, partial_parents_order = self.getPartialParents( node, get_order=True,
@@ -734,8 +751,8 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         full_siblings_in_fbs = np.array( [ self.inFeedbackSet( s, is_partial_graph_index=True ) for s in full_siblings ], dtype=bool )
         full_sibling_vs = [ self.vData( U, V, s ) for s in full_siblings ]
 
-        siblings_shape_corrected_transition_distribution = [ self.transitionProb( s, is_partial_graph_index=True ) for s in full_siblings ]
-        siblings_shape_corrected_emission_distribution = [ self.emissionProb( s, is_partial_graph_index=True ) for s in full_siblings ]
+        siblings_shape_corrected_transition_distribution = [ self.cachedTransition( s ) for s in full_siblings ]
+        siblings_shape_corrected_emission_distribution = [ self.cachedEmission( s ) for s in full_siblings ]
 
         return UNodeData( full_n_parents,
                           up_edge,
@@ -794,8 +811,8 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         full_children_in_fbs = np.array( [ self.inFeedbackSet( c, is_partial_graph_index=True ) for c in full_children ], dtype=bool )
         full_children_vs = [ self.vData( U, V, c ) for c in full_children ]
 
-        children_shape_corrected_transition_distribution = [ self.transitionProb( c, is_partial_graph_index=True ) for c in full_children ]
-        children_shape_corrected_emission_distribution = [ self.emissionProb( c, is_partial_graph_index=True ) for c in full_children ]
+        children_shape_corrected_transition_distribution = [ self.cachedTransition( c ) for c in full_children ]
+        children_shape_corrected_emission_distribution = [ self.cachedEmission( c ) for c in full_children ]
 
         full_n_parents = self.nParents( full_children[ 0 ], is_partial_graph_index=True,
                                                             use_partial_graph=False )
@@ -820,8 +837,8 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
             return
 
         # Processing can't pickle this class
-        # data = self.data_thread_pool.starmap( self.vLocalInfo, zip( *nodes_and_edges, itertools.repeat( U ), itertools.repeat( V ) ) )
-        data = [ self.vLocalInfo( node, edge, U, V ) for node, edge in zip( *nodes_and_edges ) ]
+        data = self.data_thread_pool.starmap( self.vLocalInfo, zip( *nodes_and_edges, itertools.repeat( U ), itertools.repeat( V ) ) )
+        # data = [ self.vLocalInfo( node, edge, U, V ) for node, edge in zip( *nodes_and_edges ) ]
         self.v_filter_result = self.v_filter_process_pool.map_async( vWork, data )
 
         nodes, edges = nodes_and_edges
@@ -905,8 +922,8 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         else:
             up_edge = self.getUpEdges( node_partial, is_partial_graph_index=True,
                                                      use_partial_graph=False )
-            shape_corrected_transition_distribution = self.transitionProb( node_partial, is_partial_graph_index=True )
-            shape_corrected_emission_distribution = self.emissionProb( node_partial, is_partial_graph_index=True )
+            shape_corrected_transition_distribution = self.cachedTransition( int( node_partial ) )
+            shape_corrected_emission_distribution = self.cachedEmission( int( node_partial ) )
 
             # Parent information
             partial_parents, partial_parents_order = self.getPartialParents( node_partial, get_order=True,
@@ -927,8 +944,8 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
             full_siblings_in_fbs = np.array( [ inFBS( s ) for s in full_siblings ], dtype=bool )
             full_sibling_vs = [ self.vData( U, V, s ) for s in full_siblings ]
 
-            siblings_shape_corrected_transition_distribution = [ self.transitionProb( s, is_partial_graph_index=True ) for s in full_siblings ]
-            siblings_shape_corrected_emission_distribution = [ self.emissionProb( s, is_partial_graph_index=True ) for s in full_siblings ]
+            siblings_shape_corrected_transition_distribution = [ self.cachedTransition( s ) for s in full_siblings ]
+            siblings_shape_corrected_emission_distribution = [ self.cachedEmission( s ) for s in full_siblings ]
             vs = self.vData( U, V, node_partial )
 
             node_data = JointParentsData( all_parents_in_fbs,

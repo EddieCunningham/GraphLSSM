@@ -11,7 +11,8 @@ from .NumbaWrappers import *
 __all__ = [ 'GraphHMM',
             'GraphHMMFBS',
             'GraphHMMFBSParallel',
-            'GraphHMMFBSMultiGroups' ]
+            'GraphHMMFBSGroup',
+            'GraphHMMFBSGroupParallel' ]
 
 class _graphHMMMixin():
 
@@ -88,6 +89,7 @@ class _graphHMMMixin():
 
     def updateParams( self, initial_dist, transition_dist, emission_dist, data_graphs=None, compute_marginal=True ):
 
+        print( initial_dist )
         log_initial_dist = np.log( initial_dist )
         log_transition_dist = [ np.log( dist ) for dist in transition_dist ]
         log_emission_dist = np.log( emission_dist )
@@ -531,22 +533,7 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
 
 ######################################################################
 
-class GraphHMM( _graphHMMMixin, GraphFilter ):
-    pass
-
-######################################################################
-
-class GraphHMMFBS( _graphHMMFBSMixin, GraphFilterFBS ):
-    pass
-
-######################################################################
-
-class GraphHMMFBSParallel( _graphHMMFBSMixin, GraphFilterFBSParallel ):
-    pass
-
-######################################################################
-
-class GraphHMMFBSMultiGroups( GraphHMMFBS ):
+class _graphHMMGroupFBSMixin():
 
     # This variant lets the user specify which set of parameters to apply to a node
 
@@ -597,12 +584,23 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
                 assert ndim not in pis
                 pis.add( ndim )
 
-    def preprocessData( self, group_graphs ):
+    def updateGraphs( self, group_graphs ):
+
+        # Need to store the group assignments for each node
+        self.node_groups = {}
+
+        total_nodes = 0
+        for group_graph, fbs in group_graphs:
+            for node, group in group_graph.groups.items():
+                self.node_groups[ total_nodes + node ] = group
 
         super().updateGraphs( group_graphs )
 
+    def preprocessData( self, group_graphs ):
+
+        self.updateGraphs( group_graphs )
+
         self.possible_latent_states = {}
-        self.node_groups = {}
 
         total_nodes = 0
         for group_graph, fbs in group_graphs:
@@ -671,6 +669,12 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
 
     ######################################################################
 
+    def getNodeDim( self, node ):
+        group = self.node_groups[ node ]
+        return self.pi0s[ group ].shape[ 0 ]
+
+    ######################################################################
+
     def transitionProb( self, child, is_partial_graph_index=False ):
         parents, parent_order = self.getFullParents( child, get_order=True, is_partial_graph_index=is_partial_graph_index, return_partial_graph_index=True )
         child_full = self.partialGraphIndexToFullGraphIndex( child ) if is_partial_graph_index == True else child
@@ -679,9 +683,8 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
         shape = []
         for p, _ in sorted( zip( parents, parent_order ), key=lambda po: po[ 1 ] ):
             full_p = int( self.partialGraphIndexToFullGraphIndex( p ) )
-            g = self.node_groups[ full_p ]
-            shape.append( self.pi0s[ g ].shape[ 0 ] )
-        shape.append( self.pi0s[ group ].shape[ 0 ] )
+            shape.append( self.getNodeDim( full_p ) )
+        shape.append( self.getNodeDim( int( child_full ) ) )
         shape = tuple( shape )
 
         pi = np.copy( self.pis[ group ][ shape ] )
@@ -774,3 +777,28 @@ class GraphHMMFBSMultiGroups( GraphHMMFBS ):
             pi[ states ] -= np.logaddexp.reduce( pi )
 
         return fbsData( pi, -1 )
+
+######################################################################
+
+class GraphHMM( _graphHMMMixin, GraphFilter ):
+    pass
+
+######################################################################
+
+class GraphHMMFBS( _graphHMMFBSMixin, GraphFilterFBS ):
+    pass
+
+######################################################################
+
+class GraphHMMFBSParallel( _graphHMMFBSMixin, GraphFilterFBSParallel ):
+    pass
+
+######################################################################
+
+class GraphHMMFBSGroup( _graphHMMGroupFBSMixin, GraphHMMFBS ):
+    pass
+
+######################################################################
+
+class GraphHMMFBSGroupParallel( _graphHMMGroupFBSMixin, GraphHMMFBSParallel ):
+    pass
