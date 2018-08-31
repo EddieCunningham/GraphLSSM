@@ -755,10 +755,6 @@ class SVI( CAVI ):
         transition_prior_mfnp_update  = self.params.updatedTransitionPrior( self.msg, node_parents_smoothed )
         emission_prior_mfnp_update,   = self.params.updatedEmissionPrior( self.msg, node_smoothed )
 
-        # print( initial_prior_mfnp_update )
-        # print( transition_prior_mfnp_update )
-        # print( emission_prior_mfnp_update )
-
         # Take a natural gradient step
         initial_prior_mfnp     = ( 1 - self.p ) * self.initial_prior_mfnp[ 0 ] + self.p * initial_prior_mfnp_update
         transition_prior_mfnps = [ ( ( 1 - self.p ) * mfnp[ 0 ] + self.p * update[ 0 ], ) for mfnp, update in zip( self.transition_prior_mfnps, transition_prior_mfnp_update ) ]
@@ -948,12 +944,12 @@ class GHMM():
             node_states[ node ] = state
             node_emissions[ node ] = Categorical.sample( nat_params=( self.msg.emission_dist[ state ], ), size=measurements )
 
-    def sampleStates( self ):
+    def sampleStates( self, measurements=1 ):
 
         # Generate data
         node_states = {}
         node_emissions = {}
-        self.msg.forwardPass( partial( self.stateSampleHelper, node_states=node_states, node_emissions=node_emissions ) )
+        self.msg.forwardPass( partial( self.stateSampleHelper, node_states=node_states, node_emissions=node_emissions, measurements=measurements ) )
 
         return node_states, node_emissions
 
@@ -985,8 +981,8 @@ class GroupGHMM():
         if( graphs is not None ):
             self.graphs = graphs
 
-        # self.msg = GraphHMMFBSGroupParallel()
-        self.msg = GraphHMMFBSGroup()
+        self.msg = GraphHMMFBSGroupParallel()
+        # self.msg = GraphHMMFBSGroup()
         self.method = method
 
         assert priors is not None
@@ -1151,12 +1147,12 @@ class GroupGHMM():
             node_states[ node ] = state
             node_emissions[ node ] = Categorical.sample( nat_params=( self.msg.emission_dists[ group ][ state ], ), size=measurements )
 
-    def sampleStates( self ):
+    def sampleStates( self, measurements=1 ):
 
         # Generate data
         node_states = {}
         node_emissions = {}
-        self.msg.forwardPass( partial( self.stateSampleHelper, node_states=node_states, node_emissions=node_emissions ) )
+        self.msg.forwardPass( partial( self.stateSampleHelper, node_states=node_states, node_emissions=node_emissions, measurements=measurements ) )
 
         return node_states, node_emissions
 

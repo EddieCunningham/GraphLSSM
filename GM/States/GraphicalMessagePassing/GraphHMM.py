@@ -89,7 +89,6 @@ class _graphHMMMixin():
 
     def updateParams( self, initial_dist, transition_dist, emission_dist, data_graphs=None, compute_marginal=True ):
 
-        print( initial_dist )
         log_initial_dist = np.log( initial_dist )
         log_transition_dist = [ np.log( dist ) for dist in transition_dist ]
         log_emission_dist = np.log( emission_dist )
@@ -412,8 +411,7 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
                 pi[ impossible_states ] = np.NINF
             pi[ states ] -= np.logaddexp.reduce( pi )
 
-        initial_dist = fbsData( pi, -1 )
-        return initial_dist
+        return fbsData( pi, -1 )
 
     ######################################################################
 
@@ -717,6 +715,9 @@ class _graphHMMGroupFBSMixin():
         if( modified == True ):
             with np.errstate( invalid='ignore' ):
                 pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+
+        # In case entire rows summed to -inf
+        pi[ np.isnan( pi ) ] = np.NINF
 
         # Check if there are nodes in [ child, *parents ] that are in the fbs.
         # If there are, then move their axes

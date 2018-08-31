@@ -48,7 +48,7 @@ class _pedigreeMixin():
                     self.attrs[ node ] = {}
                 self.attrs[ node ].update( attr )
 
-    def draw( self, render=True, **kwargs ):
+    def draw( self, use_data=False, render=True, **kwargs ):
 
         male_style = dict( shape='square' )
         female_style = dict( shape='circle' )
@@ -67,18 +67,23 @@ class _pedigreeMixin():
 
         for n in self.nodes:
             attrs = self.attrs[ n ]
+            data = self.data[ n ]
+            if( use_data ):
+                comp = data == 1
+            else:
+                comp = attrs[ 'affected' ] == True
             if( attrs[ 'sex' ] == 'male' ):
-                if( attrs[ 'affected' ] == True ):
+                if( comp ):
                     affected_males.append( n )
                 else:
                     unaffected_males.append( n )
             elif( attrs[ 'sex' ] == 'female' ):
-                if( attrs[ 'affected' ] == True ):
+                if( comp ):
                     affected_females.append( n )
                 else:
                     unaffected_females.append( n )
             else:
-                if( attrs[ 'affected' ] == True ):
+                if( comp ):
                     affected_unknowns.append( n )
                 else:
                     unaffected_unknowns.append( n )
@@ -156,7 +161,7 @@ class _pedigreeFilterMixin():
                 self.node_attrs.append( graph.attrs[ node ] )
             total_nodes += len( graph.nodes )
 
-    def draw( self, render=True, **kwargs ):
+    def draw( self, use_data=False, render=True, **kwargs ):
 
         male_style = dict( shape='square' )
         female_style = dict( shape='circle' )
@@ -175,18 +180,23 @@ class _pedigreeFilterMixin():
 
         for n in self.nodes:
             attrs = self.node_attrs[ n ]
+            data = self.data[ n ]
+            if( use_data ):
+                comp = data == 1
+            else:
+                comp = attrs[ 'affected' ] == True
             if( attrs[ 'sex' ] == 'male' ):
-                if( attrs[ 'affected' ] == True ):
+                if( comp ):
                     affected_males.append( n )
                 else:
                     unaffected_males.append( n )
             elif( attrs[ 'sex' ] == 'female' ):
-                if( attrs[ 'affected' ] == True ):
+                if( comp ):
                     affected_females.append( n )
                 else:
                     unaffected_females.append( n )
             else:
-                if( attrs[ 'affected' ] == True ):
+                if( comp ):
                     affected_unknowns.append( n )
                 else:
                     unaffected_unknowns.append( n )

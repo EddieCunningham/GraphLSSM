@@ -582,6 +582,16 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
 
     ######################################################################
 
+    def cleanup( self ):
+        self.u_filter_process_pool.close()
+        self.v_filter_process_pool.close()
+        self.data_thread_pool.close()
+
+    def __del__( self ):
+        self.cleanup()
+
+    ######################################################################
+
     @property
     def u_filter_process_pool( self ):
         if( hasattr( self, '_u_filter_process_pool' ) == False ):

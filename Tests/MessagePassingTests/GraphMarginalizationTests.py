@@ -387,7 +387,7 @@ def testGraphHMMParallel():
     d_obs = 5
     measurements = 2
 
-    tester = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements )
+    tester = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements, random_latent_states=True )
     tester.run()
 
 ##################################################################################################
@@ -418,7 +418,7 @@ def testGraphGroupHMM():
     groups = [ 0, 1, 2 ]
     d_latents = dict( zip( groups, [ 2, 3, 4 ] ) )
 
-    tester = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups )
+    tester = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups, random_latent_states=True )
     tester.run()
 
 ##################################################################################################
@@ -449,7 +449,7 @@ def testGraphGroupHMMParallel():
     groups = [ 0, 1, 2 ]
     d_latents = dict( zip( groups, [ 2, 3, 4 ] ) )
 
-    tester = MarginalizationTesterGroupFBSParallel( graphs, d_latents, d_obs, measurements, groups )
+    tester = MarginalizationTesterGroupFBSParallel( graphs, d_latents, d_obs, measurements, groups, random_latent_states=True )
     tester.run()
 
 ##################################################################################################
@@ -514,6 +514,6 @@ def graphMarginalizationTest():
     # testGraphHMM()
     # testGraphHMMParallel()
     # testGraphGroupHMM()
-    # testGraphGroupHMMParallel()
-    testSpeed()
+    testGraphGroupHMMParallel()
+    # testSpeed()
     # assert 0

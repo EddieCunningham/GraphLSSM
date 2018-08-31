@@ -577,7 +577,7 @@ class __FBSFilterMixin():
 
         for v in ans:
             data = v.data
-            assert np.any( np.isnan( data ) ) == False
+            assert np.any( np.isnan( data ) ) == False, data
 
         return ans
 
@@ -716,6 +716,7 @@ class __FBSFilterMixin():
         while( ans.shape[ 0 ] == 1 ):
             ans = ans.squeeze( axis=0 )
 
+        assert np.any( np.isnan( ans.data ) ) == False, ans.data
         return ans
 
     ######################################################################
