@@ -106,13 +106,17 @@ class GibbsParameters( Parameters ):
         self.emission_dist.resample( x )
 
     def sampleInitialDist( self ):
-        return self.initial_dist.iparamSample()[ 0 ]
+        self.initial_dist.resample()
+        return self.initial_dist.pi
 
     def sampleTransitionDist( self ):
-        return [ dist.iparamSample()[ 0 ] for dist in self.transition_dists ]
+        for dist in self.transition_dists:
+            dist.resample()
+        return [ dist.pi for dist in self.transition_dists ]
 
     def sampleEmissionDist( self ):
-        return self.emission_dist.iparamSample()[ 0 ]
+        self.emission_dist.resample()
+        return self.emission_dist.pi
 
 ######################################################################
 
@@ -945,7 +949,6 @@ class GHMM():
             node_emissions[ node ] = Categorical.sample( nat_params=( self.msg.emission_dist[ state ], ), size=measurements )
 
     def sampleStates( self, measurements=1 ):
-
         # Generate data
         node_states = {}
         node_emissions = {}

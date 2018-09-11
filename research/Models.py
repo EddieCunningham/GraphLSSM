@@ -1,7 +1,9 @@
 from GenModels.GM.Distributions import Categorical, Dirichlet, TensorTransition, TensorTransitionDirichletPrior
-from GenModels.research.PedigreeWrappers import PedigreeHMMFilter, PedigreeHMMFilterSexMatters
 import numpy as np
 from GenModels.GM.Models.DiscreteGraphModels import *
+import copy
+import matplotlib
+import matplotlib.pyplot as plt
 
 __all__ = [
     'autosomalDominantPriors',
@@ -11,6 +13,8 @@ __all__ = [
     'AutosomalRecessive',
     'XLinkedRecessive'
 ]
+
+NO_DIAGNOSIS_PROB = 0.0
 
 ######################################################################
 
@@ -49,14 +53,20 @@ def autosomalTransitionPrior():
 def autosomalDominantEmissionPrior():
     # [ AA, Aa, aa ]
     # [ Not affected, affected ]
-    return np.array( [ [ 0, 1 ],
-                       [ 0, 1 ],
+    # return np.array( [ [ 0, 1 ],
+    #                    [ 0, 1 ],
+    #                    [ 1, 0 ] ] )
+    return np.array( [ [ NO_DIAGNOSIS_PROB, 1-NO_DIAGNOSIS_PROB ],
+                       [ NO_DIAGNOSIS_PROB, 1-NO_DIAGNOSIS_PROB ],
                        [ 1, 0 ] ] )
 
 def autosomalRecessiveEmissionPrior():
     # [ AA, Aa, aa ]
     # [ Not affected, affected ]
-    return np.array( [ [ 0, 1 ],
+    # return np.array( [ [ 0, 1 ],
+    #                    [ 1, 0 ],
+    #                    [ 1, 0 ] ] )
+    return np.array( [ [ NO_DIAGNOSIS_PROB, 1-NO_DIAGNOSIS_PROB ],
                        [ 1, 0 ],
                        [ 1, 0 ] ] )
 
@@ -127,23 +137,33 @@ def xLinkedUnknownTransitionPrior():
 def xLinkedFemaleEmissionPrior():
     # [ XX, Xx, xx ]
     # [ Not affected, affected ]
-    return np.array( [ [ 0, 1 ],
+    # return np.array( [ [ 0, 1 ],
+    #                    [ 1, 0 ],
+    #                    [ 1, 0 ] ] )
+    return np.array( [ [ NO_DIAGNOSIS_PROB, 1-NO_DIAGNOSIS_PROB ],
                        [ 1, 0 ],
                        [ 1, 0 ] ] )
 
 def xLinkedMaleEmissionPrior():
     # [ XY, xY ]
     # [ Not affected, affected ]
-    return np.array( [ [ 0, 1 ],
+    # return np.array( [ [ 0, 1 ],
+    #                    [ 1, 0 ] ] )
+    return np.array( [ [ NO_DIAGNOSIS_PROB, 1-NO_DIAGNOSIS_PROB ],
                        [ 1, 0 ] ] )
 
 def xLinkedUnknownEmissionPrior():
     # [ XX, Xx, xx, XY, xY ]
     # [ Not affected, affected ]
-    return np.array( [ [ 0, 1 ],
+    # return np.array( [ [ 0, 1 ],
+    #                    [ 1, 0 ],
+    #                    [ 1, 0 ],
+    #                    [ 0, 1 ],
+    #                    [ 1, 0 ] ] )
+    return np.array( [ [ NO_DIAGNOSIS_PROB, 1-NO_DIAGNOSIS_PROB ],
                        [ 1, 0 ],
                        [ 1, 0 ],
-                       [ 0, 1 ],
+                       [ NO_DIAGNOSIS_PROB, 1-NO_DIAGNOSIS_PROB ],
                        [ 1, 0 ] ] )
 
 ######################################################################
@@ -175,8 +195,65 @@ def xLinkedRecessivePriors( prior_strength=1.0 ):
 
 ######################################################################
 
-class AutosomalDominant( GHMM ):
-    def __init__( self, graphs=None, prior_strength=1.0, method='EM', priors=None, params=None, **kwargs ):
+class _drawMixin():
+
+    def _draw( self, graph_index=0, show_carrier_prob=True, probCarrierFunc=None ):
+        graph = self.graphs[ 0 ][ 0 ]
+        if( show_carrier_prob == False ):
+            return graph.draw()
+
+        assert probCarrierFunc is not None
+
+        U, V = self.msg.filter()
+        probs = dict( self.msg.nodeSmoothed( U, V, graph.nodes ) )
+
+        # Have a unique style for each node
+        node_to_style_key = dict( [ ( n, n ) for n in graph.nodes ] )
+        styles = {}
+
+        # The base outline styles
+        male_style = dict( shape='square', style='filled' )
+        female_style = dict( shape='circle', style='filled' )
+        unknown_style = dict( shape='diamond', style='filled' )
+        affected_male_style = dict( shape='square', fontcolor='black', style='filled', color='blue' )
+        affected_female_style = dict( shape='circle', fontcolor='black', style='filled', color='blue' )
+        affected_unknown_style = dict( shape='diamond', fontcolor='black', style='filled', color='blue' )
+
+        # Get the style for each node
+        for n in graph.nodes:
+
+            # Get the base style
+            attrs = graph.attrs[ n ]
+            if( attrs[ 'sex' ] == 'male' ):
+                if( attrs[ 'affected' ] == True ):
+                    style = copy.deepcopy( affected_male_style )
+                else:
+                    style = copy.deepcopy( male_style )
+            elif( attrs[ 'sex' ] == 'female' ):
+                if( attrs[ 'affected' ] == True ):
+                    style = copy.deepcopy( affected_female_style )
+                else:
+                    style = copy.deepcopy( female_style )
+            else:
+                if( attrs[ 'affected' ] == True ):
+                    style = copy.deepcopy( affected_unknown_style )
+                else:
+                    style = copy.deepcopy( unknown_style )
+
+            # Get the probability of being a carrier
+            prob = np.exp( probs[ n ] )
+            carrier_prob = probCarrierFunc( attrs[ 'sex' ], prob )
+            style[ 'fillcolor' ] = matplotlib.colors.to_hex( plt.get_cmap( 'Reds' )( carrier_prob ) )
+
+            styles[ n ] = style
+
+        return graph.draw( _custom_args={ 'render': True, 'styles': styles, 'node_to_style_key': node_to_style_key } )
+
+
+######################################################################
+
+class AutosomalDominant( _drawMixin, GHMM ):
+    def __init__( self, graphs=None, root_strength=1.0, prior_strength=1.0, method='EM', priors=None, params=None, **kwargs ):
 
         # Generate the priors
         if( priors is None ):
@@ -185,13 +262,19 @@ class AutosomalDominant( GHMM ):
             # Initialize using other priors
             trans_prior, emiss_prior = priors
 
-        root_prior = np.ones( 3 ) * prior_strength
+        root_prior = np.ones( 3 )
+        root_prior[ 2 ] = root_strength
         priors = ( root_prior, trans_prior, emiss_prior )
 
         super().__init__( graphs, prior_strength=prior_strength, method=method, priors=priors, params=params, **kwargs )
 
-class AutosomalRecessive( GHMM ):
-    def __init__( self, graphs=None, prior_strength=1.0, method='EM', priors=None, params=None, **kwargs ):
+    def draw( self, graph_index=0, show_carrier_prob=True ):
+        def probCarrierFunc( sex, prob ):
+            return prob[ 0 ] + prob[ 1 ]
+        return self._draw( graph_index=graph_index, show_carrier_prob=show_carrier_prob, probCarrierFunc=probCarrierFunc )
+
+class AutosomalRecessive( _drawMixin, GHMM ):
+    def __init__( self, graphs=None, root_strength=1.0, prior_strength=1.0, method='EM', priors=None, params=None, **kwargs ):
 
         # Generate the priors
         if( priors is None ):
@@ -200,15 +283,21 @@ class AutosomalRecessive( GHMM ):
             # Initialize using other priors
             trans_prior, emiss_prior = priors
 
-        root_prior = np.ones( 3 ) * prior_strength
+        root_prior = np.ones( 3 )
+        root_prior[ 2 ] = root_strength
         priors = ( root_prior, trans_prior, emiss_prior )
 
         super().__init__( graphs, prior_strength=prior_strength, method=method, priors=priors, params=params, **kwargs )
 
+    def draw( self, graph_index=0, show_carrier_prob=True ):
+        def probCarrierFunc( sex, prob ):
+            return prob[ 0 ] + prob[ 0 ]
+        return self._draw( graph_index=graph_index, show_carrier_prob=show_carrier_prob, probCarrierFunc=probCarrierFunc )
+
 ######################################################################
 
-class XLinkedRecessive( GroupGHMM ):
-    def __init__( self, graphs=None, prior_strength=1.0, method='SVI', priors=None, params=None, **kwargs ):
+class XLinkedRecessive( _drawMixin, GroupGHMM ):
+    def __init__( self, graphs=None, root_strength=1.0, prior_strength=1.0, method='SVI', priors=None, params=None, **kwargs ):
 
         # Generate the priors
         if( priors is None ):
@@ -220,9 +309,30 @@ class XLinkedRecessive( GroupGHMM ):
             female_emiss_prior, male_emiss_prior, unknown_emiss_prior = emiss_priors
 
         groups = [ 0, 1, 2 ]
-        root_priors = { 0: np.ones( 3 ) * prior_strength, 1: np.ones( 2 ) * prior_strength, 2: np.ones( 5 ) * prior_strength }
+
+        female_root_prior = np.ones( 3 )
+        female_root_prior[ 2 ] = root_strength
+
+        male_root_prior = np.ones( 2 )
+        male_root_prior[ 1 ] = root_strength
+
+        unknown_root_prior = np.ones( 5 )
+        unknown_root_prior[ 2 ] = root_strength
+        unknown_root_prior[ 4 ] = root_strength
+
+        root_priors = { 0: female_root_prior, 1: male_root_prior, 2: unknown_root_prior }
         trans_priors = dict( [ ( group, [ dist ] ) for group, dist in zip( groups, trans_priors ) ] )
         emiss_priors = dict( [ ( group, dist ) for group, dist in zip( groups, emiss_priors ) ] )
 
         priors = ( root_priors, trans_priors, emiss_priors )
         super().__init__( graphs, prior_strength=prior_strength, method=method, priors=priors, params=params, **kwargs )
+
+    def draw( self, graph_index=0, show_carrier_prob=True ):
+        def probCarrierFunc( sex, prob ):
+            if( sex == 'female' ):
+                return prob[ 0 ] + prob[ 1 ]
+            elif( sex == 'male' ):
+                return prob[ 0 ]
+            else:
+                return prob[ 0 ] + prob[ 1 ] + prob[ 3 ]
+        return self._draw( graph_index=graph_index, show_carrier_prob=show_carrier_prob, probCarrierFunc=probCarrierFunc )

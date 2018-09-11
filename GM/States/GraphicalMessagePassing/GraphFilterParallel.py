@@ -586,6 +586,9 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         self.u_filter_process_pool.close()
         self.v_filter_process_pool.close()
         self.data_thread_pool.close()
+        delattr( self, '_u_filter_process_pool' )
+        delattr( self, '_v_filter_process_pool' )
+        delattr( self, '_data_thread_pool' )
 
     def __del__( self ):
         self.cleanup()

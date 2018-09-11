@@ -8,8 +8,6 @@ import copy
 
 __all__ = [ 'Pedigree',
             'PedigreeSexMatters',
-            'PedigreeHMMFilter',
-            'PedigreeHMMFilterSexMatters',
             'setGraphRootStates' ]
 
 ######################################################################
@@ -22,8 +20,18 @@ class _pedigreeMixin():
         self.studyID = None
         self.pedigree_obj = None
 
+    def getNumbAffected( self ):
+        ans = 0
+        for node, attr in self.attrs.items():
+            if( attr[ 'affected' ] == True ):
+                ans += 1
+        return ans
+
     def useDiagnosisImplication( self, ip_type ):
         addLatentStateFromDiagnosis( self, ip_type )
+
+    def useRootDiagnosisImplication( self, ip_type ):
+        addLatentStateFromDiagnosisForRoots( self, ip_type )
 
     def useSingleCarrierRoot( self, ip_type ):
         setGraphRootStates( self, ip_type )
@@ -48,7 +56,9 @@ class _pedigreeMixin():
                     self.attrs[ node ] = {}
                 self.attrs[ node ].update( attr )
 
-    def draw( self, use_data=False, render=True, **kwargs ):
+    def draw( self, use_data=False, render=True, _custom_args=None, **kwargs ):
+        if( _custom_args is not None ):
+            return super().draw( **_custom_args )
 
         male_style = dict( shape='square' )
         female_style = dict( shape='circle' )
@@ -141,101 +151,49 @@ class PedigreeSexMatters( _pedigreeMixin, GroupGraph ):
 
 ######################################################################
 
-class _pedigreeFilterMixin():
+def addLatentStateFromDiagnosisForRoots( graph, ip_type ):
 
-    def preprocessData( self, data_graphs ):
-        if( isinstance( self, GraphHMMFBSGroup ) ):
-            updated_graphs = []
-            for graph, fbs in data_graphs:
-                if( not isinstance( graph, PedigreeSexMatters ) ):
-                    updated_graphs.append( ( PedigreeSexMatters.fromPedigree( graph ), fbs ) )
+    for node in graph.nodes:
+        if( node in graph.roots ):
+            if( ip_type == 'AD' ):
+                if( graph.data[ node ] == 1 ):
+                    # Affected
+                    graph.setPossibleLatentStates( node, [ 1 ] )
+                    # graph.setPossibleLatentStates( node, [ 0, 1 ] )
+            elif( ip_type == 'AR' ):
+                if( graph.data[ node ] == 1 ):
+                    # Affected
+                    graph.setPossibleLatentStates( node, [ 0 ] )
+            elif( ip_type == 'XL' ):
+                if( graph.groups[ node ] == 0 ):
+                    # Female
+                    if( graph.data[ node ] == 1 ):
+                        graph.setPossibleLatentStates( node, [ 0 ] )
+                elif( graph.groups[ node ] == 1 ):
+                    # Male
+                    if( graph.data[ node ] == 1 ):
+                        graph.setPossibleLatentStates( node, [ 0 ] )
                 else:
-                    updated_graphs.append( ( graph, fbs ) )
-            data_graphs = updated_graphs
-
-        super().preprocessData( data_graphs )
-        self.node_attrs = []
-        total_nodes = 0
-        for graph, fbs in data_graphs:
-            for node in graph.nodes:
-                self.node_attrs.append( graph.attrs[ node ] )
-            total_nodes += len( graph.nodes )
-
-    def draw( self, use_data=False, render=True, **kwargs ):
-
-        male_style = dict( shape='square' )
-        female_style = dict( shape='circle' )
-        unknown_style = dict( shape='diamond' )
-        affected_male_style = dict( shape='square', fontcolor='black', style='bold', color='blue' )
-        affected_female_style = dict( shape='circle', fontcolor='black', style='bold', color='blue' )
-        affected_unknown_style = dict( shape='diamond', fontcolor='black', style='bold', color='blue' )
-        styles = { 0: male_style, 1: female_style, 2: unknown_style, 3: affected_male_style, 4: affected_female_style, 5: affected_unknown_style }
-
-        unaffected_males = []
-        unaffected_females = []
-        unaffected_unknowns = []
-        affected_males = []
-        affected_females = []
-        affected_unknowns = []
-
-        for n in self.nodes:
-            attrs = self.node_attrs[ n ]
-            data = self.data[ n ]
-            if( use_data ):
-                comp = data == 1
-            else:
-                comp = attrs[ 'affected' ] == True
-            if( attrs[ 'sex' ] == 'male' ):
-                if( comp ):
-                    affected_males.append( n )
-                else:
-                    unaffected_males.append( n )
-            elif( attrs[ 'sex' ] == 'female' ):
-                if( comp ):
-                    affected_females.append( n )
-                else:
-                    unaffected_females.append( n )
-            else:
-                if( comp ):
-                    affected_unknowns.append( n )
-                else:
-                    unaffected_unknowns.append( n )
-
-        node_to_style_key =       dict( [ ( n, 0 ) for n in unaffected_males ] )
-        node_to_style_key.update( dict( [ ( n, 1 ) for n in unaffected_females ] ) )
-        node_to_style_key.update( dict( [ ( n, 2 ) for n in unaffected_unknowns ] ) )
-        node_to_style_key.update( dict( [ ( n, 3 ) for n in affected_males ] ) )
-        node_to_style_key.update( dict( [ ( n, 4 ) for n in affected_females ] ) )
-        node_to_style_key.update( dict( [ ( n, 5 ) for n in affected_unknowns ] ) )
-
-        kwargs.update( dict( styles=styles, node_to_style_key=node_to_style_key) )
-
-        return self.toGraph().draw( render=render, **kwargs )
-
-######################################################################
-
-class PedigreeHMMFilter( _pedigreeFilterMixin, GraphHMMFBS ):
-    pass
-
-class PedigreeHMMFilterSexMatters( _pedigreeFilterMixin, GraphHMMFBSGroup ):
-    pass
+                    # Unknown sex
+                    if( graph.data[ node ] == 1 ):
+                        graph.setPossibleLatentStates( node, [ 0, 3 ] )
 
 ######################################################################
 
 def addLatentStateFromDiagnosis( graph, ip_type ):
 
-    if( ip_type == 'AD' ):
-        for node in graph.nodes:
+    # Diagnosis
+    for node in graph.nodes:
+        if( ip_type == 'AD' ):
             if( graph.data[ node ] == 1 ):
                 # Affected
-                graph.setPossibleLatentStates( node, [ 0, 1 ] )
-    elif( ip_type == 'AR' ):
-        for node in graph.nodes:
+                graph.setPossibleLatentStates( node, [ 1 ] )
+                # graph.setPossibleLatentStates( node, [ 0, 1 ] )
+        elif( ip_type == 'AR' ):
             if( graph.data[ node ] == 1 ):
                 # Affected
                 graph.setPossibleLatentStates( node, [ 0 ] )
-    elif( ip_type == 'XL' ):
-        for node in graph.nodes:
+        elif( ip_type == 'XL' ):
             if( graph.groups[ node ] == 0 ):
                 # Female
                 if( graph.data[ node ] == 1 ):
@@ -248,6 +206,52 @@ def addLatentStateFromDiagnosis( graph, ip_type ):
                 # Unknown sex
                 if( graph.data[ node ] == 1 ):
                     graph.setPossibleLatentStates( node, [ 0, 3 ] )
+
+    # Carrier
+    for node in graph.nodes:
+        if( ip_type == 'AD' ):
+            if( graph.attrs[ node ][ 'carrier' ] == True ):
+                # Affected
+                graph.setPossibleLatentStates( node, [ 1 ] )
+                # graph.setPossibleLatentStates( node, [ 0, 1 ] )
+        elif( ip_type == 'AR' ):
+            if( graph.attrs[ node ][ 'carrier' ] == True ):
+                # Affected
+                graph.setPossibleLatentStates( node, [ 1 ] )
+        elif( ip_type == 'XL' ):
+            if( graph.groups[ node ] == 0 ):
+                # Female
+                if( graph.attrs[ node ][ 'carrier' ] == True ):
+                    graph.setPossibleLatentStates( node, [ 1 ] )
+            elif( graph.groups[ node ] == 1 ):
+                # Male
+                if( graph.attrs[ node ][ 'carrier' ] == True ):
+                    graph.setPossibleLatentStates( node, [ 0 ] )
+            else:
+                # Unknown sex
+                if( graph.attrs[ node ][ 'carrier' ] == True ):
+                    graph.setPossibleLatentStates( node, [ 1 ] )
+
+    # Roots where we have a shaded root
+    set_roots = len( [ 1 for r in graph.roots if graph.data[ r ] == 1 ] ) > 0
+    if( set_roots ):
+        # Set all of the non-affected roots to not affected
+        for r in graph.roots:
+            if( graph.data[ r ] == 0 ):
+                if( ip_type == 'AD' ):
+                    graph.setPossibleLatentStates( r, [ 2 ] )
+                elif( ip_type == 'AR' ):
+                    graph.setPossibleLatentStates( r, [ 2 ] )
+                else:
+                    if( graph.groups[ r ] == 0 ):
+                        # Female
+                        graph.setPossibleLatentStates( r, [ 2 ] )
+                    elif( graph.groups[ r ] == 1 ):
+                        # Male
+                        graph.setPossibleLatentStates( r, [ 1 ] )
+                    else:
+                        # Unknown sex
+                        graph.setPossibleLatentStates( r, [ 2, 4 ] )
 
 ######################################################################
 

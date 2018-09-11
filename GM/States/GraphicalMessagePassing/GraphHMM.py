@@ -113,6 +113,8 @@ class _graphHMMMixin():
         if( data_graphs is not None ):
             self.preprocessData( data_graphs )
 
+        self.clearCache()
+
         if( hasattr( self, 'ys' ) and self.L_set == False ):
             self.L_set = True
             ys = np.array( self.ys ).T
@@ -354,9 +356,9 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
             pi[ ..., impossible_axes ] = np.NINF
             modified = True
 
-        if( modified == True ):
-            with np.errstate( invalid='ignore' ):
-                pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+        # if( modified == True ):
+        #     with np.errstate( invalid='ignore' ):
+        #         pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
 
         # In case entire rows summed to -inf
         pi[ np.isnan( pi ) ] = np.NINF
@@ -665,6 +667,8 @@ class _graphHMMGroupFBSMixin():
         if( group_graphs is not None ):
             self.preprocessData( group_graphs )
 
+        self.clearCache()
+
     ######################################################################
 
     def getNodeDim( self, node ):
@@ -712,9 +716,9 @@ class _graphHMMGroupFBSMixin():
             pi[ ..., impossible_axes ] = np.NINF
             modified = True
 
-        if( modified == True ):
-            with np.errstate( invalid='ignore' ):
-                pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+        # if( modified == True ):
+        #     with np.errstate( invalid='ignore' ):
+        #         pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
 
         # In case entire rows summed to -inf
         pi[ np.isnan( pi ) ] = np.NINF
