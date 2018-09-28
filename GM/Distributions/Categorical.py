@@ -121,6 +121,19 @@ class Categorical( ExponentialFam ):
         cls.checkShape( ans )
         return ans
 
+    @classmethod
+    def reparametrizedSample( cls, params=None, nat_params=None, size=1, temp=0.1 ):
+        # Use the Gumbel Softmax reparametrization trick
+        # https://arxiv.org/pdf/1611.01144.pdf
+
+        assert ( params is None ) ^ ( nat_params is None )
+        ( n, ) = nat_params if nat_params is not None else cls.standardToNat( *params )
+
+        g = np.random.gumbel( size=p.shape[ 0 ] )
+
+        unnorm = np.exp( ( n + g ) / temp )
+        return unnorm / np.sum( unnorm )
+
     ##########################################################################
 
     @classmethod

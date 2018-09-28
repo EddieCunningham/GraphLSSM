@@ -246,17 +246,17 @@ class _graphHMMMixin():
 
     ######################################################################
 
-    def updateU( self, nodes, newU, U ):
+    def updateU( self, nodes, new_u, U ):
 
-        for u, node in zip( newU, nodes ):
+        for u, node in zip( new_u, nodes ):
             # self.total_deviation += np.logaddexp( U_data[ i ], -v )**2
             U[ node ] = u
 
-    def updateV( self, nodes, edges, newV, V ):
+    def updateV( self, nodes, edges, new_v, V ):
 
         V_row, V_col, V_data = V
 
-        for node, edge, v in zip( nodes, edges, newV ):
+        for node, edge, v in zip( nodes, edges, new_v ):
             if( edge is None ):
                 continue
 
@@ -356,10 +356,6 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
             pi[ ..., impossible_axes ] = np.NINF
             modified = True
 
-        # if( modified == True ):
-        #     with np.errstate( invalid='ignore' ):
-        #         pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
-
         # In case entire rows summed to -inf
         pi[ np.isnan( pi ) ] = np.NINF
 
@@ -370,7 +366,6 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
 
         if( self.inFeedbackSet( child_full, is_partial_graph_index=False ) ):
             fbs_indices.append( fbsOffset( child_full ) )
-            # fbs_indices.append( self.fbsIndex( child_full, is_partial_graph_index=False, within_graph=True ) + 1 )
 
         if( len( fbs_indices ) > 0 ):
             expand_by = max( fbs_indices )
@@ -385,8 +380,6 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
             if( self.inFeedbackSet( child_full, is_partial_graph_index=False ) ):
                 # If the child is in the fbs, then move it to the appropriate axis
                 pi = np.swapaxes( pi, ndim - 1, fbsOffset( child_full ) + ndim - 1 )
-                # pi = np.swapaxes( pi, ndim - 1, self.fbsIndex( child_full, is_partial_graph_index=False, within_graph=True ) + ndim )
-
 
             return fbsData( pi, ndim )
         return fbsData( pi, -1 )
@@ -716,10 +709,6 @@ class _graphHMMGroupFBSMixin():
             pi[ ..., impossible_axes ] = np.NINF
             modified = True
 
-        # if( modified == True ):
-        #     with np.errstate( invalid='ignore' ):
-        #         pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
-
         # In case entire rows summed to -inf
         pi[ np.isnan( pi ) ] = np.NINF
 
@@ -807,3 +796,52 @@ class GraphHMMFBSGroup( _graphHMMGroupFBSMixin, GraphHMMFBS ):
 
 class GraphHMMFBSGroupParallel( _graphHMMGroupFBSMixin, GraphHMMFBSParallel ):
     pass
+
+######################################################################
+
+# class _gradientMixin():
+
+#     # These gradients will be w.r.t. the node potentials (Emission)
+#     # In the future, will probably extend to family potentials (Transition)
+
+#     def genGradients( self ):
+
+#         # Need to take the gradient w.r.t. each
+
+#         # Initialize U and V
+#         U = []
+#         for node in self.nodes:
+#             U.append( np.zeros( ( self.K, ) ) )
+
+#         V_row = self.pmask.row
+#         V_col = self.pmask.col
+#         V_data = []
+#         for node in self.pmask.row:
+#             V_data.append( np.zeros( ( self.K, ) ) )
+
+#         # Invalidate all data elements
+#         for node in self.nodes:
+#             U[ node ][ : ] = np.nan
+#             self.assignV( ( V_row, V_col, V_data ), node, np.nan, keep_shape=True )
+
+#         return U, ( V_row, V_col, V_data )
+
+#     ######################################################################
+
+#     def updateUGrad( self, nodes, new_u_grad, U_grad ):
+#         pass
+
+#     def updateVGrad( self, nodes, edges, new_v_grad, V_grad ):
+#         pass
+
+# ######################################################################
+
+# class GraphHMMFBSGradientParallel( _graphHMMFBSMixin, _gradientMixin, GraphFilterFBSParallelWithGradient ):
+#     pass
+
+# ######################################################################
+
+# class GraphHMMFBSGradientGroupParallel( _graphHMMGroupFBSMixin, _gradientMixin, GraphFilterFBSParallelWithGradient ):
+
+#     def __init__( self, *args, **kwargs ):
+#         assert 0, 'Not ready for this yet'

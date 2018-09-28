@@ -139,11 +139,7 @@ def nonFBSMultiplyTerms( terms ):
     if( total_elts > 1e8 ):
         assert 0, 'Don\'t do this on a cpu!  Too many terms: %d'%( int( total_elts ) )
 
-    # Build a meshgrid out of each of the terms over the right axes
-    # and sum.  Doing it this way because np.einsum doesn't work
-    # for matrix multiplication in log space - we can't do np.einsum
-    # but add instead of multiply over indices
-
+    # Basically np.einsum in log space
     ans = np.zeros( shape )
     for ax, term in zip( axes, terms ):
 
@@ -225,10 +221,7 @@ def multiplyTerms( terms ):
     if( total_elts > 1e8 ):
         assert 0, 'Don\'t do this on a cpu!  Too many terms: %d'%( int( total_elts ) )
 
-    # Build a meshgrid out of each of the terms over the right axes
-    # and sum.  Doing it this way because np.einsum doesn't work
-    # for matrix multiplication in log space - we can't do np.einsum
-    # but add instead of multiply over indices
+    # Basically np.einsum in log space
     ans = np.zeros( shape )
     for ax, term in zip( axes, terms ):
 
@@ -310,6 +303,8 @@ def extendAxes( term, target_axis, max_dim ):
 def aWork( full_n_parents, u, vs, order ):
     term = multiplyTerms( terms=( u, *vs ) )
     return extendAxes( term, order, full_n_parents )
+
+######################################################################
 
 def bWorkFBS( transition, emission ):
     return multiplyTerms( terms=( transition, emission ) )
@@ -1074,3 +1069,24 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         # data = [ self.jointParentChildLocalInfo( node, U, V ) for node in non_roots ]
         joints = self.u_filter_process_pool.map( conditionalParentChildSingleNode, data )
         return itertools.chain( zip( non_roots, joints ), self.nodeSmoothed( U, V, roots ) )
+
+    ######################################################################
+
+    def emissionPotentialGradients( self, U, V, nodes ):
+        # This is actually really easy!
+
+        grads = []
+
+        for node in nodes:
+
+            node_data = self.nodeJointLocalInfo( node, U, V )
+            joint = nodeJointSingleNode( node_data )
+            log_z = nonFBSIntegrate( joint, axes=range( joint.ndim ) )
+
+            grad = np.exp( joint - log_z )
+            grads.append( ( node, grad ) )
+
+        return grads
+
+
+

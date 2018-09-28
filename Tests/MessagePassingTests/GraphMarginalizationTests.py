@@ -179,6 +179,21 @@ class MarginalizationTester():
 
     #################################################
 
+    def gradients( self ):
+        initial_dist, transition_dists, emission_dist = self.generateDists()
+        graphs = self.graphs
+
+        msg = self.msg
+        msg.updateParams( initial_dist, transition_dists, emission_dist, graphs )
+        msg.draw()
+        U, V = msg.filter()
+
+        gradients = msg.emissionPotentialGradients( U, V, msg.nodes )
+        for node, grad in gradients:
+            print( 'node', node, 'grad', grad )
+
+    #################################################
+
     def run( self ):
         initial_dist, transition_dists, emission_dist = self.generateDists()
         graphs = self.graphs
@@ -481,22 +496,25 @@ def testSpeed():
     groups = [ 0, 1, 2 ]
     d_latents = dict( zip( groups, [ 2, 3, 4 ] ) )
 
-    regular = MarginalizationTesterFBS( graphs, d_latent, d_obs, measurements, random_latent_states=True )
-    start_regular = time.time()
-    regular.timeFilter()
-    end_regular = time.time()
+    # regular = MarginalizationTesterFBS( graphs, d_latent, d_obs, measurements, random_latent_states=True )
+    # start_regular = time.time()
+    # regular.run()
+    # end_regular = time.time()
 
-    parallel = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements, random_latent_states=True )
-    start_parallel = time.time()
-    parallel.run()
-    end_parallel = time.time()
+    # parallel = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements, random_latent_states=True )
+    # start_parallel = time.time()
+    # parallel.run()
+    # end_parallel = time.time()
 
-    group_regular = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups, random_latent_states=True )
-    start_regular_group = time.time()
-    group_regular.timeFilter()
-    end_regular_group = time.time()
+    # group_regular = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups, random_latent_states=True )
+    # start_regular_group = time.time()
+    # group_regular.run()
+    # end_regular_group = time.time()
 
     group_parallel = MarginalizationTesterGroupFBSParallel( graphs, d_latents, d_obs, measurements, groups, random_latent_states=True )
+    group_parallel.gradients()
+    assert 0
+
     start_parallel_group = time.time()
     group_parallel.run()
     end_parallel_group = time.time()

@@ -118,7 +118,7 @@ class CategoricalHMM( MessagePasser ):
     ######################################################################
 
     def multiplyTerms( self, terms ):
-        return np.add.reduce( terms  )
+        return np.add.reduce( terms )
 
     ######################################################################
 
@@ -202,6 +202,96 @@ class CategoricalHMM( MessagePasser ):
     @classmethod
     def log_marginalFromAlphaBeta( cls, alpha, beta ):
         return np.logaddexp.reduce( alpha + beta )
+
+    ######################################################################
+
+    def filterAndGradient( self ):
+
+        # Code from workbook.  Here just for the sake of saving it
+        def base():
+            return pi0 + L[ 0 ]
+
+        def forward( pi, alpha, L ):
+            return logsumexp( alpha[ :, None ] + pi.T, axis=0 ) + L
+
+        def baseGrad( dpi ):
+            val = pi0 + L[ 0 ] + pi
+            val -= np.logaddexp.reduce( val, axis=1 )[ :, None ]
+            return np.einsum( 'ijkl,ij->ikl', dpi, np.exp( val ) )
+
+        def forwardGrad( a, d_a ):
+            val = a + pi
+            val -= np.logaddexp.reduce( val, axis=1 )[ :, None ]
+            return np.einsum( 'ijkl,ij->ikl', d_a, np.exp( val ) )
+
+        def logZ( vals ):
+            return np.logaddexp.reduce( vals )
+
+        def logZGrad( vals, log_z, derivs ):
+            return np.sum( np.exp( vals - log_z )[ :, None, None ] * derivs, axis=0 )
+
+        def dLogZdPi( pi ):
+            ps = np.array( [ autograd.jacobian( lambda p: p[ i, : ] )( pi ) for i in range( 4 ) ] )
+
+            vals = base()
+            derivs = baseGrad( ps )
+
+            T = 10
+            for t in range( 1, T - 1 ):
+                vals = forward( pi, vals, L[ t ] )
+                derivs = forwardGrad( vals, derivs + ps )
+
+            vals = forward( pi, vals, L[ T - 1 ] )
+            log_z = logZ( vals )
+            return logZGrad( vals, log_z, derivs )
+
+
+        # Code for derivative w.r.t. L (when we have calculated the potentials for each data point)
+        def base():
+            return pi0 + L[ 0 ]
+
+        def forward( pi, alpha, L ):
+            return logsumexp( alpha[ :, None ] + pi.T, axis=0 ) + L
+
+        def logZ( vals ):
+            return np.logaddexp.reduce( vals )
+
+        def dLogZdL( L ):
+            T = 10
+            alphas = np.zeros( ( 10, 4 ) )
+            alphas[ 0 ] = base()
+            for t in range( 1, T ):
+                alphas[ t ] = forward( pi, alphas[ t - 1 ], L[ t ] )
+            log_z = logZ( alphas[ -1 ] )
+
+            derivs = np.zeros( ( T, 4 ) )
+            derivs[ -1, : ] = np.exp( alphas[ -1 ] - log_z )
+
+            for t in range( T-1, 0, -1 ):
+                tmp = alphas[ t - 1 ] + pi
+                tmp -= np.logaddexp.reduce( tmp, axis=1 )[ :, None ]
+                derivs[ t - 1 ] = np.sum( derivs[ t ][ :, None ] * np.exp( tmp ), axis=0 )
+
+            return derivs
+
+        # This is even easier!!!!!!!!!!
+        def forward():
+            alphas = np.zeros( ( T, 4 ) )
+            alphas[ 0 ] = pi0 + L[ 0 ]
+            for t in range( 1, T ):
+                alphas[ t ] = np.logaddexp.reduce( alphas[ t - 1 ][ :, None ] + pi.T, axis=0 ) + L[ t ]
+            return alphas
+        def backward():
+            betas = np.zeros( ( T, 4 ) )
+            for t in reversed( range( 0, T-1 ) ):
+                betas[ t ] = np.logaddexp.reduce( betas[ t + 1 ] + pi.T + L[ t + 1 ], axis=1 )
+            return betas
+        alphas = forward()
+        betas = ()
+        log_z = np.logaddexp.reduce( alphas[ -1 ] )
+        for t in range( 0, T ):
+            val = np.exp( alphas[ t ] + betas[ t ] - log_z )
+            print( val )
 
 #########################################################################################
 
