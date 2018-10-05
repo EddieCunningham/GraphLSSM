@@ -2,13 +2,17 @@ from GenModels.GM.States.GraphicalMessagePassing import DataGraph, GroupGraph, G
 import numpy as np
 from functools import reduce
 from scipy.sparse import coo_matrix
-from collections import Iterable
+from collections import Iterable, namedtuple
 from GenModels.GM.Utility import fbsData
 import copy
 
 __all__ = [ 'Pedigree',
             'PedigreeSexMatters',
             'setGraphRootStates' ]
+
+######################################################################
+
+Person = namedtuple( 'Person', [ 'id', 'sex', 'affected' ] )
 
 ######################################################################
 
@@ -35,6 +39,19 @@ class _pedigreeMixin():
 
     def useSingleCarrierRoot( self, ip_type ):
         setGraphRootStates( self, ip_type )
+
+    @property
+    def people( self ):
+        if( hasattr( self, '_people' ) == False ):
+            self._people = []
+            for node in self.nodes:
+                sex = self.attrs[ node ][ 'sex' ]
+                affected = self.attrs[ node ][ 'affected' ]
+                person = Person( node, sex, affected )
+                self._people.append( person )
+
+        return self._people
+
 
     def toNetworkX( self ):
         graph = super().toNetworkX()
