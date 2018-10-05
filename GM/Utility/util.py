@@ -5,6 +5,7 @@ import autograd
 from scipy.special import digamma
 from functools import partial
 from tqdm import tqdm
+from recordclass import recordclass
 
 __all__ = [ 'multigammalnDerivative',
             'invPsd',
@@ -22,18 +23,17 @@ __all__ = [ 'multigammalnDerivative',
 
 ##########################################################################
 
-class fbsData():
-    def __init__( self, data, fbs_axis ):
-        self.data = data
-        self.fbs_axis = fbs_axis
-
-    @property
-    def size( self ):
-        return self.data.size
+# Want to make this as simple as possible so that it works with autograd
+FbsData = recordclass( 'FeedbackSetRecord', [ 'data', 'fbs_axis' ] )
+class fbsData( FbsData ):
 
     @property
     def shape( self ):
         return self.data.shape
+
+    @property
+    def size( self ):
+        return self.data.size
 
     @property
     def ndim( self ):
@@ -44,11 +44,33 @@ class fbsData():
         dimDiff = self.data.ndim - newData.ndim
         return fbsData( newData, self.fbs_axis - dimDiff )
 
-    def __getitem__( self, key ):
-        return self.data[ key ]
+# class fbsData():
+#     def __init__( self, data, fbs_axis ):
+#         self.data = data
+#         self.fbs_axis = fbs_axis
 
-    def __setitem__( self, idx, value ):
-        self.data[ idx ] = value
+#     @property
+#     def size( self ):
+#         return self.data.size
+
+#     @property
+#     def shape( self ):
+#         return self.data.shape
+
+#     @property
+#     def ndim( self ):
+#         return self.data.ndim
+
+#     def squeeze( self, axis=None ):
+#         newData = self.data.squeeze( axis=axis )
+#         dimDiff = self.data.ndim - newData.ndim
+#         return fbsData( newData, self.fbs_axis - dimDiff )
+
+#     # def __getitem__( self, key ):
+#     #     return self.data[ key ]
+
+#     # def __setitem__( self, idx, value ):
+#     #     self.data[ idx ] = value
 
 ##########################################################################
 

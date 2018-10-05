@@ -5,6 +5,8 @@ from GenModels.GM.Models.DiscreteGraphModels import *
 import time
 from collections import Iterable
 import itertools
+from autograd.extend import primitive, defvjp
+from autograd import jacobian as jac
 
 __all__ = [ 'graphMarginalizationTest' ]
 
@@ -179,21 +181,6 @@ class MarginalizationTester():
 
     #################################################
 
-    def gradients( self ):
-        initial_dist, transition_dists, emission_dist = self.generateDists()
-        graphs = self.graphs
-
-        msg = self.msg
-        msg.updateParams( initial_dist, transition_dists, emission_dist, graphs )
-        msg.draw()
-        U, V = msg.filter()
-
-        gradients = msg.emissionPotentialGradients( U, V, msg.nodes )
-        for node, grad in gradients:
-            print( 'node', node, 'grad', grad )
-
-    #################################################
-
     def run( self ):
         initial_dist, transition_dists, emission_dist = self.generateDists()
         graphs = self.graphs
@@ -285,6 +272,36 @@ class MarginalizationTesterFBSParallel( MarginalizationTesterFBS ):
 
 ##################################################################################################
 
+class MarginalizationTesterFBSSVAE( MarginalizationTesterFBSParallel ):
+
+    @property
+    def msg( self ):
+        msg = GraphDiscreteSVAE()
+        svae_params = { 'W': np.random.random( ( self.d_latent, self.d_obs ) ) }
+        msg.setEmissionParams( svae_params )
+        return msg
+
+    def gradTest( self ):
+        initial_dist, transition_dists, emission_dist = self.generateDists()
+        graphs = self.graphs
+
+        def blah( W ):
+            msg = GraphDiscreteSVAE()
+            svae_params = { 'W': W }
+            msg.setEmissionParams( svae_params )
+            msg.updateParams( initial_dist, transition_dists, emission_dist, graphs )
+            U, V = msg.filter()
+
+            marginal = msg.marginalProb( U, V )
+            return marginal
+
+        W = np.random.random( ( self.d_latent, self.d_obs ) )
+        grad = jac( blah )( W )
+        print( grad )
+        assert 0
+
+##################################################################################################
+
 class MarginalizationTesterFBSGroup( MarginalizationTesterFBS ):
 
     def __init__( self, graphs, d_latents=[ 2, 3, 4 ], d_obs=4, measurements=2, groups=3, random_latent_states=False ):
@@ -330,6 +347,35 @@ class MarginalizationTesterGroupFBSParallel( MarginalizationTesterFBSGroup ):
     @property
     def msg( self ):
         return GraphHMMFBSGroupParallel()
+
+##################################################################################################
+
+class MarginalizationTesterGroupSVAE( MarginalizationTesterFBSGroup ):
+
+    @property
+    def msg( self ):
+        msg = GraphDiscreteGroupSVAE()
+        svae_params = dict( [ ( group, { 'W': np.random.random( ( self.d_latents[ group ], self.d_obs ) ) } ) for group in self.groups ] )
+        msg.setEmissionParams( svae_params )
+        return msg
+
+    def gradTest( self ):
+        initial_dist, transition_dists, emission_dist = self.generateDists()
+        graphs = self.graphs
+
+        def blah( W ):
+            msg = GraphDiscreteSVAE()
+            svae_params = dict( [ ( group, { 'W': np.random.random( ( self.d_latents[ group ], self.d_obs ) ) } ) for group in self.groups ] )
+            msg.setEmissionParams( svae_params )
+            msg.updateParams( initial_dist, transition_dists, emission_dist, graphs )
+            U, V = msg.filter()
+
+            marginal = msg.marginalProb( U, V )
+            return marginal
+
+        W = np.random.random( ( self.d_latent, self.d_obs ) )
+        grad = jac( blah )( W )
+        print( grad )
 
 ##################################################################################################
 
@@ -402,7 +448,7 @@ def testGraphHMMParallel():
     d_obs = 5
     measurements = 2
 
-    tester = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements, random_latent_states=True )
+    tester = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements, random_latent_states=False )
     tester.run()
 
 ##################################################################################################
@@ -433,7 +479,7 @@ def testGraphGroupHMM():
     groups = [ 0, 1, 2 ]
     d_latents = dict( zip( groups, [ 2, 3, 4 ] ) )
 
-    tester = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups, random_latent_states=True )
+    tester = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups, random_latent_states=False )
     tester.run()
 
 ##################################################################################################
@@ -464,7 +510,7 @@ def testGraphGroupHMMParallel():
     groups = [ 0, 1, 2 ]
     d_latents = dict( zip( groups, [ 2, 3, 4 ] ) )
 
-    tester = MarginalizationTesterGroupFBSParallel( graphs, d_latents, d_obs, measurements, groups, random_latent_states=True )
+    tester = MarginalizationTesterGroupFBSParallel( graphs, d_latents, d_obs, measurements, groups, random_latent_states=False )
     tester.run()
 
 ##################################################################################################
@@ -496,25 +542,28 @@ def testSpeed():
     groups = [ 0, 1, 2 ]
     d_latents = dict( zip( groups, [ 2, 3, 4 ] ) )
 
-    # regular = MarginalizationTesterFBS( graphs, d_latent, d_obs, measurements, random_latent_states=True )
-    # start_regular = time.time()
-    # regular.run()
-    # end_regular = time.time()
+    reg = MarginalizationTesterFBSSVAE( graphs, d_latent, d_obs, measurements, random_latent_states=False )
+    reg.gradTest()
 
-    # parallel = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements, random_latent_states=True )
-    # start_parallel = time.time()
-    # parallel.run()
-    # end_parallel = time.time()
-
-    # group_regular = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups, random_latent_states=True )
-    # start_regular_group = time.time()
-    # group_regular.run()
-    # end_regular_group = time.time()
-
-    group_parallel = MarginalizationTesterGroupFBSParallel( graphs, d_latents, d_obs, measurements, groups, random_latent_states=True )
-    group_parallel.gradients()
     assert 0
 
+
+    regular = MarginalizationTesterFBS( graphs, d_latent, d_obs, measurements, random_latent_states=False )
+    start_regular = time.time()
+    regular.run()
+    end_regular = time.time()
+
+    parallel = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements, random_latent_states=False )
+    start_parallel = time.time()
+    parallel.run()
+    end_parallel = time.time()
+
+    group_regular = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups, random_latent_states=False )
+    start_regular_group = time.time()
+    group_regular.run()
+    end_regular_group = time.time()
+
+    group_parallel = MarginalizationTesterGroupFBSParallel( graphs, d_latents, d_obs, measurements, groups, random_latent_states=False )
     start_parallel_group = time.time()
     group_parallel.run()
     end_parallel_group = time.time()

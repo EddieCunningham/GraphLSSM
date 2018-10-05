@@ -1,7 +1,8 @@
 from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import *
 from GenModels.GM.States.GraphicalMessagePassing.GraphFilterBase import *
 from GenModels.GM.States.GraphicalMessagePassing.GraphFilterParallel import *
-import numpy as np
+# import numpy as np
+import autograd.numpy as np
 from functools import partial
 from scipy.sparse import coo_matrix
 from collections import Iterable
@@ -12,7 +13,9 @@ __all__ = [ 'GraphHMM',
             'GraphHMMFBS',
             'GraphHMMFBSParallel',
             'GraphHMMFBSGroup',
-            'GraphHMMFBSGroupParallel' ]
+            'GraphHMMFBSGroupParallel',
+            'GraphDiscreteSVAE',
+            'GraphDiscreteGroupSVAE'  ]
 
 class _graphHMMMixin():
 
@@ -303,6 +306,16 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
 
     ######################################################################
 
+    def assignV( self, V, node, val, keep_shape=False ):
+        V_row, V_col, V_data = V
+        N = V_row.shape[ 0 ]
+        VIndices = np.where( np.in1d( V_row, node ) )[ 0 ]
+        for i in VIndices:
+            if( keep_shape is False ):
+                V_data[ i ].data = val
+            else:
+                V_data[ i ].data[ : ] = val
+
     def genFilterProbs( self ):
 
         # Initialize U and V
@@ -318,7 +331,7 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
 
         # Invalidate all data elements
         for node in self.partial_graph.nodes:
-            U[ node ][ : ] = np.nan
+            U[ node ].data[ : ] = np.nan
             self.assignV( ( V_row, V_col, V_data ), node, np.nan, keep_shape=True )
 
         return U, ( V_row, V_col, V_data )
@@ -547,7 +560,7 @@ class _graphHMMGroupFBSMixin():
 
         # Invalidate all data elements
         for node in self.partial_graph.nodes:
-            U[ node ][ : ] = np.nan
+            U[ node ].data[ : ] = np.nan
             self.assignV( ( V_row, V_col, V_data ), node, np.nan, keep_shape=True )
 
         return U, ( V_row, V_col, V_data )
@@ -581,11 +594,13 @@ class _graphHMMGroupFBSMixin():
 
         # Need to store the group assignments for each node
         self.node_groups = {}
+        self.all_groups = set()
 
         total_nodes = 0
         for group_graph, fbs in group_graphs:
             for node, group in group_graph.groups.items():
                 self.node_groups[ total_nodes + node ] = group
+                self.all_groups.add( group )
 
         super().updateGraphs( group_graphs )
 
@@ -798,50 +813,77 @@ class GraphHMMFBSGroupParallel( _graphHMMGroupFBSMixin, GraphHMMFBSParallel ):
     pass
 
 ######################################################################
+# SVAE Stuff
+######################################################################
 
-# class _gradientMixin():
+class _graphSVAEMixin():
 
-#     # These gradients will be w.r.t. the node potentials (Emission)
-#     # In the future, will probably extend to family potentials (Transition)
+    def checkSVAEParams( self, svae_params ):
+        return
+        W = svae_params[ 'W' ]
+        assert W.shape == self.emission_dist.shape
 
-#     def genGradients( self ):
+    def funkyEmission( self, y ):
+        # Do some cool-ass shit
+        y_one_hot = np.zeros( ( y.shape[ 0 ], self.emission_dist.shape[ 1 ] ) )
+        y_one_hot[ np.arange( y.shape[ 0 ] ), y ] = 1.0
+        W = self.svae_params[ 'W' ]
+        return np.einsum( 'ij,tj->i', W, y_one_hot )
 
-#         # Need to take the gradient w.r.t. each
+    def emissionProb( self, node, is_partial_graph_index=False ):
+        # Access the emission matrix with the full graph indices
+        node_full = self.partialGraphIndexToFullGraphIndex( node ) if is_partial_graph_index == True else node
+        y = self.ys[ int( node_full ) ]
+        if( not np.any( np.isnan( y ) ) ):
+            prob = self.funkyEmission( y )
+            # prob = self.L[ node_full ].reshape( ( -1, ) )
+        else:
+            prob = np.zeros_like( self.L[ node_full ] ).reshape( ( -1, ) )
 
-#         # Initialize U and V
-#         U = []
-#         for node in self.nodes:
-#             U.append( np.zeros( ( self.K, ) ) )
+        if( self.inFeedbackSet( node_full, is_partial_graph_index=False ) ):
+            return fbsData( prob, 0 )
+        return fbsData( prob, -1 )
 
-#         V_row = self.pmask.row
-#         V_col = self.pmask.col
-#         V_data = []
-#         for node in self.pmask.row:
-#             V_data.append( np.zeros( ( self.K, ) ) )
+######################################################################
 
-#         # Invalidate all data elements
-#         for node in self.nodes:
-#             U[ node ][ : ] = np.nan
-#             self.assignV( ( V_row, V_col, V_data ), node, np.nan, keep_shape=True )
+class _graphGroupSVAEMixin():
 
-#         return U, ( V_row, V_col, V_data )
+    def checkSVAEParams( self, svae_params ):
+        for group in self.all_groups:
+            W = svae_params[ group ][ 'W' ]
+            assert W.shape == self.emission_dist[ group ].shape
 
-#     ######################################################################
+    def funkyEmission( self, y, group ):
+        # Do some cool-ass shit
+        y_one_hot = np.zeros( ( y.shape[ 0 ], self.emission_dists[ group ].shape[ 1 ] ) )
+        y_one_hot[ np.arange( y.shape[ 0 ] ), y ] = 1.0
+        W = self.svae_params[ group ][ 'W' ]
+        return np.einsum( 'ij,tj->i', W, y_one_hot )
 
-#     def updateUGrad( self, nodes, new_u_grad, U_grad ):
-#         pass
+    def emissionProb( self, node, is_partial_graph_index=False ):
+        # Access the emission matrix with the full graph indices
+        node_full = self.partialGraphIndexToFullGraphIndex( node ) if is_partial_graph_index == True else node
 
-#     def updateVGrad( self, nodes, edges, new_v_grad, V_grad ):
-#         pass
+        group = self.node_groups[ int( node_full ) ]
+        y = self.ys[ int( node_full ) ]
 
-# ######################################################################
+        if( not np.any( np.isnan( y ) ) ):
+            prob = self.funkyEmission( y, group )
+            # prob = self.emission_dists[ group ][ :, y ].sum( axis=-1 )
+        else:
+            prob = np.zeros_like( self.emission_dists[ group ][ :, 0 ] )
 
-# class GraphHMMFBSGradientParallel( _graphHMMFBSMixin, _gradientMixin, GraphFilterFBSParallelWithGradient ):
-#     pass
+        if( self.inFeedbackSet( node_full, is_partial_graph_index=False ) ):
+            fbs_index = self.fbsIndex( node_full, is_partial_graph_index=False, within_graph=True )
+            for _ in range( fbs_index ):
+                prob = prob[ None ]
+            return fbsData( prob, 0 )
+        return fbsData( prob, -1 )
 
-# ######################################################################
+######################################################################
 
-# class GraphHMMFBSGradientGroupParallel( _graphHMMGroupFBSMixin, _gradientMixin, GraphFilterFBSParallelWithGradient ):
+class GraphDiscreteSVAE( _graphSVAEMixin, _graphHMMFBSMixin, GraphFilterFBSSVAE ):
+    pass
 
-#     def __init__( self, *args, **kwargs ):
-#         assert 0, 'Not ready for this yet'
+class GraphDiscreteGroupSVAE( _graphHMMGroupFBSMixin, _graphGroupSVAEMixin, GraphFilterFBSSVAE ):
+    pass

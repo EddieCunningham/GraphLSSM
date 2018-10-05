@@ -1,6 +1,7 @@
 import itertools
 from functools import partial, lru_cache
-import numpy as np
+# import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Utility import fbsData
 from collections import namedtuple, Iterable
 from .GraphFilterBase import GraphFilterFBS
@@ -8,10 +9,8 @@ import joblib
 from multiprocessing import Pool, cpu_count
 from multiprocessing.pool import ThreadPool
 from threading import Lock
-# NUMBA ISN'T WORKING!!!
-# import numba
 
-__all__ = [ 'GraphFilterFBSParallel' ]
+__all__ = [ 'GraphFilterFBSParallel', 'GraphFilterFBSSVAE' ]
 
 ######################################################################
 
@@ -115,6 +114,19 @@ JointParentChildInFBSData = namedtuple( 'JointParentChildInFBSData', [ 'in_fbs',
                                                                        'parent_not_in_fbs_order',
                                                                        'parent_in_fbs_order' ] )
 
+######################################################################
+
+from autograd.extend import primitive, defvjp
+
+def logsumexp( v, axis=0 ):
+    max_v = np.max( v )
+    return np.log( np.sum( np.exp( v - max_v ), axis=axis ) ) + max_v
+
+def logsumexp_vjp( ans, x ):
+    x_shape = x.shape
+    return lambda g: np.full( x_shape, g ) * np.exp( x - np.full( x_shape, ans ) )
+
+defvjp( logsumexp, logsumexp_vjp )
 
 ######################################################################
 
@@ -135,7 +147,7 @@ def nonFBSMultiplyTerms( terms ):
     for ax, term in zip( axes, terms ):
         shape[ np.array( ax ) ] = term.squeeze().shape
 
-    total_elts = shape.prod()
+    total_elts = np.prod( shape )
     if( total_elts > 1e8 ):
         assert 0, 'Don\'t do this on a cpu!  Too many terms: %d'%( int( total_elts ) )
 
@@ -146,7 +158,8 @@ def nonFBSMultiplyTerms( terms ):
         for _ in range( ndim - term.ndim ):
             term = term[ ..., None ]
 
-        ans += np.broadcast_to( term, ans.shape )
+        ans += term
+        # ans += np.broadcast_to( term, ans.shape )
 
     return ans
 
@@ -179,6 +192,7 @@ def multiplyTerms( terms ):
 
     # This parallel version expects there to always be fbs data
     if( fbs_data_count == 0 ):
+        print( terms )
         assert 0
 
     # Remove the empty terms
@@ -217,7 +231,7 @@ def multiplyTerms( terms ):
     for ax, term in zip( axes, terms ):
         shape[ np.array( ax ) ] = term.squeeze().shape
 
-    total_elts = shape.prod()
+    total_elts = np.prod( shape )
     if( total_elts > 1e8 ):
         assert 0, 'Don\'t do this on a cpu!  Too many terms: %d'%( int( total_elts ) )
 
@@ -228,7 +242,8 @@ def multiplyTerms( terms ):
         for _ in range( ndim - term.ndim ):
             term = term[ ..., None ]
 
-        ans += np.broadcast_to( term, ans.shape )
+        ans += term
+        # ans += np.broadcast_to( term, ans.shape )
 
     return fbsData( ans, max_fbs_axis )
 
@@ -246,7 +261,7 @@ def nonFBSIntegrate( integrand, axes ):
     axes[ axes < 0 ] = integrand.ndim + axes[ axes < 0 ]
     adjusted_axes = np.array( sorted( axes ) ) - np.arange( len( axes ) )
     for ax in adjusted_axes:
-        integrand = np.logaddexp.reduce( integrand, axis=ax )
+        integrand = logsumexp( integrand, axis=ax )
 
     return integrand
 
@@ -270,7 +285,7 @@ def integrate( integrand, axes ):
     axes[ axes < 0 ] = integrand.ndim + axes[ axes < 0 ]
     adjusted_axes = np.array( sorted( axes ) ) - np.arange( len( axes ) )
     for ax in adjusted_axes:
-        integrand = np.logaddexp.reduce( integrand, axis=ax )
+        integrand = logsumexp( integrand, axis=ax )
 
     if( fbs_axis > -1 ):
         fbs_axis -= len( adjusted_axes )
@@ -705,12 +720,14 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
     def lock( self ):
 
         if( self.u_filter_result is not None ):
-            new_u = self.u_filter_result.get()
+            # new_u = self.u_filter_result.get()
+            new_u = self.u_filter_result
             self.updateU( self.last_u_nodes, new_u, self.last_u )
             self.u_filter_result = None
 
         if( self.v_filter_result is not None ):
-            new_v = self.v_filter_result.get()
+            # new_v = self.v_filter_result.get()
+            new_v = self.v_filter_result
             self.updateV( self.last_v_nodes, self.last_v_edges, new_v, self.last_v )
             self.v_filter_result = None
 
@@ -789,7 +806,8 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
             data = [ self.uLocalInfo( node, U, V ) for node in nodes ]
             work = uWork
 
-        self.u_filter_result = self.u_filter_process_pool.map_async( work, data )
+        self.u_filter_result = [ work( d ) for d in data ]
+        # self.u_filter_result = self.u_filter_process_pool.map_async( work, data )
 
         self.last_u_nodes = nodes
         self.last_u = U
@@ -845,9 +863,11 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
             return
 
         # Processing can't pickle this class
-        data = self.data_thread_pool.starmap( self.vLocalInfo, zip( *nodes_and_edges, itertools.repeat( U ), itertools.repeat( V ) ) )
-        # data = [ self.vLocalInfo( node, edge, U, V ) for node, edge in zip( *nodes_and_edges ) ]
-        self.v_filter_result = self.v_filter_process_pool.map_async( vWork, data )
+        # data = self.data_thread_pool.starmap( self.vLocalInfo, zip( *nodes_and_edges, itertools.repeat( U ), itertools.repeat( V ) ) )
+        data = [ self.vLocalInfo( node, edge, U, V ) for node, edge in zip( *nodes_and_edges ) ]
+
+        self.v_filter_result = [ vWork( d ) for d in data ]
+        # self.v_filter_result = self.v_filter_process_pool.map_async( vWork, data )
 
         nodes, edges = nodes_and_edges
         self.last_v_nodes = nodes
@@ -1070,11 +1090,32 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         joints = self.u_filter_process_pool.map( conditionalParentChildSingleNode, data )
         return itertools.chain( zip( non_roots, joints ), self.nodeSmoothed( U, V, roots ) )
 
+######################################################################
+######################################################################
+######################################################################
+
+class GraphFilterFBSSVAE( GraphFilterFBSParallel ):
+
+    def setEmissionParams( self, svae_params ):
+        assert isinstance( svae_params, dict )
+        self.checkSVAEParams( svae_params )
+        self.svae_params = svae_params
+
+    ######################################################################
+    # Don't really want to cache these here
+
+    def clearCache( self ):
+        super( GraphFilterFBSParallel, self ).clearCache()
+
+    def cachedTransition( self, node ):
+        return self.transitionProb( node, is_partial_graph_index=True )
+
+    def cachedEmission( self, node ):
+        return self.emissionProb( node, is_partial_graph_index=True )
+
     ######################################################################
 
     def emissionPotentialGradients( self, U, V, nodes ):
-        # This is actually really easy!
-
         grads = []
 
         for node in nodes:
@@ -1087,6 +1128,3 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
             grads.append( ( node, grad ) )
 
         return grads
-
-
-
