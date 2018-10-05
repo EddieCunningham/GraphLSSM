@@ -17,54 +17,9 @@ from bokeh.io import show, output_notebook
 from bokeh.models.widgets import CheckboxButtonGroup, TableColumn, DataTable, Button, RadioButtonGroup
 
 from GenModels.research.Models import *
-from GenModels.research.PedigreeWrappers import setGraphRootStates
+from GenModels.research.PedigreeWrappers import Pedigree, PedigreeSexMatters
 
-__all__ = [ 'pedigreeRenderers', 'genHintonDiagram', 'bokehPlot' ]
-
-######################################################################
-
-def genHintonDiagram( weights, width_height=200 ):
-
-    def hintonSizes( weights ):
-        max_size = 2**np.ceil( np.log( np.abs( weights ).max() ) / np.log( 2 ) )
-        return np.sqrt( np.abs( weights ) / max_size ), max_size
-    sizes, max_size = hintonSizes( weights )
-
-    last_axes = weights.shape[ -2: ]
-    scale = width_height / ( 1 + last_axes[ -1 ] )
-
-    width = int( width_height )
-    height = int( last_axes[ 0 ] / last_axes[ 1 ] * width_height )
-
-    if( weights.ndim > 2 ):
-        all_diagrams = np.empty( weights.shape[ :-2 ], dtype=object )
-    else:
-        all_diagrams = np.empty( 1, dtype=object )
-
-    for shape in itertools.product( *[ range( 1, s + 1 ) for s in weights.shape[ :-2 ] ] ):
-
-        hinton = figure( width=width, height=height, x_range=Range1d( -1, last_axes[ -1 ] + 1 ), y_range=Range1d( -1,  last_axes[ -2 ] + 1 ), toolbar_location=None )
-        hinton.grid.grid_line_color = None
-        hinton.background_fill_color = 'black'
-        hinton.axis.visible = False
-
-        ys, xs = zip( *itertools.product( np.linspace( last_axes[ -2 ], 0, last_axes[ -2 ] ), np.linspace( 0,  last_axes[ -1 ], last_axes[ -1 ] ) ) )
-        size_selector = tuple( [ ( s - 1, ) for s in shape ] )
-        current_sizes = sizes[ size_selector ].ravel()
-        current_weights = weights[ size_selector ].ravel()
-        if( current_sizes.size == 0 ):
-            current_sizes = np.copy( sizes.ravel() )
-
-        ds = ColumnDataSource( data={ 'xs':xs, 'ys':ys, 'sizes': current_sizes*scale, 'weights': current_weights } )
-        hinton.square( 'xs', 'ys', source=ds, color='white', size='sizes' )
-
-        hover = HoverTool( tooltips=[ ( 'Weight', '@weights' ) ] )
-        hinton.add_tools( hover )
-
-
-        all_diagrams[ tuple( [ [ ( s-1, ) ] for s in shape ] ) ] = hinton
-
-    return layout( all_diagrams.tolist() )
+__all__ = [ 'pedigreeRenderers', 'bokehPlot' ]
 
 ######################################################################
 
@@ -143,9 +98,8 @@ class BokehState():
         for node, pls in pedigree.possible_latent_states.items():
             self.pls[ node ] = np.array( pls )
 
-        self.ad_params = AutosomalParametersEM( *ad_priors )
-        self.ar_params = AutosomalParametersEM( *ar_priors )
-        self.xl_params = XLinkedParametersEM( *xl_priors )
+        self.root_strength = 1000000000
+        self.strength = 1000000
 
         self.marginal = -1
         self.probs = self.filter()
@@ -155,24 +109,7 @@ class BokehState():
 
         self.cmap = get_cmap( 'Blues' )
 
-    def resampleParameters( self ):
-        if( self.inheritance_pattern == 'AD' ):
-            self.ad_params.initial_dist.resample()
-            self.ad_params.transition_dist.resample()
-            self.ad_params.emission_dist.resample()
-        elif( self.inheritance_pattern == 'AR' ):
-            self.ar_params.initial_dist.resample()
-            self.ar_params.transition_dist.resample()
-            self.ar_params.emission_dist.resample()
-        elif( self.inheritance_pattern == 'XL' ):
-            for d in self.xl_params.initial_dists.values():
-                d.resample()
-            for d in self.xl_params.transition_dists.values():
-                d.resample()
-            for d in self.xl_params.emission_dists.values():
-                d.resample()
-
-        self.probs = self.filter()
+    ################################################
 
     def changeInheritancePattern( self, ip ):
         self.inheritance_pattern = ip
@@ -181,6 +118,8 @@ class BokehState():
             self.pls[ node ] = np.array( pls )
 
         self.probs = self.filter()
+
+    ################################################
 
     def probOfBeingCarrier( self, node, prob ):
         if( self.inheritance_pattern != 'XL' ):
@@ -191,6 +130,8 @@ class BokehState():
         if( self.sex[ node ] == 'male' ):
             return prob[ 0 ]
         return prob[ [ 0, 1, 3 ] ].sum()
+
+    ################################################
 
     def getColor( self, node ):
         probs = self.probs[ node ]
@@ -208,30 +149,47 @@ class BokehState():
             return 5
         return 0.1
 
+    ################################################
+
     def filter( self ):
-        pedigree_copy = copy.deepcopy( self.pedigree )
+
+        graph = copy.deepcopy( self.pedigree )
         for n, possible_latent_states in self.pls.items():
-            pedigree_copy.setPossibleLatentStates( int( n ), possible_latent_states )
+            graph.setPossibleLatentStates( int( n ), possible_latent_states )
+
+        graph_sex_doesnt_matters = graph if isinstance( graph, Pedigree ) else Pedigree.fromPedigreeSexMatters( graph )
+        graph_sex_matters = graph if isinstance( graph, PedigreeSexMatters ) else PedigreeSexMatters.fromPedigree( graph )
+        graph_sex_matters = copy.deepcopy( graph_sex_matters )
 
         if( self.inheritance_pattern == 'AD' ):
-            model = AutosomalDominant( [ ( pedigree_copy, self.fbs ) ], params=self.ad_params, method='EM' )
+            model = AutosomalDominant( [ ( graph_sex_doesnt_matters, self.fbs ) ], root_strength=self.root_strength, prior_strength=self.strength, method='EM' )
         elif( self.inheritance_pattern == 'AR' ):
-            model = AutosomalRecessive( [ ( pedigree_copy, self.fbs ) ], params=self.ar_params, method='EM' )
+            model = AutosomalRecessive( [ ( graph_sex_doesnt_matters, self.fbs ) ], root_strength=self.root_strength, prior_strength=self.strength, method='EM' )
         elif( self.inheritance_pattern == 'XL' ):
-            model = XLinkedRecessive( [ ( pedigree_copy, self.fbs ) ], params=self.xl_params, method='EM' )
+            model = XLinkedRecessive( [ ( graph_sex_matters, self.fbs ) ], root_strength=self.root_strength, prior_strength=self.strength, method='EM' )
+
         node_smoothed, marginal = model.stateUpdate()
+        model.msg.cleanup()
         self.marginal = marginal
         return node_smoothed
+
+    ################################################
 
     def possibleLabels( self, node ):
         labels = self._getLabels( node, self.inheritance_pattern )
         return [ labels[ i ] for i in self.pls[ node ] ]
 
+    ################################################
+
     def selectNodeFromTable( self, node ):
         self.current_node = int( node )
 
+    ################################################
+
     def changePossibleLatentStates( self, node, new_pls ):
         self.pls[ node ] = np.array( new_pls, dtype=int )
+
+    ################################################
 
     def updateCurrentPossibleLatentStates( self, new_pls ):
 
@@ -240,6 +198,8 @@ class BokehState():
         self.pls[ self.current_node ] = np.array( new_pls, dtype=int )
         self.probs = self.filter()
         return True
+
+    ################################################
 
     def _getLabels( self, node, inheritance_pattern ):
         if( inheritance_pattern != 'XL' ):
@@ -255,6 +215,8 @@ class BokehState():
 
     def _getStates( self, node, inheritance_pattern ):
         return np.arange( len( self._getLabels( node, inheritance_pattern ) ), dtype=int )
+
+    ################################################
 
     @property
     def current_labels( self ):
@@ -421,33 +383,7 @@ def bokehPlot( doc, pedigree, fbs ):
 
     checkbox.on_change( 'active', updatePossibleStates )
 
-    # Add the transition hinton diagram
-    weights_a_trans, = bokeh_state.ad_params.transition_dist.params
-    weights_a_emiss, = bokeh_state.ad_params.emission_dist.params
-    hinton_a = [ genHintonDiagram( weights_a_trans ), genHintonDiagram( weights_a_emiss ) ]
-
-    # Button to resample the parameters
-    resample_button = Button( label='Resample parameters', button_type='success' )
-
-    def resampleParameters():
-        nonlocal bokeh_state
-
-        bokeh_state.resampleParameters()
-
-        male_data, female_data, unknown_data = pedigreeRenderers( bokeh_state, data_only=True )
-
-        male_renderer.node_renderer.data_source.data = male_data
-        female_renderer.node_renderer.data_source.data = female_data
-        unknown_renderer.node_renderer.data_source.data = unknown_data
-
-        updateTableData( bokeh_state, data_table )
-
-        pedigree_fig.title.text = 'log( Marginal ) = %5.3f'%( bokeh_state.marginal )
-
-    resample_button.on_click( resampleParameters )
-
-    node_specific = column( button_title, checkbox, data_table, ip_radio, resample_button )
-
-    doc.add_root( row( node_specific, pedigree_fig, *hinton_a ) )
+    node_specific = column( button_title, checkbox, data_table, ip_radio )
+    doc.add_root( row( node_specific, pedigree_fig ) )
 
     return doc
