@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Utility import *
 import string
 import tqdm
@@ -373,7 +373,7 @@ class ExponentialFam( Conjugate ):
         expected_stats = cls.expectedSufficientStats( nat_params=nat_params )
         log_partition = cls.log_partition( nat_params=nat_params )
 
-        return -sum( [ ( s * n ).sum() for s, n in zip( expected_stats, nat_params ) ] ) + log_partition
+        return -np.sum( [ np.sum( s * n ) for s, n in zip( expected_stats, nat_params ) ] ) + log_partition
 
     def ientropy( self ):
         if( self.standard_changed ):
@@ -425,6 +425,7 @@ class ExponentialFam( Conjugate ):
 
     @classmethod
     def KLDivergence( cls, params1=None, nat_params1=None, params2=None, nat_params2=None ):
+
         assert ( params1 is None ) ^ ( nat_params1 is None )
         assert ( params2 is None ) ^ ( nat_params2 is None )
         nat_params1 = nat_params1 if nat_params1 is not None else cls.standardToNat( *params1 )
@@ -438,7 +439,7 @@ class ExponentialFam( Conjugate ):
 
         ans = 0.0
         for n, p in zip( nat_diff, cls.log_partitionGradient( nat_params=nat_params1 ) ):
-            ans += ( n * p ).sum()
+            ans += np.sum( n * p )
 
         ans -= cls.log_partition( nat_params=nat_params1 )
         ans += cls.log_partition( nat_params=nat_params2 )
@@ -701,7 +702,7 @@ class ExponentialFam( Conjugate ):
 
         ans = 0.0
         for i, ( natParam, stat ) in enumerate( zip( nat_params, sufficientStats ) ):
-            ans += ( natParam * stat ).sum()
+            ans += np.sum( natParam * stat )
 
         if( log_partition is not None ):
             if( isinstance( log_partition, tuple ) ):
@@ -749,7 +750,7 @@ class TensorExponentialFam( ExponentialFam ):
 
         if( log_partition is not None ):
             if( isinstance( log_partition, tuple ) ):
-                ans -= sum( log_partition )
+                ans -= np.sum( log_partition )
             else:
                 ans -= log_partition
 

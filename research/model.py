@@ -1,6 +1,6 @@
 import random
 from time import gmtime, strftime
-import numpy as np
+import autograd.numpy as np
 import csv
 import ast
 import os

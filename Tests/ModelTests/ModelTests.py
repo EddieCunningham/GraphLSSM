@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Models import *
 from GenModels.GM.Distributions import *
 import time

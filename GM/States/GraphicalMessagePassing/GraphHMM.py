@@ -1,7 +1,7 @@
 from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import *
 from GenModels.GM.States.GraphicalMessagePassing.GraphFilterBase import *
 from GenModels.GM.States.GraphicalMessagePassing.GraphFilterParallel import *
-# import numpy as np
+# import autograd.numpy as np
 import autograd.numpy as np
 from functools import partial
 from scipy.sparse import coo_matrix
@@ -816,29 +816,55 @@ class GraphHMMFBSGroupParallel( _graphHMMGroupFBSMixin, GraphHMMFBSParallel ):
 # SVAE Stuff
 ######################################################################
 
-class _graphSVAEMixin():
+class GraphDiscreteSVAE( _graphHMMFBSMixin, GraphFilterFBSSVAE ):
 
-    def checkSVAEParams( self, svae_params ):
-        return
-        W = svae_params[ 'W' ]
-        assert W.shape == self.emission_dist.shape
+    def parameterCheck( self, log_initial_dist, log_transition_dist ):
+        K = log_initial_dist.shape[ 0 ]
+        assert log_initial_dist.ndim == 1
+        assert log_initial_dist.shape == ( K, )
+        for _transition_dist in log_transition_dist:
+            assert np.allclose( np.ones( K ), np.exp( _transition_dist ).sum( axis=-1 ) ), np.exp( _transition_dist ).sum( axis=-1 )
+        assert np.isclose( 1.0, np.exp( log_initial_dist ).sum() )
+        pis = set()
+        for dist in log_transition_dist:
+            ndim = dist.ndim
+            assert ndim not in pis
+            pis.add( ndim )
 
-    def funkyEmission( self, y ):
-        # Do some cool-ass shit
-        y_one_hot = np.zeros( ( y.shape[ 0 ], self.emission_dist.shape[ 1 ] ) )
-        y_one_hot[ np.arange( y.shape[ 0 ] ), y ] = 1.0
-        W = self.svae_params[ 'W' ]
-        return np.einsum( 'ij,tj->i', W, y_one_hot )
+    def updateParams( self, initial_dist, transition_dist, recognizerFunc, data_graphs=None, compute_marginal=True ):
+
+        log_initial_dist = np.log( initial_dist )
+        log_transition_dist = [ np.log( dist ) for dist in transition_dist ]
+
+        self.updateNatParams( log_initial_dist, log_transition_dist, recognizerFunc, data_graphs=data_graphs, compute_marginal=compute_marginal )
+
+    def updateNatParams( self, log_initial_dist, log_transition_dist, recognizerFunc, data_graphs=None, check_parameters=True, compute_marginal=True ):
+
+        if( check_parameters ):
+            self.parameterCheck( log_initial_dist, log_transition_dist )
+
+        self.K = log_initial_dist.shape[ 0 ]
+        self.pi0 = log_initial_dist
+        self.pis = {}
+        for log_dist in log_transition_dist:
+            ndim = log_dist.ndim
+            self.pis[ ndim ] = log_dist
+
+        if( data_graphs is not None ):
+            self.preprocessData( data_graphs )
+
+        self.clearCache()
+
+        self.recognizerFunc = recognizerFunc
 
     def emissionProb( self, node, is_partial_graph_index=False ):
         # Access the emission matrix with the full graph indices
         node_full = self.partialGraphIndexToFullGraphIndex( node ) if is_partial_graph_index == True else node
         y = self.ys[ int( node_full ) ]
         if( not np.any( np.isnan( y ) ) ):
-            prob = self.funkyEmission( y )
-            # prob = self.L[ node_full ].reshape( ( -1, ) )
+            prob = self.recognizerFunc( y ).reshape( ( -1, ) )
         else:
-            prob = np.zeros_like( self.L[ node_full ] ).reshape( ( -1, ) )
+            prob = np.zeros_like( self.pi0 ).reshape( ( -1, ) )
 
         if( self.inFeedbackSet( node_full, is_partial_graph_index=False ) ):
             return fbsData( prob, 0 )
@@ -846,19 +872,73 @@ class _graphSVAEMixin():
 
 ######################################################################
 
-class _graphGroupSVAEMixin():
+class GraphDiscreteGroupSVAE( _graphHMMGroupFBSMixin, GraphFilterFBSSVAE ):
 
-    def checkSVAEParams( self, svae_params ):
-        for group in self.all_groups:
-            W = svae_params[ group ][ 'W' ]
-            assert W.shape == self.emission_dist[ group ].shape
+    def parameterCheck( self, log_initial_dists, log_transition_dists ):
 
-    def funkyEmission( self, y, group ):
-        # Do some cool-ass shit
-        y_one_hot = np.zeros( ( y.shape[ 0 ], self.emission_dists[ group ].shape[ 1 ] ) )
-        y_one_hot[ np.arange( y.shape[ 0 ] ), y ] = 1.0
-        W = self.svae_params[ group ][ 'W' ]
-        return np.einsum( 'ij,tj->i', W, y_one_hot )
+        assert len( log_initial_dists.keys() ) == len( log_transition_dists.keys() ) and len( log_transition_dists.keys() ) == len( log_emission_dists.keys() )
+
+        for group in log_initial_dists.keys():
+            log_initial_dist = log_initial_dists[ group ]
+            log_transition_dist = log_transition_dists[ group ]
+
+            K = log_initial_dist.shape[ 0 ]
+            assert log_initial_dist.ndim == 1
+            assert log_initial_dist.shape == ( K, )
+            for _transition_dist in log_transition_dist:
+                assert np.allclose( np.ones( _transition_dist.shape[ :-1 ] ), np.exp( _transition_dist ).sum( axis=-1 ) ), _transition_dist.sum( axis=-1 )
+            assert np.isclose( 1.0, np.exp( log_initial_dist ).sum() )
+            pis = set()
+            for dist in log_transition_dist:
+                ndim = dist.shape
+                assert ndim not in pis
+                pis.add( ndim )
+
+    def updateParams( self, initial_dists, transition_dists, recognizerFuncs, group_graphs=None, compute_marginal=True ):
+
+        assert isinstance( initial_dists, dict ), 'Make a dict that maps groups to parameters'
+        assert isinstance( transition_dists, dict ), 'Make a dict that maps groups to parameters'
+        assert isinstance( recognizerFuncs, dict ), 'Make a dict that maps groups to parameters'
+
+        # Ignore warning for when an entry of a dist is 0
+        with np.errstate( divide='ignore', invalid='ignore' ):
+            log_initial_dists = {}
+            for group, dist in initial_dists.items():
+                log_initial_dists[ group ] = np.log( dist )
+
+            log_transition_dists = {}
+            for group, dists in transition_dists.items():
+                log_transition_dists[ group ] = [ np.log( dist ) for dist in dists ]
+
+        self.updateNatParams( log_initial_dists, log_transition_dists, recognizerFuncs, group_graphs=group_graphs, compute_marginal=compute_marginal )
+
+    def updateNatParams( self, log_initial_dists, log_transition_dists, recognizerFuncs, group_graphs=None, check_parameters=True, compute_marginal=True ):
+
+        if( check_parameters ):
+            self.parameterCheck( log_initial_dists, log_transition_dists )
+
+        # Get the latent state sizes from the initial dist
+        self.Ks = dict( [ ( group, dist.shape[ 0 ] ) for group, dist in log_initial_dists.items() ] )
+
+        # Set the initial distributions
+        self.pi0s = dict( [ ( group, dist ) for group, dist in log_initial_dists.items() ] )
+
+        # Set the transition distributions
+        self.pis = {}
+        for group, log_dists in log_transition_dists.items():
+            self.pis[ group ] = {}
+            for log_dist in log_dists:
+                shape = log_dist.shape
+                self.pis[ group ][ shape ] = log_dist
+
+        if( group_graphs is not None ):
+            self.preprocessData( group_graphs )
+
+        self.clearCache()
+
+        assert isinstance( recognizerFuncs, dict )
+        assert sorted( recognizerFuncs.keys() ) == sorted( self.pis.keys() )
+        self.recognizerFuncs = recognizerFuncs
 
     def emissionProb( self, node, is_partial_graph_index=False ):
         # Access the emission matrix with the full graph indices
@@ -868,10 +948,9 @@ class _graphGroupSVAEMixin():
         y = self.ys[ int( node_full ) ]
 
         if( not np.any( np.isnan( y ) ) ):
-            prob = self.funkyEmission( y, group )
-            # prob = self.emission_dists[ group ][ :, y ].sum( axis=-1 )
+            prob = self.recognizerFuncs[ group ]( y ).reshape( ( -1, ) )
         else:
-            prob = np.zeros_like( self.emission_dists[ group ][ :, 0 ] )
+            prob = np.zeros_like( self.pi0s[ group ][ :, 0 ] ).reshape( ( -1, ) )
 
         if( self.inFeedbackSet( node_full, is_partial_graph_index=False ) ):
             fbs_index = self.fbsIndex( node_full, is_partial_graph_index=False, within_graph=True )
@@ -879,11 +958,3 @@ class _graphGroupSVAEMixin():
                 prob = prob[ None ]
             return fbsData( prob, 0 )
         return fbsData( prob, -1 )
-
-######################################################################
-
-class GraphDiscreteSVAE( _graphSVAEMixin, _graphHMMFBSMixin, GraphFilterFBSSVAE ):
-    pass
-
-class GraphDiscreteGroupSVAE( _graphHMMGroupFBSMixin, _graphGroupSVAEMixin, GraphFilterFBSSVAE ):
-    pass

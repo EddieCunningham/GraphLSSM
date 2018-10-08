@@ -1,9 +1,10 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Distributions.Base import TensorExponentialFam
 from GenModels.GM.Distributions.Normal import Normal
 from GenModels.GM.Distributions.InverseWishart import InverseWishart
 import string
 from functools import reduce
+from autograd import grad
 
 _HALF_LOG_2_PI = 0.5 * np.log( 2 * np.pi )
 
@@ -59,7 +60,7 @@ class TensorNormal( TensorExponentialFam ):
 
     @classmethod
     def checkShape( cls, x ):
-        assert isinstance( x, np.ndarray )
+        # assert isinstance( x, np.ndarray ), type( x )
         assert np.any( np.array( x.shape[ 1: ] ) == 1 ) == False
 
     ##########################################################################
@@ -79,6 +80,7 @@ class TensorNormal( TensorExponentialFam ):
 
     @classmethod
     def realStandardToNat( cls, M, covs ):
+        # This is for the general case I think
         # Avoid this because it is unnecessarily expensive
         cov_invs = [ np.linalg.inv( cov ) for cov in covs ]
         n1 = reduce( lambda x, y: np.kron( x, y ), cov_invs ).reshape( M.shape + M.shape )
@@ -132,13 +134,19 @@ class TensorNormal( TensorExponentialFam ):
         # Derivative w.r.t. natural params. Also the expected sufficient stat
         assert ( params is None ) ^ ( nat_params is None )
 
-        # Luckily this ends up being easy in the general case
-        M, covs = params if params is not None else cls.natToStandard( *nat_params )
-        assert 0, 'Wait until prior to figure out how to add in the covs'
-        d1 = ( M, M, *covs )
-        d2 = M
+        nat_params = nat_params if nat_params is not None else cls.standardToNat( *params )
+        def forAG( nat_params ):
+            return cls.log_partition( nat_params=nat_params )
 
-        return d1, d2
+        return grad( forAG )( nat_params )
+
+        # # Luckily this ends up being easy in the general case
+        # M, covs = params if params is not None else cls.natToStandard( *nat_params )
+        # assert 0, 'Wait until prior to figure out how to add in the covs'
+        # d1 = ( M, M, *covs )
+        # d2 = M
+
+        # return d1, d2
 
     def _testLogPartitionGradient( self ):
         assert 0
@@ -277,3 +285,33 @@ class TensorNormal( TensorExponentialFam ):
 
         # THERE IS A BUG IN NP.EINSUM AT THE MOMENT!!! KEEP OPTIMIZE OFF
         return np.einsum( contract, *stat, *nat, optimize=False )
+
+    ##########################################################################
+
+    @classmethod
+    def KLDivergence( cls, params1=None, nat_params1=None, params2=None, nat_params2=None ):
+
+        assert ( params1 is None ) ^ ( nat_params1 is None )
+        assert ( params2 is None ) ^ ( nat_params2 is None )
+        nat_params1 = nat_params1 if nat_params1 is not None else cls.standardToNat( *params1 )
+        nat_params2 = nat_params2 if nat_params2 is not None else cls.standardToNat( *params2 )
+        assert len( nat_params1 ) == len( nat_params2 )
+
+        nat_diff = []
+        for n1, n2 in zip( nat_params1, nat_params2 ):
+            _nat_diff = []
+            for _n1, _n2 in zip( n1, n2 ):
+                assert _n1.shape == _n2.shape
+                _nat_diff.append( _n1 - _n2 )
+            nat_diff.append( _nat_diff )
+
+        ans = 0.0
+
+        partition = cls.log_partitionGradient( nat_params=nat_params1 )
+        for n, p in zip( nat_diff, partition ):
+            for _n, _p in zip( n, p ):
+                ans += np.sum( _n * _p )
+
+        ans -= cls.log_partition( nat_params=nat_params1 )
+        ans += cls.log_partition( nat_params=nat_params2 )
+        return ans

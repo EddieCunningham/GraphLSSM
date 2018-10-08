@@ -1,7 +1,7 @@
 import os
 import subprocess
 import sys
-import numpy as np
+import autograd.numpy as np
 import itertools
 import json
 from tqdm import tqdm

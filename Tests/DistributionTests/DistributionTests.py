@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Distributions import *
 import matplotlib.pyplot as plt
 from GenModels.GM.Utility import *

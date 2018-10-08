@@ -2,7 +2,7 @@ from GenModels.GM.Distributions import ExponentialFam
 from GenModels.GM.Distributions import NormalInverseWishart, MatrixNormalInverseWishart
 from GenModels.GM.States.StandardStates.LDSState import LDSState
 from GenModels.GM.Distributions import Normal, Regression
-import numpy as np
+import autograd.numpy as np
 
 __all__ = [ 'LDSMNIWPrior' ]
 

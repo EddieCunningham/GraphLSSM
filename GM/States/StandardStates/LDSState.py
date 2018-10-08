@@ -1,7 +1,7 @@
 from GenModels.GM.States.StandardStates.StateBase import StateBase
 from GenModels.GM.States.MessagePassing.KalmanFilter import *
 from GenModels.GM.Distributions import Normal, Regression, InverseWishart, MatrixNormalInverseWishart, NormalInverseWishart
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Utility import stabilize as stab
 from GenModels.GM.Utility import rightSolve, MaskedData, toBlocks
 import itertools

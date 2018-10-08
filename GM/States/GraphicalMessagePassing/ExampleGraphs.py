@@ -1,6 +1,6 @@
 from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import GraphMessagePasser
 from GenModels.GM.States.GraphicalMessagePassing.Graph import DataGraph
-import numpy as np
+import autograd.numpy as np
 from scipy.sparse import coo_matrix
 
 __all__ = [ 'graph1',

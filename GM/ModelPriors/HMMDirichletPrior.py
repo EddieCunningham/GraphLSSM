@@ -1,7 +1,7 @@
 from GenModels.GM.Distributions import ExponentialFam
 from GenModels.GM.Distributions import Dirichlet, TransitionDirichletPrior
 from GenModels.GM.States.StandardStates.HMMState import HMMState
-import numpy as np
+import autograd.numpy as np
 
 __all__ = [ 'HMMDirichletPrior' ]
 

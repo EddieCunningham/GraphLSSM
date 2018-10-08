@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Distributions import *
 from GenModels.GM.ModelPriors import *
 from GenModels.GM.States.StandardStates import *

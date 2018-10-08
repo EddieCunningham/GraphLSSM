@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import invwishart
 from scipy.special import multigammaln, digamma

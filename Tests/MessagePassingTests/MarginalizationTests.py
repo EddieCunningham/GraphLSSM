@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.States.MessagePassing import *
 from GenModels.GM.Distributions import *
 import time

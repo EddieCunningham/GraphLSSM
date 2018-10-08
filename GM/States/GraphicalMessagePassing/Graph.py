@@ -1,7 +1,7 @@
 import graphviz
 from scipy.sparse import coo_matrix
 import itertools
-import numpy as np
+import autograd.numpy as np
 from collections import deque, namedtuple
 import networkx
 

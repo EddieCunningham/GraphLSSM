@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.ModelPriors import HMMDirichletPrior
 from GenModels.GM.States.StandardStates import HMMState
 from GenModels.GM.Models.ModelBase import _InferenceModel

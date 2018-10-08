@@ -1,6 +1,6 @@
 from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import *
 from GenModels.GM.States.GraphicalMessagePassing.GraphFilterBase import *
-import numpy as np
+import autograd.numpy as np
 from functools import reduce
 from scipy.sparse import coo_matrix
 from collections import Iterable

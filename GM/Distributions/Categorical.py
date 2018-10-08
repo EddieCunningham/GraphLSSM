@@ -1,5 +1,6 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
+from GenModels.GM.Utility import logsumexp
 
 __all__ = [ 'Categorical' ]
 
@@ -122,17 +123,23 @@ class Categorical( ExponentialFam ):
         return ans
 
     @classmethod
-    def reparametrizedSample( cls, params=None, nat_params=None, size=1, temp=0.1 ):
+    def reparametrizedSample( cls, params=None, nat_params=None, size=1, temp=0.1, return_log=False ):
         # Use the Gumbel Softmax reparametrization trick
         # https://arxiv.org/pdf/1611.01144.pdf
 
         assert ( params is None ) ^ ( nat_params is None )
         ( n, ) = nat_params if nat_params is not None else cls.standardToNat( *params )
 
-        g = np.random.gumbel( size=p.shape[ 0 ] )
+        g = np.random.gumbel( size=n.shape[ 0 ] )
 
-        unnorm = np.exp( ( n + g ) / temp )
-        return unnorm / np.sum( unnorm )
+        p = ( n + g ) / temp
+
+        if( return_log == False ):
+            unnorm = np.exp( p )
+            return unnorm / np.sum( unnorm )
+
+        return p - logsumexp( p )
+
 
     ##########################################################################
 

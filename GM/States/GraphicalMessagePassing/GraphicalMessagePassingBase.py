@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 import scipy as sp
 from scipy.sparse import coo_matrix
 import graphviz

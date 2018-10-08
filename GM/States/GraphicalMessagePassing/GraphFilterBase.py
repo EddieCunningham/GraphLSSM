@@ -1,5 +1,5 @@
 from GenModels.GM.States.GraphicalMessagePassing.GraphicalMessagePassingBase import *
-# import numpy as np
+# import autograd.numpy as np
 import autograd.numpy as np
 from scipy.sparse import coo_matrix
 from functools import partial

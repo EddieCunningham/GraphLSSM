@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.ModelPriors import LDSMNIWPrior
 from GenModels.GM.States.StandardStates import LDSState
 from GenModels.GM.Models.ModelBase import _InferenceModel

@@ -4,7 +4,7 @@ tfe.enable_eager_execution()
 
 import os
 import sys
-import numpy as np
+import autograd.numpy as np
 import pandas as pd
 import pickle
 from functools import partial

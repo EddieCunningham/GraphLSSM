@@ -1,7 +1,7 @@
 from GenModels.GM.States.StandardStates.StateBase import StateBase
 from GenModels.GM.States.MessagePassing.HMM import *
 from GenModels.GM.Distributions import Categorical, Transition, Dirichlet, TransitionDirichletPrior
-import numpy as np
+import autograd.numpy as np
 
 __all__ = [ 'HMMState' ]
 

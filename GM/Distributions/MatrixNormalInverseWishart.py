@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.special import multigammaln
 from GenModels.GM.Distributions.TensorNormal import TensorNormal

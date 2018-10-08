@@ -1,5 +1,5 @@
 from GenModels.GM.States.MessagePassing.FilterBase import MessagePasser
-import numpy as np
+import autograd.numpy as np
 from functools import reduce
 from collections import namedtuple
 from GenModels.GM.Distributions import Normal, Regression

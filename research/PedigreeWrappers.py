@@ -1,5 +1,5 @@
 from GenModels.GM.States.GraphicalMessagePassing import DataGraph, GroupGraph, GraphHMMFBS, GraphHMMFBSGroup
-import numpy as np
+import autograd.numpy as np
 from functools import reduce
 from scipy.sparse import coo_matrix
 from collections import Iterable, namedtuple

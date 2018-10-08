@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from abc import ABC, abstractmethod
 from GenModels.GM.Utility import deepCopy, verboseRange
 

@@ -15,3 +15,4 @@ from .Transition import Transition
 from .TransitionDirichletPrior import TransitionDirichletPrior
 from .TensorTransition import TensorTransition
 from .TensorTransitionDirichletPrior import TensorTransitionDirichletPrior
+from .BayesianNeuralNet import BayesianNN

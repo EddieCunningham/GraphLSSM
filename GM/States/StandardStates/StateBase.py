@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Distributions import ExponentialFam
 from abc import ABC, abstractmethod
 import itertools

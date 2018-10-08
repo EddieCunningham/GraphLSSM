@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from scipy.stats import multivariate_normal
 from scipy.linalg import cho_factor, cho_solve
@@ -57,15 +57,16 @@ class Normal( ExponentialFam ):
 
     @classmethod
     def checkShape( cls, x ):
-        assert isinstance( x, np.ndarray )
+        # assert isinstance( x, np.ndarray )
         assert x.ndim == 2 or x.ndim == 1
 
     ##########################################################################
 
     @classmethod
     def standardToNat( cls, mu, sigma, returnPrecision=False ):
-        n1 = invPsd( sigma )
-        n2 = n1.dot( mu )
+        # n1 = invPsd( sigma )
+        n1 = np.linalg.inv( sigma )
+        n2 = np.dot( n1, mu )
         if( returnPrecision == False ):
             n1 *= -0.5
         return n1, n2
@@ -75,7 +76,7 @@ class Normal( ExponentialFam ):
         sigma = np.linalg.inv( n1 )
         if( fromPrecision == False ):
             sigma *= -0.5
-        mu = sigma.dot( n2 )
+        mu = np.dot( sigma, n2 )
         return mu, sigma
 
     ##########################################################################
@@ -85,8 +86,8 @@ class Normal( ExponentialFam ):
         # Compute T( x )
         if( x.ndim == 1 ):
             x = x.reshape( ( 1, -1 ) )
-        t1 = x.T.dot( x )
-        t2 = x.sum( axis=0 )
+        t1 = np.dot( x.T, x )
+        t2 = np.sum( x, axis=0 )
         return t1, t2
 
     @classmethod
@@ -97,7 +98,7 @@ class Normal( ExponentialFam ):
         if( nat_params is not None ):
             n1, n2 = nat_params
             k = n1.shape[ 0 ]
-            A1 = -0.25 * n2.dot( np.linalg.solve( n1, n2 ) )
+            A1 = -0.25 * np.dot( n2, np.linalg.solve( n1, n2 ) )
             A2 = -0.5 * np.linalg.slogdet( -2 * n1 )[ 1 ]
         else:
             mu, sigma = params
@@ -161,11 +162,16 @@ class Normal( ExponentialFam ):
         # Sample from P( x | Ѳ; α )
         assert ( params is None ) ^ ( nat_params is None )
         mu, sigma = params if params is not None else cls.natToStandard( *nat_params )
-        ans = multivariate_normal.rvs( mean=mu, cov=sigma, size=size )
-        if( mu.size == 1 ):
-            ans = ans.reshape( ( -1, 1 ) )
+
+        sigma_chol = np.linalg.cholesky( sigma )
+        noise = multivariate_normal.rvs( mean=np.zeros_like( mu ), cov=np.eye( mu.shape[ 0 ] ), size=size )
         if( size == 1 ):
-            ans = ans[ None ]
+            noise = noise[ None ]
+        elif( noise.ndim == 1 ):
+            noise = noise[ :, None ]
+
+        ans = mu + np.einsum( 'ij,tj->ti', sigma_chol, noise )
+
         cls.checkShape( ans )
         return ans
 
@@ -185,6 +191,8 @@ class Normal( ExponentialFam ):
 
     @classmethod
     def marginalizeX1( cls, J11, J12, J22, h1, h2, log_Z, computeMarginal=True ):
+        # This assumes that we're using the kalman filter form for the Js which means
+        # that -0.5*J = n1
         K = h1.shape[ 0 ]
 
         J11Chol = cho_factor( J11, lower=True )

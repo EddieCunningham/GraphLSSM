@@ -1,5 +1,5 @@
 from GenModels.GM.Distributions import Categorical, Dirichlet, TensorTransition, TensorTransitionDirichletPrior
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Models.DiscreteGraphModels import *
 import copy
 import matplotlib

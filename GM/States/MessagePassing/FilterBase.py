@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import numpy as np
+import autograd.numpy as np
 
 class MessagePasser( ABC ):
     # Base message passing class for forward backward

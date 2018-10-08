@@ -913,7 +913,7 @@ class BaseHyperGraph( object ):
 ######################################################################
 
 from GenModels.GM.States.GraphicalMessagePassing import Graph
-import numpy as np
+import autograd.numpy as np
 
 def convertToOldFormat( graph ):
 

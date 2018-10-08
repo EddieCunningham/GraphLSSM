@@ -1,6 +1,7 @@
-import numpy as np
+import autograd.numpy as np
 from GenModels.GM.Distributions.Base import ExponentialFam
 from GenModels.GM.Distributions.Categorical import Categorical
+from GenModels.GM.Utility import logsumexp
 
 __all__ = [ 'TensorTransition' ]
 
@@ -110,7 +111,7 @@ class TensorTransition( ExponentialFam ):
 
     @classmethod
     def log_partitionGradient( cls, params=None, nat_params=None ):
-        return ( 0, ) if split == False else ( ( 0, ), ( 0, ) )
+        return ( 0, ) #if split == False else ( ( 0, ), ( 0, ) )
 
     def _testLogPartitionGradient( self ):
         # Don't need to test this

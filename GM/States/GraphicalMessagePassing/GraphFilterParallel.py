@@ -1,8 +1,8 @@
 import itertools
 from functools import partial, lru_cache
-# import numpy as np
+# import autograd.numpy as np
 import autograd.numpy as np
-from GenModels.GM.Utility import fbsData
+from GenModels.GM.Utility import fbsData, logsumexp
 from collections import namedtuple, Iterable
 from .GraphFilterBase import GraphFilterFBS
 import joblib
@@ -113,20 +113,6 @@ JointParentChildInFBSData = namedtuple( 'JointParentChildInFBSData', [ 'in_fbs',
                                                                        'parent_fbs_indices',
                                                                        'parent_not_in_fbs_order',
                                                                        'parent_in_fbs_order' ] )
-
-######################################################################
-
-from autograd.extend import primitive, defvjp
-
-def logsumexp( v, axis=0 ):
-    max_v = np.max( v )
-    return np.log( np.sum( np.exp( v - max_v ), axis=axis ) ) + max_v
-
-def logsumexp_vjp( ans, x ):
-    x_shape = x.shape
-    return lambda g: np.full( x_shape, g ) * np.exp( x - np.full( x_shape, ans ) )
-
-defvjp( logsumexp, logsumexp_vjp )
 
 ######################################################################
 
@@ -913,9 +899,10 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
 
     def nodeJoint( self, U, V, nodes ):
         # P( x, Y )
-        data = self.data_thread_pool.starmap( self.nodeJointLocalInfo, zip( nodes, itertools.repeat( U ), itertools.repeat( V ) ) )
-        # data = [ self.nodeJointLocalInfo( node, U, V ) for node in nodes ]
-        joints = self.u_filter_process_pool.map( nodeJointSingleNode, data )
+        # data = self.data_thread_pool.starmap( self.nodeJointLocalInfo, zip( nodes, itertools.repeat( U ), itertools.repeat( V ) ) )
+        data = [ self.nodeJointLocalInfo( node, U, V ) for node in nodes ]
+        joints = [ nodeJointSingleNode( d ) for d in data ]
+        # joints = self.u_filter_process_pool.map( nodeJointSingleNode, data )
         return zip( nodes, joints )
 
     ######################################################################
@@ -1028,7 +1015,8 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) == 0 ]
 
         data = self.data_thread_pool.starmap( self.jointParentChildLocalInfo, zip( non_roots, itertools.repeat( U ), itertools.repeat( V ) ) )
-        joints = self.u_filter_process_pool.map( jointParentChildSingleNode, data )
+        # joints = self.u_filter_process_pool.map( jointParentChildSingleNode, data )
+        joints = [ jointParentChildSingleNode( d ) for d in data ]
         return itertools.chain( zip( non_roots, joints ), self.nodeJoint( U, V, roots ) )
 
     ######################################################################
@@ -1079,8 +1067,19 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         # Mostly assuming that these will be called from within the graph
         return [ ( node, val - self.marginalProb( U, V, node=node ) ) for node, val in self.jointParentChild( U, V, nodes ) ]
 
-    def conditionalParentChild( self, U, V, nodes ):
+    def conditionalParentChild( self, U, V, nodes, parent_child_smoothed=None ):
         # P( x_c | x_p1..pN, Y )
+
+        if( parent_child_smoothed is not None ):
+            parents_smoothed = self.parentsSmoothed( U, V, nodes, parent_child_smoothed )
+            ans = []
+            for ( node, pc_smoothed ), ( node1, p_smoothed ) in zip( parent_child_smoothed, parents_smoothed ):
+                assert node == node1
+                if( self.nParents( node, is_partial_graph_index=False ) ):
+                    ans.append( ( node, pc_smoothed ) )
+                else:
+                    ans.append( ( node, nonFBSMultiplyTerms( terms=( pc_smoothed, -p_smoothed ) ) ) )
+            return ans
 
         non_roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) > 0 ]
         roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) == 0 ]
@@ -1102,7 +1101,7 @@ class GraphFilterFBSSVAE( GraphFilterFBSParallel ):
         self.svae_params = svae_params
 
     ######################################################################
-    # Don't really want to cache these here
+    # Don't really want to cache these here because of autograd
 
     def clearCache( self ):
         super( GraphFilterFBSParallel, self ).clearCache()

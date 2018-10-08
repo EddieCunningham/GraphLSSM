@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 np.random.seed(2)
 import sys
 sys.path.append( '/Users/Eddie/GenModels' )

@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 from scipy.linalg import lapack
 import copy
 import autograd
@@ -19,7 +19,22 @@ __all__ = [ 'multigammalnDerivative',
             'rightSolve',
             'MaskedData',
             'toBlocks',
-            'fbsData' ]
+            'fbsData',
+            'logsumexp' ]
+
+######################################################################
+
+from autograd.extend import primitive, defvjp
+
+def logsumexp( v, axis=0 ):
+    max_v = np.max( v )
+    return np.log( np.sum( np.exp( v - max_v ), axis=axis ) ) + max_v
+
+def logsumexp_vjp( ans, x ):
+    x_shape = x.shape
+    return lambda g: np.full( x_shape, g ) * np.exp( x - np.full( x_shape, ans ) )
+
+defvjp( logsumexp, logsumexp_vjp )
 
 ##########################################################################
 

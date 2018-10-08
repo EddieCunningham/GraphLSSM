@@ -1,4 +1,4 @@
-import numpy as np
+import autograd.numpy as np
 import copy
 import itertools
 import networkx as nx
