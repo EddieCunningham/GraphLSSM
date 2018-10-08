@@ -6,7 +6,7 @@ import autograd.numpy as np
 from functools import partial
 from scipy.sparse import coo_matrix
 from collections import Iterable
-from GenModels.GM.Utility import fbsData
+from GenModels.GM.Utility import fbsData, logsumexp
 from .NumbaWrappers import *
 
 __all__ = [ 'GraphHMM',
@@ -152,7 +152,7 @@ class _graphHMMMixin():
 
         if( modified == True ):
             with np.errstate( invalid='ignore' ):
-                pi[ ..., : ] -= np.logaddexp.reduce( pi, axis=-1 )[ ..., None ]
+                pi[ ..., : ] -= logsumexp( pi, axis=-1 )[ ..., None ]
 
         # In case entire rows summed to -inf
         pi[ np.isnan( pi ) ] = np.NINF
@@ -178,7 +178,7 @@ class _graphHMMMixin():
             impossible_states = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
             for state in impossible_states:
                 pi[ state ] = np.NINF
-            pi[ states ] -= np.logaddexp.reduce( pi )
+            pi[ states ] -= logsumexp( pi )
 
         return pi
 
@@ -236,7 +236,7 @@ class _graphHMMMixin():
         axes[ axes < 0 ] = integrand.ndim + axes[ axes < 0 ]
         adjusted_axes = np.array( sorted( axes ) ) - np.arange( len( axes ) )
         for ax in adjusted_axes:
-            integrand = np.logaddexp.reduce( integrand, axis=ax )
+            integrand = logsumexp( integrand, axis=ax )
 
         return integrand
 
@@ -296,7 +296,7 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
         for graph, fbs in data_graphs:
             ys.extend( [ graph.data[ node ] if graph.data[ node ] is not None else np.nan for node in graph.nodes ] )
 
-        self.ys = ys
+        self.ys = np.array( ys )
 
         if( hasattr( self, 'emission_dist' ) ):
             self.L_set = True
@@ -417,7 +417,7 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
             impossible_states = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
             for state in impossible_states:
                 pi[ impossible_states ] = np.NINF
-            pi[ states ] -= np.logaddexp.reduce( pi )
+            pi[ states ] -= logsumexp( pi )
 
         return fbsData( pi, -1 )
 
@@ -529,7 +529,7 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
         axes[ axes < 0 ] = integrand.ndim + axes[ axes < 0 ]
         adjusted_axes = np.array( sorted( axes ) ) - np.arange( len( axes ) )
         for ax in adjusted_axes:
-            integrand = np.logaddexp.reduce( integrand, axis=ax )
+            integrand = logsumexp( integrand, axis=ax )
 
         if( fbs_axis > -1 ):
             fbs_axis -= len( adjusted_axes )
@@ -539,9 +539,19 @@ class _graphHMMFBSMixin( _graphHMMMixin ):
 
 ######################################################################
 
-class _graphHMMGroupFBSMixin():
+class _graphHMMGroupFBSMixin( _graphHMMMixin ):
 
     # This variant lets the user specify which set of parameters to apply to a node
+
+    def assignV( self, V, node, val, keep_shape=False ):
+        V_row, V_col, V_data = V
+        N = V_row.shape[ 0 ]
+        VIndices = np.where( np.in1d( V_row, node ) )[ 0 ]
+        for i in VIndices:
+            if( keep_shape is False ):
+                V_data[ i ].data = val
+            else:
+                V_data[ i ].data[ : ] = val
 
     def genFilterProbs( self ):
 
@@ -626,6 +636,9 @@ class _graphHMMGroupFBSMixin():
         self.ys = []
         for graph, fbs in group_graphs:
             self.ys.extend( [ graph.data[ node ] if graph.data[ node ] is not None else np.nan for node in graph.nodes ] )
+        self.ys = np.array( self.ys )
+        if( isinstance( self.ys, np.ndarray ) and self.ys.ndim == 1 ):
+            self.ys = self.ys[ :, None ]
 
     def updateParams( self, initial_dists, transition_dists, emission_dists, group_graphs=None, compute_marginal=True ):
 
@@ -783,7 +796,7 @@ class _graphHMMGroupFBSMixin():
             impossible_states = np.setdiff1d( np.arange( pi.shape[ -1 ] ), states )
             for state in impossible_states:
                 pi[ impossible_states ] = np.NINF
-            pi[ states ] -= np.logaddexp.reduce( pi )
+            pi[ states ] -= logsumexp( pi )
 
         return fbsData( pi, -1 )
 

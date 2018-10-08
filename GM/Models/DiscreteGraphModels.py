@@ -1,5 +1,5 @@
 from GenModels.GM.Distributions import Categorical
-from GenModels.GM.States.GraphicalMessagePassing import GraphHMMFBSParallel, GraphHMMFBSGroupParallel, GraphDiscreteSVAE
+from GenModels.GM.States.GraphicalMessagePassing import *
 from .DiscreteGraphParameters import *
 from .DiscreteGraphOptimizers import *
 import autograd.numpy as np
@@ -10,12 +10,12 @@ from abc import ABC, abstractmethod
 __all__ = [
     'GHMM',
     'GroupGHMM',
-    'GSVAE'
-]
+    'GSVAE',
+    'GroupGSVAE' ]
 
 class GHMMBase( ABC ):
 
-    def __init__( self, graphs=None, msg=None, params=None, model=None, svi_model_type=None, prior_strength=1.0, method='SVI', priors=None, **kwargs ):
+    def __init__( self, graphs=None, msg=None, params=None, opt=None, svi_model_type=None, prior_strength=1.0, method='SVI', priors=None, **kwargs ):
         if( graphs is not None ):
             self.graphs = graphs
 
@@ -24,8 +24,8 @@ class GHMMBase( ABC ):
         self.params = params
         self.svi_model_type = svi_model_type
 
-        if( model is not None ):
-            self.model = model
+        if( opt is not None ):
+            self.opt = opt
         else:
             # If we're doing SVI, we can't create the model until later
             self.step_size = kwargs[ 'step_size' ]
@@ -59,7 +59,7 @@ class GHMMBase( ABC ):
         else:
             self.total_nodes = sum( [ len( graph.nodes ) for graph, fbs in self.graphs ] )
             minibatch_ratio = self.minibatch_size / len( self.graphs )
-            self.model = self.svi_model_type( msg=self.msg, parameters=self.params, minibatch_ratio=minibatch_ratio, step_size=self.step_size )
+            self.opt = self.svi_model_type( msg=self.msg, parameters=self.params, minibatch_ratio=minibatch_ratio, step_size=self.step_size )
 
     ###########################################
 
@@ -72,7 +72,7 @@ class GHMMBase( ABC ):
     def stateUpdate( self, **kwargs ):
 
         if( self.method != 'SVI' ):
-            return self.model.stateUpdate()
+            return self.opt.stateUpdate()
 
         minibatch_indices = np.random.randint( len( self.graphs ), size=self.minibatch_size )
         minibatch = [ self.graphs[ i ] for i in minibatch_indices ]
@@ -82,14 +82,14 @@ class GHMMBase( ABC ):
         minibatch_nodes = sum( [ len( graph.nodes ) for graph, fbs in minibatch ] )
         self.params.setMinibatchRatio( self.total_nodes / minibatch_nodes )
 
-        return self.model.stateUpdate()
+        return self.opt.stateUpdate()
 
     ###########################################
 
     def fitStep( self, **kwargs ):
 
         if( self.method != 'SVI' ):
-            return self.model.fitStep( **kwargs )
+            return self.opt.fitStep( **kwargs )
 
         minibatch_indices = np.random.randint( len( self.graphs ), size=self.minibatch_size )
         minibatch = [ self.graphs[ i ] for i in minibatch_indices ]
@@ -99,7 +99,7 @@ class GHMMBase( ABC ):
         minibatch_nodes = sum( [ len( graph.nodes ) for graph, fbs in minibatch ] )
         self.params.setMinibatchRatio( self.total_nodes / minibatch_nodes )
 
-        return self.model.fitStep()
+        return self.opt.fitStep()
 
     ###########################################
 
@@ -129,7 +129,7 @@ class GHMMBase( ABC ):
 
     def generative( self ):
         assert self.method == 'Gibbs'
-        return self.model.generativeProbability()
+        return self.opt.generativeProbability()
 
     def paramProb( self ):
         return self.params.paramProb()
@@ -158,18 +158,18 @@ class GHMM( GHMMBase ):
 
         # Generate the model objects
         if( method == 'EM' ):
-            model = EM( msg=msg, parameters=params )
+            opt = EM( msg=msg, parameters=params )
         elif( method == 'Gibbs' ):
-            model = Gibbs( msg=msg, parameters=params )
+            opt = Gibbs( msg=msg, parameters=params )
         elif( method == 'CAVI' ):
-            model = CAVI( msg=msg, parameters=params )
+            opt = CAVI( msg=msg, parameters=params )
         else:
-            model = None
+            opt = None
 
         super().__init__( graphs=graphs,
                           msg=msg,
                           params=params,
-                          model=model,
+                          opt=opt,
                           svi_model_type=SVI,
                           prior_strength=prior_strength,
                           method=method,
@@ -254,20 +254,20 @@ class GroupGHMM( GHMMBase ):
         else:
             params = GroupSVIParameters( root_priors, trans_priors, emiss_priors ) if params is None else params
 
-        # Generate the model objects
+        # Generate the opt objects
         if( method == 'EM' ):
-            model = GroupEM( msg=msg, parameters=params )
+            opt = GroupEM( msg=msg, parameters=params )
         elif( method == 'Gibbs' ):
-            model = GroupGibbs( msg=msg, parameters=params )
+            opt = GroupGibbs( msg=msg, parameters=params )
         elif( method == 'CAVI' ):
-            model = GroupCAVI( msg=msg, parameters=params )
+            opt = GroupCAVI( msg=msg, parameters=params )
         else:
-            model = None
+            opt = None
 
         super().__init__( graphs=graphs,
                           msg=msg,
                           params=params,
-                          model=model,
+                          opt=opt,
                           svi_model_type=GroupSVI,
                           prior_strength=prior_strength,
                           method=method,
@@ -372,10 +372,96 @@ class GSVAE():
         assert d_obs is not None
         self.params = SVAEParameters( root_priors, trans_priors, d_obs, minibatch_ratio )
 
-        self.model = SVAE( self.msg, self.params, minibatch_ratio )
+        self.opt = SVAE( self.msg, self.params, minibatch_ratio )
 
         if( graphs is not None ):
             self.msg.preprocessData( self.graphs )
 
-    def fit( self ):
-        return self.model.train()
+    def fit( self, num_iters=100 ):
+        return self.opt.train( num_iters=num_iters )
+
+    @staticmethod
+    def parameterShapes( graphs, d_latent, d_obs ):
+        # Returns the shapes of the parameters that fit graph
+
+        # Initial dist
+        initial_shape = d_latent
+
+        # Check how many transition distributions we need
+        all_transition_counts = set()
+        for graph in graphs:
+            if( isinstance( graph, Iterable ) ):
+                graph, fbs = graph
+            for parents in graph.edge_parents:
+                ndim = len( parents ) + 1
+                all_transition_counts.add( ndim )
+
+        # Create the transition distribution
+        transition_shapes = []
+        for ndim in all_transition_counts:
+            shape = [ d_latent for _ in range( ndim ) ]
+            transition_shapes.append( shape )
+
+        return initial_shape, transition_shapes
+
+######################################################################
+
+class GroupGSVAE():
+
+    def __init__( self, graphs=None, prior_strength=1.0, priors=None, d_obs=None, **kwargs ):
+
+        assert priors is not None
+        root_priors, trans_priors = priors
+
+        if( graphs is not None ):
+            self.graphs = graphs
+
+        self.msg = GraphDiscreteGroupSVAE()
+
+        minibatch_ratio = 1.0
+
+        root_priors, trans_priors = priors
+        assert d_obs is not None
+        self.params = GroupSVAEParameters( root_priors, trans_priors, d_obs, minibatch_ratio )
+
+        self.opt = GroupSVAE( self.msg, self.params, minibatch_ratio )
+
+        if( graphs is not None ):
+            self.msg.preprocessData( self.graphs )
+
+    def fit( self, num_iters=100 ):
+        return self.opt.train( num_iters=num_iters )
+
+    @staticmethod
+    def parameterShapes( graphs, d_latents, d_obs, groups ):
+        # Returns the shapes of the parameters that fit graph
+
+        assert isinstance( d_latents, dict )
+
+        # Initial dist
+        initial_shapes = dict( [ ( g, d_latents[ g ] ) for g in groups ] )
+
+        # Check how many transition distributions we need
+        all_transition_counts = dict( [ ( group, set() ) for group in groups ] )
+        for graph in graphs:
+            if( isinstance( graph, Iterable ) ):
+                graph, fbs = graph
+            for children, parents in zip( graph.edge_children, graph.edge_parents ):
+                ndim = len( parents ) + 1
+
+                parent_groups = [ graph.groups[ parent ] for parent in parents ]
+
+                for child in children:
+                    child_group = graph.groups[ child ]
+                    family_groups = parent_groups + [ child_group ]
+                    shape = tuple( [ d_latents[ group ] for group in family_groups ] )
+                    all_transition_counts[ child_group ].add( shape )
+
+        # Create the transition distribution
+        transition_shapes = {}
+        for group in all_transition_counts:
+            transition_shapes[ group ] = []
+            for shape in all_transition_counts[ group ]:
+                transition_shapes[ group ].append( shape )
+
+        return initial_shapes, transition_shapes

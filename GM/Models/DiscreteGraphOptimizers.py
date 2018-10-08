@@ -15,7 +15,8 @@ __all__ = [ 'Gibbs',
             'GroupCAVI',
             'SVI',
             'GroupSVI',
-            'SVAE' ]
+            'SVAE',
+            'GroupSVAE' ]
 
 ######################################################################
 
@@ -409,6 +410,9 @@ class RelaxedStateSampler():
 class SVAE( Optimizer ):
     # THIS IS AN INCOMPLETE IMPLEMENTATION.  IT WILL ONLY OPTIMIZE THE RECOGNITION AND GENERATIVE NETWORKS.
     # THE FULL IMPLEMENTATION ISN'T NEEDED FOR THE RESEARCH PROJECT
+    # Also there was a problem with the full implementation on how to save the node_parents_smoothed for later so that
+    # we can compute the natural gradients for the state hyperparameters AND how to get the gradients of the log-likelihood
+    # w.r.t. the expected initial nat params and expected transition nat params
 
     # The emission parameter will hold both the emission network and recognition network
     # The recognition potentials will come from the expected natural parameters (this gets called in the E-step)
@@ -440,9 +444,6 @@ class SVAE( Optimizer ):
         self.graph_relaxed_state = RelaxedStateSampler( self.msg, self.node_parents_smoothed )
         self.msg.forwardPass( self.graph_relaxed_state )
 
-        # Sample a parameter from the generative network
-        generative_params = self.params.emission_dist.sampleGenerativeParams( generative_hyper_params=generative_hyper_params )
-
         # Compute the kl divergence from p to q
         neg_log_z = self.msg.marginalProb( self.U, self.V )
         initial_kl_divergence = self.params.initial_dist.KLDivergence( nat_params1=self.initial_prior_mfnp, nat_params2=self.params.initial_dist.prior.nat_params )
@@ -452,6 +453,9 @@ class SVAE( Optimizer ):
         emission_kl_divergence = self.params.emission_dist.KLPQ( q_params=generative_hyper_params )
 
         klpq = neg_log_z - ( initial_kl_divergence + transition_kl_divergence + emission_kl_divergence )
+
+        # Sample a parameter from the generative network
+        generative_params = self.params.emission_dist.sampleGenerativeParams( generative_hyper_params=generative_hyper_params )
 
         # Compute the likelihood of this sample
         log_likelihood = 0.0
@@ -481,97 +485,99 @@ class SVAE( Optimizer ):
         print( 'Done!' )
         return self.losses
 
-# class SVAE( Optimizer ):
+######################################################################
 
-#     # The emission parameter will hold both the emission network and recognition network
-#     # The recognition potentials will come from the expected natural parameters (this gets called in the E-step)
-#     def __init__( self, msg, parameters, minibatch_ratio ):
-#         super().__init__( msg, parameters )
-#         self.s = minibatch_ratio
-#         self.params.setMinibatchRatio( self.s )
-#         self.initial_prior_mfnp     = copy.deepcopy( self.params.initial_dist.prior.nat_params )
-#         self.transition_prior_mfnps = [ copy.deepcopy( dist.prior.nat_params ) for dist in self.params.transition_dists ]
+class GroupSVAE( Optimizer ):
+    # THIS IS AN INCOMPLETE IMPLEMENTATION.  IT WILL ONLY OPTIMIZE THE RECOGNITION AND GENERATIVE NETWORKS.
+    # THE FULL IMPLEMENTATION ISN'T NEEDED FOR THE RESEARCH PROJECT
+    # Also there was a problem with the full implementation on how to get the gradients of the log-likelihood
+    # w.r.t. the expected initial nat params and expected transition nat params
 
-#     def computeLoss( self, emission_params ):
+    # The emission parameter will hold both the emission network and recognition network
+    # The recognition potentials will come from the expected natural parameters (this gets called in the E-step)
+    def __init__( self, msg, parameters, minibatch_ratio ):
+        super().__init__( msg, parameters )
+        self.s = minibatch_ratio
+        self.params.setMinibatchRatio( self.s )
+        self.initial_prior_mfnp    = dict( [ ( group, copy.deepcopy( dist.prior.nat_params ) ) for group, dist in self.params.initial_dists.items() ] )
+        self.transition_prior_mfnps = dict( [ ( group, dict( [ ( shape, copy.deepcopy( dist.prior.nat_params ) ) for shape, dist in dists.items() ] ) ) for group, dists in self.params.transition_dists.items() ] )
 
-#         recognizer_params, generative_hyper_params = emission_params
+    def computeLoss( self, emission_params, n_iter ):
 
-#         # Filter using the expected natural parameters
-#         expected_initial_nat_params    = self.params.initial_dist.expectedNatParams( prior_nat_params=self.initial_prior_mfnp )[ 0 ]
-#         expected_transition_nat_params = [ dist.expectedNatParams( prior_nat_params=mfnp )[ 0 ] for dist, mfnp in zip( self.params.transition_dists, self.transition_prior_mfnps ) ]
+        recognizer_params, generative_hyper_params = emission_params
 
-#         # Do an extra gradient so that we can get the gradient w.r.t. n_x
-#         def intermediate( state_params ):
+        # Filter using the expected natural parameters
+        expected_initial_nat_params    = dict( [ ( group, dist.prior.expectedSufficientStats( nat_params=self.initial_prior_mfnp[ group ] )[ 0 ] ) for group, dist in self.params.initial_dists.items() ] )
+        expected_transition_nat_params = dict( [ ( group, [ dist.prior.expectedSufficientStats( nat_params=self.transition_prior_mfnps[ group ][ shape ] )[ 0 ] for shape, dist in dists.items() ] ) for group, dists in self.params.transition_dists.items() ] )
 
-#             expected_initial_nat_params, expected_transition_nat_params = state_params
+        # Run the smoother
+        recognizers = {}
+        for group, dist in self.params.emission_dists.items():
+            recognizers[ group ] = partial( dist.recognize, recognizer_params=recognizer_params[ group ] )
 
-#             # Run the smoother
-#             recognizer = partial( self.params.emission_dist.recognize, recognizer_params=recognizer_params )
-#             self.msg.updateNatParams( expected_initial_nat_params, expected_transition_nat_params, recognizer, check_parameters=False )
-#             self.runFilter()
+        self.msg.updateNatParams( expected_initial_nat_params, expected_transition_nat_params, recognizers, check_parameters=False )
+        self.runFilter()
 
-#             # Compute log P( x | Y ) and log P( x_c, x_p1..pN | Y ) and store them for later
-#             self.node_parents_smoothed = self.msg.parentChildSmoothed( self.U, self.V, self.msg.nodes )
-#             self.node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes, node_parents_smoothed )
+        # Compute log P( x | Y ) and log P( x_c, x_p1..pN | Y ) and store them for later
+        self.node_parents_smoothed = self.msg.parentChildSmoothed( self.U, self.V, self.msg.nodes )
+        self.node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes, self.node_parents_smoothed )
 
-#             # Sample x using the gumbel reparametrization trick
-#             self.graph_relaxed_state = RelaxedStateSampler( self.msg, node_parents_smoothed )
-#             self.msg.forwardPass( self.graph_relaxed_state )
+        # Sample x using the gumbel reparametrization trick
+        self.graph_relaxed_state = RelaxedStateSampler( self.msg, self.node_parents_smoothed )
+        self.msg.forwardPass( self.graph_relaxed_state )
 
-#             # Sample a parameter from the generative network
-#             generative_params = self.params.emission_dist.sampleGenerativeParams( params=generative_hyper_params )
+        # Compute the kl divergence from p to q
+        neg_log_z = self.msg.marginalProb( self.U, self.V )
 
-#             # Compute the kl divergence from p to q
-#             neg_log_z = self.msg.marginalProb( self.U, self.V )
-#             initial_kl_divergence = self.params.initial_dist.KLDivergence( nat_params1=self.initial_prior_mfnp, nat_params2=self.params.initial_dist.prior.nat_params )
-#             transition_kl_divergence = 0
-#             for mfnp, dist in zip( self.transition_prior_mfnps, self.params.transition_dists ):
-#                 transition_kl_divergence += dist.KLDivergence( nat_params1=mfnp, nat_params2=dist.prior.nat_params )
-#             emission_kl_divergence = self.params.emission_dist.KLPQ( params=generative_hyper_params )
+        klpq = neg_log_z
+        for group in self.params.emission_dists.keys():
+            initial_kl_divergence = self.params.initial_dists[ group ].KLDivergence( nat_params1=self.initial_prior_mfnp[ group ], nat_params2=self.params.initial_dists[ group ].prior.nat_params )
+            transition_kl_divergence = 0
+            for group in self.params.transition_dists.keys():
+                mfnp = self.transition_prior_mfnps[ group ]
+                dist = self.params.transition_dists[ group ]
+                for shape in mfnp.keys():
+                    transition_kl_divergence += dist[ shape ].KLDivergence( nat_params1=mfnp[ shape ], nat_params2=dist[ shape ].prior.nat_params )
+            emission_kl_divergence = self.params.emission_dists[ group ].KLPQ( q_params=generative_hyper_params[ group ] )
 
-#             klpq = neg_log_z - ( initial_kl_divergence + transition_kl_divergence + emission_kl_divergence )
+            klpq -= ( initial_kl_divergence + transition_kl_divergence + emission_kl_divergence )
 
-#             # Compute the likelihood of this sample
-#             log_likelihood = 0.0
-#             for node, logit in self.graph_relaxed_state.node_states:
-#                 log_likelihood += self.params.emission_dist.log_likelihood( x=logit, y=y, params=generative_params )
+        # Sample a parameter from the generative network
+        generative_params = {}
+        for group, hypers in generative_hyper_params.items():
+            generative_params[ group ] = self.params.emission_dists[ group ].sampleGenerativeParams( generative_hyper_params=hypers )
 
-#             # Compute the total SVAE loss
-#             svae_loss = self.s * ( log_likelihood - klpq )
-#             return svae_loss
+        # Compute the likelihood of this sample
+        log_likelihood = 0.0
+        for node, logit in self.graph_relaxed_state.node_states.items():
+            group = self.msg.node_groups[ node ]
+            log_likelihood += self.params.emission_dists[ group ].log_likelihood( x=logit, y=self.msg.ys[ node ], generative_params=generative_params[ group ] )
 
-#         svae_loss, intermediate_grad = value_and_grad( intermediate )( ( expected_initial_nat_params, expected_transition_nat_params ) )
+        # Compute the total SVAE loss
+        svae_loss = self.s * ( log_likelihood - klpq )
 
-#         # Store these off for when we compute the state natural gradients
-#         self.likelihood_initial_gradient = intermediate_grad[ 0 ]._value
-#         self.likelihood_transition_gradients = intermediate_grad[ 1 ]._value
+        if( n_iter % 25 == 0 ):
+            print( 'i', n_iter, 'loss', svae_loss )
+        self.losses.append( svae_loss )
+        return -svae_loss
 
-#         return svae_loss
+    def train( self, num_iters=100 ):
 
-#     def train( self, num_iters=100 ):
+        svae_params = ( {}, {} )
+        for group, dist in self.params.emission_dists.items():
+            svae_params[ 0 ][ group ] = dist.recognizer_params
+            svae_params[ 1 ][ group ] = dist.generative_hyper_params
 
-#         def naturalGradient( params, i ):
+        emission_grads = grad( self.computeLoss )
+        self.losses = []
+        def callback( x, i, g ):
+            pass
 
-#             initial_prior_mfnp, transition_prior_mfnps, recognizer_params, generative_hyper_params = params
+        opt_params = adam( emission_grads, svae_params, num_iters=num_iters, callback=callback )
 
-#             # Compute the gradients back through the smoother
-#             svae_loss, grads = value_and_grad( self.computeLoss )( ( recognizer_params, generative_hyper_params ) )
-#             recognizer_grads, generative_grads = grads
+        for group in self.params.emission_dists.keys():
+            self.params.emission_dists[ group ].recognizer_params = opt_params[ 0 ][ group ]
+            self.params.emission_dists[ group ].generative_hyper_params = opt_params[ 1 ][ group ]
 
-#             # Compute the other parts of the natural gradients
-#             initial_prior_mfnp_update,   = self.params.updatedInitialPrior( self.msg, self.node_smoothed )
-#             transition_prior_mfnp_update = self.params.updatedTransitionPrior( self.msg, self.node_parents_smoothed )
-
-#             # Compute the full natural gradients gradients
-#             initial_prior_mfnp_grad = initial_prior_mfnp_update - initial_prior_mfnp[ 0 ] + s * self.likelihood_initial_gradient
-#             transition_prior_grads = [ ( update[ 0 ] - mfnp[ 0 ] + s * grad, ) for mfnp, update, grad in zip( transition_prior_mfnps, transition_prior_mfnp_update, self.likelihood_transition_gradients ) ]
-
-#             return initial_prior_mfnp_grad, transition_prior_grads, recognizer_grads, generative_grads
-
-#         svae_params = ( self.initial_prior_mfnp, self.transition_prior_mfnps, self.params.emission_dist.recognizer_params, self.params.emission_dist.generative_hyper_params )
-#         opt_params = adam( naturalGradient, svae_params, num_iters=num_iters )
-#         self.initial_prior_mfnp = opt_params[ 0 ]
-#         self.transition_prior_mfnps = opt_params[ 1 ]
-#         self.params.emission_dist.recognizer_params = opt_params[ 2 ]
-#         self.params.emission_dist.generative_hyper_params = opt_params[ 3 ]
-#         print( 'Done!' )
+        print( 'Done!' )
+        return self.losses

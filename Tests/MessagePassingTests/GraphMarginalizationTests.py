@@ -542,10 +542,10 @@ def testSpeed():
     groups = [ 0, 1, 2 ]
     d_latents = dict( zip( groups, [ 2, 3, 4 ] ) )
 
-    reg = MarginalizationTesterFBSSVAE( graphs, d_latent, d_obs, measurements, random_latent_states=False )
-    reg.gradTest()
+    # reg = MarginalizationTesterFBSSVAE( graphs, d_latent, d_obs, measurements, random_latent_states=False )
+    # reg.gradTest()
 
-    assert 0
+    # assert 0
 
 
     regular = MarginalizationTesterFBS( graphs, d_latent, d_obs, measurements, random_latent_states=False )

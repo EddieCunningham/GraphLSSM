@@ -11,7 +11,8 @@ __all__ = [ 'GibbsParameters',
             'GroupVIParameters',
             'GroupCAVIParameters',
             'GroupSVIParameters',
-            'SVAEParameters' ]
+            'SVAEParameters',
+            'GroupSVAEParameters' ]
 
 ######################################################################
 
@@ -456,31 +457,42 @@ class SVAEParameters():
     def setMinibatchRatio( self, s ):
         self.s = s
 
-    def updatedInitialPrior( self, msg, node_smoothed ):
+######################################################################
 
-        expected_initial_stats = np.zeros_like( msg.pi0 )
-        # Update the root distribution
-        for root in msg.roots:
-            expected_initial_stats += node_smoothed[ root ]
+class GroupSVAEParameters():
 
-        return ( self.initial_dist.prior.mf_nat_params[ 0 ] + self.s * expected_initial_stats, )
+    def __init__( self, root_priors, transition_priors, d_emission, minibatch_ratio=1.0 ):
+        # Assuming that there is only 1 emission dimension
+        assert isinstance( root_priors, dict )
+        assert isinstance( transition_priors, dict )
 
-    def updatedTransitionPrior( self, msg, node_parents_smoothed ):
+        # Initial dist
+        self.initial_dists = dict( [ ( group, Categorical( hypers=dict( alpha=prior ) ) ) for group, prior in root_priors.items() ] )
 
-        expected_transition_stats = {}
+        # Create the transition distribution
+        self.transition_dists = {}
+        for group, priors in transition_priors.items():
+            self.transition_dists[ group ] = {}
+            for prior in priors:
+                shape = prior.shape
+                self.transition_dists[ group ][ shape ] = TensorTransition( hypers=dict( alpha=prior ) )
 
-        for ndim, val in msg.pis.items():
-            expected_transition_stats[ ndim ] = np.zeros_like( val )
+        # The hyperparameters are assumed to be a unit gaussian for the moment
+        self.emission_dists = {}
+        for group in self.transition_dists.keys():
+            d_latent = root_priors[ group ].shape[ 0 ]
+            self.emission_dists[ group ] = BayesianNN( d_in=d_latent, d_out=d_emission )
 
-        # Update the transition distributions
-        for node in filter( lambda n: msg.nParents( n ) > 0, msg.nodes ):
-            ndim = msg.nParents( node ) + 1
-            expected_transition_stats[ ndim ] += node_parents_smoothed[ node ]
+        self.s = minibatch_ratio
 
-        new_dists = []
-        for dist in self.transition_dists:
+    def paramProb( self ):
+        ans = 0.0
+        for group in self.initial_dists.keys():
+            ans += self.initial_dists[ group ].ilog_params()
+            for trans_dists in self.transition_dists[ group ]:
+                ans += np.sum( [ dist.ilog_params() for dist in trans_dists ] )
+            ans += self.emission_dists[ group ].ilog_params()
+        return ans
 
-            new_dist = dist.prior.mf_nat_params[ 0 ]
-            new_dist += self.s * expected_transition_stats[ dist.pi.ndim ]
-            new_dists.append( new_dist, )
-        return new_dists
+    def setMinibatchRatio( self, s ):
+        self.s = s
