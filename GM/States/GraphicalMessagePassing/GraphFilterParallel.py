@@ -355,7 +355,9 @@ def uWork( node_data ):
     node_emission = node_data.shape_corrected_emission_distribution
 
     # Combine this nodes emission with the rest of the calculation
-    return multiplyTerms( terms=( node_terms, node_emission ) )
+    ans = multiplyTerms( terms=( node_terms, node_emission ) )
+
+    return ans
 
 ######################################################################
 
@@ -392,13 +394,13 @@ def vWork( node_data ):
     # remaining
     while( ans.shape[ 0 ] == 1 ):
         ans = ans.squeeze( axis=0 )
-
     return ans
 
 ######################################################################
 
 def uBaseCaseWork( node_data ):
-    return multiplyTerms( terms=( node_data.shape_corrected_initial_distribution, node_data.shape_corrected_emission_distribution ) )
+    ans = multiplyTerms( terms=( node_data.shape_corrected_initial_distribution, node_data.shape_corrected_emission_distribution ) )
+    return ans
 
 ######################################################################
 
@@ -1014,8 +1016,9 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         non_roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) > 0 ]
         roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) == 0 ]
 
-        data = self.data_thread_pool.starmap( self.jointParentChildLocalInfo, zip( non_roots, itertools.repeat( U ), itertools.repeat( V ) ) )
+        # data = self.data_thread_pool.starmap( self.jointParentChildLocalInfo, zip( non_roots, itertools.repeat( U ), itertools.repeat( V ) ) )
         # joints = self.u_filter_process_pool.map( jointParentChildSingleNode, data )
+        data = [ self.jointParentChildLocalInfo( n, U, V ) for n in non_roots ]
         joints = [ jointParentChildSingleNode( d ) for d in data ]
         return itertools.chain( zip( non_roots, joints ), self.nodeJoint( U, V, roots ) )
 
@@ -1084,8 +1087,9 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
         non_roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) > 0 ]
         roots = [ node for node in nodes if self.nParents( node, is_partial_graph_index=False ) == 0 ]
 
-        data = self.data_thread_pool.starmap( self.jointParentChildLocalInfo, zip( non_roots, itertools.repeat( U ), itertools.repeat( V ) ) )
+        # data = self.data_thread_pool.starmap( self.jointParentChildLocalInfo, zip( non_roots, itertools.repeat( U ), itertools.repeat( V ) ) )
         # data = [ self.jointParentChildLocalInfo( node, U, V ) for node in non_roots ]
+        data = [ self.jointParentChildLocalInfo( n, U, V ) for n in non_roots ]
         joints = self.u_filter_process_pool.map( conditionalParentChildSingleNode, data )
         return itertools.chain( zip( non_roots, joints ), self.nodeSmoothed( U, V, roots ) )
 
@@ -1094,11 +1098,6 @@ class GraphFilterFBSParallel( GraphFilterFBS ):
 ######################################################################
 
 class GraphFilterFBSSVAE( GraphFilterFBSParallel ):
-
-    def setEmissionParams( self, svae_params ):
-        assert isinstance( svae_params, dict )
-        self.checkSVAEParams( svae_params )
-        self.svae_params = svae_params
 
     ######################################################################
     # Don't really want to cache these here because of autograd

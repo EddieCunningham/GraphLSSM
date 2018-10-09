@@ -8,7 +8,8 @@ import copy
 
 __all__ = [ 'Pedigree',
             'PedigreeSexMatters',
-            'setGraphRootStates' ]
+            'setGraphRootStates',
+            'createDataset' ]
 
 ######################################################################
 
@@ -345,3 +346,37 @@ def setGraphRootStates( graph, ip_type ):
             graph.setPossibleLatentStates( root, sexToNotCarrierState( graph, root ) )
 
     return graph
+
+######################################################################
+
+def createDataset( graphs, set_root_latent_states=False, set_latent_states=True ):
+
+    ad_graphs = []
+    ar_graphs = []
+    xl_graphs = []
+
+    for graph_and_fbs in graphs:
+
+        graph, fbs = graph_and_fbs
+
+        graph_sex_matters = graph if isinstance( graph, PedigreeSexMatters ) else PedigreeSexMatters.fromPedigree( graph )
+        graph_sex_doesnt_matters = graph if isinstance( graph, Pedigree ) else Pedigree.fromPedigreeSexMatters( graph )
+
+        ad_graph = copy.deepcopy( graph_sex_doesnt_matters )
+        ar_graph = copy.deepcopy( graph_sex_doesnt_matters )
+        xl_graph = copy.deepcopy( graph_sex_matters )
+
+        if( set_root_latent_states ):
+            ad_graph.useRootDiagnosisImplication( 'AD' )
+            ar_graph.useRootDiagnosisImplication( 'AR' )
+            xl_graph.useRootDiagnosisImplication( 'XL' )
+        if( set_latent_states ):
+            ad_graph.useDiagnosisImplication( 'AD' )
+            ar_graph.useDiagnosisImplication( 'AR' )
+            xl_graph.useDiagnosisImplication( 'XL' )
+
+        ad_graphs.append( ( ad_graph, fbs ) )
+        ar_graphs.append( ( ar_graph, fbs ) )
+        xl_graphs.append( ( xl_graph, fbs ) )
+
+    return ad_graphs, ar_graphs, xl_graphs

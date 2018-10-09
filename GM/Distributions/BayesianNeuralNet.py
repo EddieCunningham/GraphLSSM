@@ -52,7 +52,9 @@ class BayesianNN():
 
         W, b = recognizer_params[ -1 ]
         last_layer = np.einsum( 'ij,tj->i', W, last_layer ) + b
-        return last_layer - logsumexp( last_layer )
+        logits = last_layer - logsumexp( last_layer )
+
+        return logits
 
     def sampleGenerativeParams( self, generative_hyper_params ):
         ( Wg1, bg1 ), ( Wg2, bg2 ) = generative_hyper_params
@@ -77,7 +79,8 @@ class BayesianNN():
 
     def log_likelihood( self, x, y, generative_params ):
 
-        last_layer = x
+        # This is ok because x is an array of logits
+        last_layer = np.exp( x )
 
         for W, b in generative_params[ :-1 ]:
             last_layer = np.tanh( np.einsum( 'ij,j->i', W, last_layer ) + b )
@@ -90,5 +93,9 @@ class BayesianNN():
         y_one_hot = np.zeros( ( y.shape[ 0 ], self.d_out ) )
         y_one_hot[ np.arange( y.shape[ 0 ] ), y ] = 1.0
 
-        # Cross entropy
-        return -np.sum( y * logits )
+        return np.einsum( 'ti,i->', y_one_hot, logits )
+
+    def initializeWithByTraining( self, xs, ys ):
+
+        # This will be useful so that we don't get nans with the uninitialized model
+        pass

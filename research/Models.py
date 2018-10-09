@@ -4,6 +4,11 @@ from GenModels.GM.Models.DiscreteGraphModels import *
 import copy
 import matplotlib
 import matplotlib.pyplot as plt
+from .PedigreeWrappers import createDataset
+from sklearn.metrics import confusion_matrix, cohen_kappa_score
+from GenModels.GM.Utility import logsumexp, monitored_adam
+from autograd import grad, value_and_grad
+from autograd.misc.optimizers import adam
 
 __all__ = [
     'autosomalDominantPriors',
@@ -11,7 +16,8 @@ __all__ = [
     'xLinkedRecessivePriors',
     'AutosomalDominant',
     'AutosomalRecessive',
-    'XLinkedRecessive'
+    'XLinkedRecessive',
+    'InheritancePatternTrainer'
 ]
 
 NO_DIAGNOSIS_PROB = 0.0
@@ -336,3 +342,193 @@ class XLinkedRecessive( _drawMixin, GroupGHMM ):
             else:
                 return prob[ 0 ] + prob[ 1 ] + prob[ 3 ]
         return self._draw( graph_index=graph_index, show_carrier_prob=show_carrier_prob, probCarrierFunc=probCarrierFunc )
+
+######################################################################
+
+class AutosomalSVAE( _drawMixin, GSVAE ):
+    def __init__( self, graphs=None, root_strength=1.0, prior_strength=1.0, priors=None, **kwargs ):
+
+        # Generate the priors
+        if( priors is None ):
+            trans_prior, _ = autosomalRecessivePriors( prior_strength )
+        else:
+            # Initialize using other priors
+            trans_prior = priors
+
+        root_prior = np.ones( 3 )
+        root_prior[ 2 ] = root_strength
+        priors = ( root_prior, trans_prior )
+
+        super().__init__( graphs, prior_strength=prior_strength, priors=priors, d_obs=2, **kwargs )
+
+    def draw( self, graph_index=0, show_carrier_prob=True ):
+        def probCarrierFunc( sex, prob ):
+            return prob[ 0 ] + prob[ 0 ]
+        return self._draw( graph_index=graph_index, show_carrier_prob=show_carrier_prob, probCarrierFunc=probCarrierFunc )
+
+class XLinkedSVAE( _drawMixin, GroupGSVAE ):
+    def __init__( self, graphs=None, root_strength=1.0, prior_strength=1.0, priors=None, **kwargs ):
+
+        # Generate the priors
+        if( priors is None ):
+            trans_priors, _ = xLinkedRecessivePriors( prior_strength )
+        else:
+            # Initialize using known priors
+            trans_priors = priors
+            female_trans_prior, male_trans_prior, unknown_trans_prior = trans_priors
+
+        groups = [ 0, 1, 2 ]
+
+        female_root_prior = np.ones( 3 )
+        female_root_prior[ 2 ] = root_strength
+
+        male_root_prior = np.ones( 2 )
+        male_root_prior[ 1 ] = root_strength
+
+        unknown_root_prior = np.ones( 5 )
+        unknown_root_prior[ 2 ] = root_strength
+        unknown_root_prior[ 4 ] = root_strength
+
+        root_priors = { 0: female_root_prior, 1: male_root_prior, 2: unknown_root_prior }
+        trans_priors = dict( [ ( group, [ dist ] ) for group, dist in zip( groups, trans_priors ) ] )
+
+        priors = ( root_priors, trans_priors )
+        super().__init__( graphs, prior_strength=prior_strength, priors=priors, d_obs=2, **kwargs )
+
+    def draw( self, graph_index=0, show_carrier_prob=True ):
+        def probCarrierFunc( sex, prob ):
+            if( sex == 'female' ):
+                return prob[ 0 ] + prob[ 1 ]
+            elif( sex == 'male' ):
+                return prob[ 0 ]
+            else:
+                return prob[ 0 ] + prob[ 1 ] + prob[ 3 ]
+        return self._draw( graph_index=graph_index, show_carrier_prob=show_carrier_prob, probCarrierFunc=probCarrierFunc )
+
+######################################################################
+
+class InheritancePatternTrainer():
+
+    def __init__( self, training_graphs, test_graphs, root_strength=100000000000, prior_strength=100000000000, **kwargs ):
+
+        self.ad_model = AutosomalSVAE( graphs=None, root_strength=root_strength, prior_strength=prior_strength, **kwargs )
+        self.ar_model = AutosomalSVAE( graphs=None, root_strength=root_strength, prior_strength=prior_strength, **kwargs )
+        self.xl_model = XLinkedSVAE( graphs=None, root_strength=root_strength, prior_strength=prior_strength, **kwargs )
+
+        self.training_set = training_graphs
+        self.test_set = test_graphs
+
+        self.k = 1.0
+
+        # Set the first graph
+        self.updateCurrentGraphAndLabel( training=True )
+
+
+    def updateCurrentGraphAndLabel( self, training=True, index=None, graph=None ):
+
+        if( graph is None ):
+            # Choose the next graph
+            if( training == True ):
+                random_index = int( np.random.random() * len( self.training_set ) ) if index is None else index
+                graph = self.training_set[ random_index ]
+            else:
+                random_index = int( np.random.random() * len( self.test_set ) ) if index is None else index
+                graph = self.test_set[ random_index ]
+
+        # Generate the label
+        label = graph[ 0 ].inheritancePattern
+        label_one_hot = np.zeros( 3 )
+        label_one_hot[ [ 'AD', 'AR', 'XL' ].index( label ) ] = 1.0
+        self.current_label_one_hot = label_one_hot
+
+        # Update the models
+        ad_graph, ar_graph, xl_graph = createDataset( [ graph ] )
+
+        self.ad_model.msg.preprocessData( ad_graph )
+        self.ar_model.msg.preprocessData( ar_graph )
+        self.xl_model.msg.preprocessData( xl_graph )
+
+    def inheritancePatternLogits( self, model_parameters, graph=None, mc_samples=10 ):
+
+        if( graph is not None ):
+            self.updateCurrentGraphAndLabel( graph=graph )
+
+        ad_emission_params, ar_emission_params, xl_emission_params = model_parameters
+
+        all_logits = []
+        for i in range( mc_samples ):
+            ad_loss = self.ad_model.opt.computeLoss( ad_emission_params, 0 )
+            ar_loss = self.ar_model.opt.computeLoss( ar_emission_params, 0 )
+            xl_loss = self.xl_model.opt.computeLoss( xl_emission_params, 0 )
+
+            prediction_logits = np.array( [ -ad_loss, -ar_loss, -xl_loss ] )
+            all_logits.append( prediction_logits )
+
+        return logsumexp( np.array( all_logits ), axis=0 )
+
+    def inheritancePatternPrediction( self, model_parameters, graph=None, mc_samples=10 ):
+        prediction_logits = self.inheritancePatternLogits( model_parameters, graph=graph, mc_samples=mc_samples )
+        prediction_probs = prediction_logits - logsumexp( prediction_logits )
+        return prediction_probs
+
+    def fullLoss( self, full_params, n_iter=0 ):
+
+        ad_emission_params, ar_emission_params, xl_emission_params = full_params
+
+        # Each element in the set of logits is both the SVAE lower bound on P( Y ) and what we are
+        # going to use to predict the inheritance pattern
+        prediction_logits = self.inheritancePatternLogits( full_params, graph=None, mc_samples=1 )
+        ad_loss, ar_loss, xl_loss = -prediction_logits
+
+        # Compute the prediction loss.  We really want P( Y ) for each model,
+        # but will settle for the lower bound given by the SVAE loss
+        prediction_loss = -np.sum( self.current_label_one_hot * prediction_logits )
+
+        return ad_loss + ar_loss + xl_loss + self.k * prediction_loss
+
+    def train( self, num_iters=100 ):
+
+        ad_params = ( self.ad_model.params.emission_dist.recognizer_params, self.ad_model.params.emission_dist.generative_hyper_params )
+        ar_params = ( self.ar_model.params.emission_dist.recognizer_params, self.ar_model.params.emission_dist.generative_hyper_params )
+
+        xl_params = ( {}, {} )
+        for group, dist in self.xl_model.params.emission_dists.items():
+            xl_params[ 0 ][ group ] = dist.recognizer_params
+            xl_params[ 1 ][ group ] = dist.generative_hyper_params
+
+        svae_params = ( ad_params, ar_params, xl_params )
+
+        # Callback to run the test set and update the next graph
+        # def callback( full_params, i, g, val ):
+
+        #     if( i % 25 == 0 ):
+        #         print( 'i', i, 'loss', val )
+        def callback( full_params, i, g ):
+
+            if( i % 25 == 0 ):
+                print( 'i', i, 'loss' )
+
+            # Every 1000 steps, run the algorithm on the test set
+            if( i and i % 1000 == 0 ):
+                labels = [ 'AD', 'AR', 'XL' ]
+                true_labels = [ g.inheritancePattern for g, fbs in self.test_set ]
+                predicted_labels = []
+                for graph_and_fbs in self.test_set:
+                    probs = self.inheritancePatternPrediction( full_params, graph=graph_and_fbs, mc_samples=1 )
+                    predicted_labels.append( labels[ np.argmax( probs ) ] )
+
+                # Print the confusion matrix and kappa score on the test set
+                cm = confusion_matrix( y_true=np.array( true_labels ), y_pred=np.array( predicted_labels ), labels=labels )
+                ck = cohen_kappa_score( y1=np.array( true_labels ), y2=np.array( predicted_labels ), labels=labels )
+                print( 'Confusion matrix:\n', cm )
+                print( 'Cohen kappa:', ck )
+
+            # Swap out the current graph and update the current label
+            self.updateCurrentGraphAndLabel( training=True )
+
+        # Optimize
+        # val_and_grad = value_and_grad( self.fullLoss )
+        # final_params = monitored_adam( val_and_grad, svae_params, num_iters=num_iters, callback=callback )
+        grads = grad( self.fullLoss )
+        final_params = adam( grads, svae_params, num_iters=num_iters, callback=callback )
+        return final_params

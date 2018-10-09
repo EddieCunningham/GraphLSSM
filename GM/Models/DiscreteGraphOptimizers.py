@@ -6,6 +6,7 @@ from autograd.misc.optimizers import adam
 import copy
 from functools import partial
 import string
+from GenModels.GM.Utility import logsumexp
 
 __all__ = [ 'Gibbs',
             'GroupGibbs',
@@ -381,6 +382,64 @@ class GroupSVI( GroupCAVI ):
 
 ######################################################################
 
+# Not worth importing from GraphFilterParallel
+def extendAxes( term, target_axis, max_dim ):
+    # Push the first axis out to target_axis, but don't change
+    # the axes past max_dim
+
+    # Add axes before the fbsAxes
+    for _ in range( max_dim - target_axis - 1 ):
+        term = np.expand_dims( term, 1 )
+
+    # Prepend axes
+    for _ in range( target_axis ):
+        term = np.expand_dims( term, 0 )
+
+    return term
+
+def multipleTerms( terms ):
+    # Basically np.einsum but in log space
+
+    # Remove the empty terms
+    terms = [ t for t in terms if np.prod( t.shape ) > 1 ]
+
+    ndim = max( [ len( term.shape ) for term in terms ] )
+
+    axes = [ [ i for i, s in enumerate( t.shape ) if s != 1 ] for t in terms ]
+
+    # Get the shape of the output
+    shape = np.ones( ndim, dtype=int )
+    for ax, term in zip( axes, terms ):
+        shape[ np.array( ax ) ] = term.squeeze().shape
+
+    # Basically np.einsum in log space
+    ans = np.zeros( shape )
+    for ax, term in zip( axes, terms ):
+
+        for _ in range( ndim - term.ndim ):
+            term = term[ ..., None ]
+
+        ans += term
+
+    return ans
+
+def integrate( integrand, axes ):
+    # Need adjusted axes because the relative axes in integrand change as we reduce
+    # over each axis
+    if( len( axes ) == 0 ):
+        return integrand
+
+    assert max( axes ) < integrand.ndim
+    axes = np.array( axes )
+    axes[ axes < 0 ] = integrand.ndim + axes[ axes < 0 ]
+    adjusted_axes = np.array( sorted( axes ) ) - np.arange( len( axes ) )
+    for ax in adjusted_axes:
+        integrand = logsumexp( integrand, axis=ax )
+
+    return integrand
+
+######################################################################
+
 class RelaxedStateSampler():
     def __init__( self, msg, node_parents_smoothed ):
         self.msg = msg
@@ -398,13 +457,16 @@ class RelaxedStateSampler():
             if( len( parents ) == 0 ):
                 prob = probs
             else:
-                parent_logits = [ self.node_states[ p ] for p in parents ]
-                letters = string.ascii_lowercase[ :( len( parent_logits ) + 1 ) ]
-                contract = letters + ',' + ','.join( [ l for l in letters[ :-1 ] ] ) + '->' + letters[ -1 ]
-                prob = np.einsum( contract, probs, *parent_logits )
+                n_parents = len( parents )
+                parent_logits = [ extendAxes( self.node_states[ p ], i, n_parents + 1 ) for i, p in enumerate( parents ) ]
+
+                # einsum in log space
+                multiplied = multipleTerms( parent_logits + [ probs ] )
+                prob = integrate( multiplied, axes=np.arange( n_parents ) )
 
             # Sample from P( x_c | x_p1..pN, Y )
             relaxed_state = Categorical.reparametrizedSample( nat_params=( prob, ), return_log=True )
+
             self.node_states[ node ] = relaxed_state
 
 class SVAE( Optimizer ):
@@ -436,23 +498,19 @@ class SVAE( Optimizer ):
         self.msg.updateNatParams( expected_initial_nat_params, expected_transition_nat_params, recognizer, check_parameters=False )
         self.runFilter()
 
-        # Compute log P( x | Y ) and log P( x_c, x_p1..pN | Y ) and store them for later
-        self.node_parents_smoothed = self.msg.parentChildSmoothed( self.U, self.V, self.msg.nodes )
-        self.node_smoothed = self.msg.nodeSmoothed( self.U, self.V, self.msg.nodes, self.node_parents_smoothed )
+        # Compute log_q( x_c, x_p1..pN ) so that we can sample from q( X )
+        node_parents_smoothed = self.msg.parentChildSmoothed( self.U, self.V, self.msg.nodes )
 
         # Sample x using the gumbel reparametrization trick
-        self.graph_relaxed_state = RelaxedStateSampler( self.msg, self.node_parents_smoothed )
+        self.graph_relaxed_state = RelaxedStateSampler( self.msg, node_parents_smoothed )
         self.msg.forwardPass( self.graph_relaxed_state )
 
-        # Compute the kl divergence from p to q
+        # Compute the kl divergence from p to q.
+        # Because we're using q( pi ) := p( pi ) and q( pi0 ) := p( pi0 ), don't need to calculate those terms
         neg_log_z = self.msg.marginalProb( self.U, self.V )
-        initial_kl_divergence = self.params.initial_dist.KLDivergence( nat_params1=self.initial_prior_mfnp, nat_params2=self.params.initial_dist.prior.nat_params )
-        transition_kl_divergence = 0
-        for mfnp, dist in zip( self.transition_prior_mfnps, self.params.transition_dists ):
-            transition_kl_divergence += dist.KLDivergence( nat_params1=mfnp, nat_params2=dist.prior.nat_params )
         emission_kl_divergence = self.params.emission_dist.KLPQ( q_params=generative_hyper_params )
 
-        klpq = neg_log_z - ( initial_kl_divergence + transition_kl_divergence + emission_kl_divergence )
+        klpq = neg_log_z - emission_kl_divergence
 
         # Sample a parameter from the generative network
         generative_params = self.params.emission_dist.sampleGenerativeParams( generative_hyper_params=generative_hyper_params )
@@ -465,25 +523,26 @@ class SVAE( Optimizer ):
         # Compute the total SVAE loss
         svae_loss = self.s * ( log_likelihood - klpq )
 
-        if( n_iter % 25 == 0 ):
-            print( 'i', n_iter, 'loss', svae_loss )
-        self.losses.append( svae_loss )
+        print( 'svae_loss', svae_loss, flush=True )
+
         return -svae_loss
 
-    def train( self, num_iters=2000 ):
+    def train( self, num_iters=100 ):
 
         svae_params = ( self.params.emission_dist.recognizer_params, self.params.emission_dist.generative_hyper_params )
+
         emission_grads = grad( self.computeLoss )
-        self.losses = []
         def callback( x, i, g ):
-            pass
+            if( i%25 == 0 ):
+                print( 'i', i )
 
         opt_params = adam( emission_grads, svae_params, num_iters=num_iters, callback=callback )
 
+        # Update the model parameters
         self.params.emission_dist.recognizer_params = opt_params[ 0 ]
         self.params.emission_dist.generative_hyper_params = opt_params[ 1 ]
-        print( 'Done!' )
-        return self.losses
+
+        return opt_params
 
 ######################################################################
 
@@ -527,20 +586,10 @@ class GroupSVAE( Optimizer ):
         self.msg.forwardPass( self.graph_relaxed_state )
 
         # Compute the kl divergence from p to q
-        neg_log_z = self.msg.marginalProb( self.U, self.V )
-
-        klpq = neg_log_z
+        # Because we're using q( pi ) := p( pi ) and q( pi0 ) := p( pi0 ), don't need to calculate those terms
+        klpq = self.msg.marginalProb( self.U, self.V )
         for group in self.params.emission_dists.keys():
-            initial_kl_divergence = self.params.initial_dists[ group ].KLDivergence( nat_params1=self.initial_prior_mfnp[ group ], nat_params2=self.params.initial_dists[ group ].prior.nat_params )
-            transition_kl_divergence = 0
-            for group in self.params.transition_dists.keys():
-                mfnp = self.transition_prior_mfnps[ group ]
-                dist = self.params.transition_dists[ group ]
-                for shape in mfnp.keys():
-                    transition_kl_divergence += dist[ shape ].KLDivergence( nat_params1=mfnp[ shape ], nat_params2=dist[ shape ].prior.nat_params )
-            emission_kl_divergence = self.params.emission_dists[ group ].KLPQ( q_params=generative_hyper_params[ group ] )
-
-            klpq -= ( initial_kl_divergence + transition_kl_divergence + emission_kl_divergence )
+            klpq -= self.params.emission_dists[ group ].KLPQ( q_params=generative_hyper_params[ group ] )
 
         # Sample a parameter from the generative network
         generative_params = {}
@@ -555,10 +604,8 @@ class GroupSVAE( Optimizer ):
 
         # Compute the total SVAE loss
         svae_loss = self.s * ( log_likelihood - klpq )
+        print( 'svae_loss', svae_loss, flush=True )
 
-        if( n_iter % 25 == 0 ):
-            print( 'i', n_iter, 'loss', svae_loss )
-        self.losses.append( svae_loss )
         return -svae_loss
 
     def train( self, num_iters=100 ):
@@ -569,15 +616,15 @@ class GroupSVAE( Optimizer ):
             svae_params[ 1 ][ group ] = dist.generative_hyper_params
 
         emission_grads = grad( self.computeLoss )
-        self.losses = []
         def callback( x, i, g ):
-            pass
+            if( i%25 == 0 ):
+                print( 'i', i )
 
         opt_params = adam( emission_grads, svae_params, num_iters=num_iters, callback=callback )
 
+        # Update the model parameters
         for group in self.params.emission_dists.keys():
             self.params.emission_dists[ group ].recognizer_params = opt_params[ 0 ][ group ]
             self.params.emission_dists[ group ].generative_hyper_params = opt_params[ 1 ][ group ]
 
-        print( 'Done!' )
-        return self.losses
+        return opt_params
