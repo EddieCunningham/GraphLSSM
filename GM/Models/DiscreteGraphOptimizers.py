@@ -6,7 +6,7 @@ from autograd.misc.optimizers import adam
 import copy
 from functools import partial
 import string
-from GenModels.GM.Utility import logsumexp
+from GenModels.GM.Utility import logsumexp, extendAxes, logMultiplyTerms, logIntegrate
 
 __all__ = [ 'Gibbs',
             'GroupGibbs',
@@ -382,64 +382,6 @@ class GroupSVI( GroupCAVI ):
 
 ######################################################################
 
-# Not worth importing from GraphFilterParallel
-def extendAxes( term, target_axis, max_dim ):
-    # Push the first axis out to target_axis, but don't change
-    # the axes past max_dim
-
-    # Add axes before the fbsAxes
-    for _ in range( max_dim - target_axis - 1 ):
-        term = np.expand_dims( term, 1 )
-
-    # Prepend axes
-    for _ in range( target_axis ):
-        term = np.expand_dims( term, 0 )
-
-    return term
-
-def multipleTerms( terms ):
-    # Basically np.einsum but in log space
-
-    # Remove the empty terms
-    terms = [ t for t in terms if np.prod( t.shape ) > 1 ]
-
-    ndim = max( [ len( term.shape ) for term in terms ] )
-
-    axes = [ [ i for i, s in enumerate( t.shape ) if s != 1 ] for t in terms ]
-
-    # Get the shape of the output
-    shape = np.ones( ndim, dtype=int )
-    for ax, term in zip( axes, terms ):
-        shape[ np.array( ax ) ] = term.squeeze().shape
-
-    # Basically np.einsum in log space
-    ans = np.zeros( shape )
-    for ax, term in zip( axes, terms ):
-
-        for _ in range( ndim - term.ndim ):
-            term = term[ ..., None ]
-
-        ans += term
-
-    return ans
-
-def integrate( integrand, axes ):
-    # Need adjusted axes because the relative axes in integrand change as we reduce
-    # over each axis
-    if( len( axes ) == 0 ):
-        return integrand
-
-    assert max( axes ) < integrand.ndim
-    axes = np.array( axes )
-    axes[ axes < 0 ] = integrand.ndim + axes[ axes < 0 ]
-    adjusted_axes = np.array( sorted( axes ) ) - np.arange( len( axes ) )
-    for ax in adjusted_axes:
-        integrand = logsumexp( integrand, axis=ax )
-
-    return integrand
-
-######################################################################
-
 class RelaxedStateSampler():
     def __init__( self, msg, node_parents_smoothed ):
         self.msg = msg
@@ -461,11 +403,11 @@ class RelaxedStateSampler():
                 parent_logits = [ extendAxes( self.node_states[ p ], i, n_parents + 1 ) for i, p in enumerate( parents ) ]
 
                 # einsum in log space
-                multiplied = multipleTerms( parent_logits + [ probs ] )
-                prob = integrate( multiplied, axes=np.arange( n_parents ) )
+                multiplied = logMultiplyTerms( parent_logits + [ probs ] )
+                prob = logIntegrate( multiplied, axes=np.arange( n_parents ) )
 
             # Sample from P( x_c | x_p1..pN, Y )
-            relaxed_state = Categorical.reparametrizedSample( nat_params=( prob, ), return_log=True )
+            relaxed_state = Categorical.reparametrizedSample( nat_params=( prob, ), return_log=True, temp=1.0 )
 
             self.node_states[ node ] = relaxed_state
 
@@ -518,7 +460,7 @@ class SVAE( Optimizer ):
         # Compute the likelihood of this sample
         log_likelihood = 0.0
         for node, logit in self.graph_relaxed_state.node_states.items():
-            log_likelihood += self.params.emission_dist.log_likelihood( x=logit, y=self.msg.ys[ node ], generative_params=generative_params )
+            log_likelihood += self.params.emission_dist.log_likelihood( x=logit, y=self.msg.ys[ node ], cond=self.msg.conds[ node ], generative_params=generative_params )
 
         # Compute the total SVAE loss
         svae_loss = self.s * ( log_likelihood - klpq )
@@ -587,7 +529,7 @@ class GroupSVAE( Optimizer ):
 
         # Compute the kl divergence from p to q
         # Because we're using q( pi ) := p( pi ) and q( pi0 ) := p( pi0 ), don't need to calculate those terms
-        klpq = self.msg.marginalProb( self.U, self.V )
+        neg_log_z = klpq = self.msg.marginalProb( self.U, self.V )
         for group in self.params.emission_dists.keys():
             klpq -= self.params.emission_dists[ group ].KLPQ( q_params=generative_hyper_params[ group ] )
 
@@ -600,7 +542,7 @@ class GroupSVAE( Optimizer ):
         log_likelihood = 0.0
         for node, logit in self.graph_relaxed_state.node_states.items():
             group = self.msg.node_groups[ node ]
-            log_likelihood += self.params.emission_dists[ group ].log_likelihood( x=logit, y=self.msg.ys[ node ], generative_params=generative_params[ group ] )
+            log_likelihood += self.params.emission_dists[ group ].log_likelihood( x=logit, y=self.msg.ys[ node ], cond=self.msg.conds[ node ], generative_params=generative_params[ group ] )
 
         # Compute the total SVAE loss
         svae_loss = self.s * ( log_likelihood - klpq )

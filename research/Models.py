@@ -9,6 +9,8 @@ from sklearn.metrics import confusion_matrix, cohen_kappa_score
 from GenModels.GM.Utility import logsumexp, monitored_adam
 from autograd import grad, value_and_grad
 from autograd.misc.optimizers import adam
+import os
+import pickle
 
 __all__ = [
     'autosomalDominantPriors',
@@ -423,7 +425,6 @@ class InheritancePatternTrainer():
         # Set the first graph
         self.updateCurrentGraphAndLabel( training=True )
 
-
     def updateCurrentGraphAndLabel( self, training=True, index=None, graph=None ):
 
         if( graph is None ):
@@ -498,22 +499,28 @@ class InheritancePatternTrainer():
 
         svae_params = ( ad_params, ar_params, xl_params )
 
-        # Callback to run the test set and update the next graph
-        # def callback( full_params, i, g, val ):
+        if( os.path.isfile( 'saved_params.p' ) ):
+            with open( 'saved_params.p', 'rb' ) as file:
+                svae_params = pickle.load( file )
+                print( 'Using last checkpoint' )
 
-        #     if( i % 25 == 0 ):
-        #         print( 'i', i, 'loss', val )
+        # Callback to run the test set and update the next graph
         def callback( full_params, i, g ):
 
-            if( i % 25 == 0 ):
-                print( 'i', i, 'loss' )
+            if( i and i % 100 == 0 ):
+                with open( 'saved_params.p', 'wb' ) as file:
+                    pickle.dump( full_params, file )
 
-            # Every 1000 steps, run the algorithm on the test set
-            if( i and i % 1000 == 0 ):
+            # Every 500 steps, run the algorithm on the test set
+            if( i % 500 == 0 ):
                 labels = [ 'AD', 'AR', 'XL' ]
-                true_labels = [ g.inheritancePattern for g, fbs in self.test_set ]
+                # true_labels = [ g.inheritancePattern for g, fbs in self.test_set ]
                 predicted_labels = []
+                true_labels = []
                 for graph_and_fbs in self.test_set:
+                    if( np.random.random() < 0.3 ):
+                        continue
+                    true_labels.append( graph_and_fbs[ 0 ].inheritancePattern )
                     probs = self.inheritancePatternPrediction( full_params, graph=graph_and_fbs, mc_samples=1 )
                     predicted_labels.append( labels[ np.argmax( probs ) ] )
 
@@ -527,8 +534,6 @@ class InheritancePatternTrainer():
             self.updateCurrentGraphAndLabel( training=True )
 
         # Optimize
-        # val_and_grad = value_and_grad( self.fullLoss )
-        # final_params = monitored_adam( val_and_grad, svae_params, num_iters=num_iters, callback=callback )
         grads = grad( self.fullLoss )
         final_params = adam( grads, svae_params, num_iters=num_iters, callback=callback )
         return final_params

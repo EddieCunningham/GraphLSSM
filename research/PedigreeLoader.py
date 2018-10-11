@@ -84,6 +84,9 @@ def pedigreeToGraph( pedigree ):
     graph.ethnicity2 = pedigree.ethnicity2
     graph.inheritancePattern = pedigree.inheritancePattern
 
+    graph.setNumbAffectedBelow()
+    graph.setNumbAffectedAbove()
+
     return graph
 
 ######################################################################

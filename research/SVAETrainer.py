@@ -43,6 +43,13 @@ def stratifySample( ad_graphs, ar_graphs, xl_graphs, train_test_split=0.8 ):
     ar_train_indices, ar_test_indices = trainTestIndices( ar_graphs )
     xl_train_indices, xl_test_indices = trainTestIndices( xl_graphs )
 
+    print( 'len( ad_train_indices )', len( ad_train_indices ) )
+    print( 'len( ad_test_indices )', len( ad_test_indices ) )
+    print( 'len( ar_train_indices )', len( ar_train_indices ) )
+    print( 'len( ar_test_indices )', len( ar_test_indices ) )
+    print( 'len( xl_train_indices )', len( xl_train_indices ) )
+    print( 'len( xl_test_indices )', len( xl_test_indices ) )
+
     training_graphs = np.vstack( ( ad_graphs[ ad_train_indices ], ar_graphs[ ar_train_indices ], xl_graphs[ xl_train_indices ] ) )
     test_graphs = np.vstack( ( ad_graphs[ ad_test_indices ], ar_graphs[ ar_test_indices ], xl_graphs[ xl_test_indices ] ) )
 
@@ -50,9 +57,10 @@ def stratifySample( ad_graphs, ar_graphs, xl_graphs, train_test_split=0.8 ):
 
 # graphs = loadGraphs()
 # pickleLoadedGraphs( *graphs )
+# assert 0
 
 ad_graphs, ar_graphs, xl_graphs = loadPickledGraphs()
 training_graphs, test_graphs = stratifySample( ad_graphs, ar_graphs, xl_graphs )
 
 trainer = InheritancePatternTrainer( training_graphs, test_graphs )
-trainer.train( num_iters=5 )
+trainer.train( num_iters=30000 )

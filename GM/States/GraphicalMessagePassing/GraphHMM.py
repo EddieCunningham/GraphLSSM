@@ -15,7 +15,9 @@ __all__ = [ 'GraphHMM',
             'GraphHMMFBSGroup',
             'GraphHMMFBSGroupParallel',
             'GraphDiscreteSVAE',
-            'GraphDiscreteGroupSVAE'  ]
+            'GraphDiscreteGroupSVAE',
+            'GraphDiscreteSVAEConditioned',
+            'GraphDiscreteGroupSVAEConditioned'  ]
 
 class _graphHMMMixin():
 
@@ -962,6 +964,84 @@ class GraphDiscreteGroupSVAE( _graphHMMGroupFBSMixin, GraphFilterFBSSVAE ):
 
         if( not np.any( np.isnan( y ) ) ):
             prob = self.recognizerFuncs[ group ]( y ).reshape( ( -1, ) )
+        else:
+            prob = np.zeros_like( self.pi0s[ group ][ :, 0 ] ).reshape( ( -1, ) )
+
+        if( self.inFeedbackSet( node_full, is_partial_graph_index=False ) ):
+            fbs_index = self.fbsIndex( node_full, is_partial_graph_index=False, within_graph=True )
+            for _ in range( fbs_index ):
+                prob = prob[ None ]
+            return fbsData( prob, 0 )
+        return fbsData( prob, -1 )
+
+######################################################################
+# FOR RESEARCH
+######################################################################
+
+class GraphDiscreteSVAEConditioned( GraphDiscreteSVAE ):
+
+    def preprocessData( self, data_graphs ):
+        super().preprocessData( data_graphs )
+
+        self.conds = {}
+        total_nodes = 0
+        for data_graph, fbs in data_graphs:
+
+            for node in data_graph.nodes:
+                sex = data_graph.attrs[ node ][ 'sex' ]
+                age = data_graph.attrs[ node ][ 'age' ]
+                affected = data_graph.attrs[ node ][ 'affected' ]
+                n_above = data_graph.n_affected_above[ node ]
+                n_below = data_graph.n_affected_below[ node ]
+                self.conds[ total_nodes + node ] = ( sex, age, affected, n_above, n_below )
+            total_nodes += len( data_graph.nodes )
+
+    def emissionProb( self, node, is_partial_graph_index=False ):
+        # Access the emission matrix with the full graph indices
+        node_full = self.partialGraphIndexToFullGraphIndex( node ) if is_partial_graph_index == True else node
+
+        y = self.ys[ int( node_full ) ]
+        cond = self.conds[ int( node_full ) ]
+
+        if( not np.any( np.isnan( y ) ) ):
+            prob = self.recognizerFunc( y, cond ).reshape( ( -1, ) )
+        else:
+            prob = np.zeros_like( self.pi0 ).reshape( ( -1, ) )
+
+        if( self.inFeedbackSet( node_full, is_partial_graph_index=False ) ):
+            return fbsData( prob, 0 )
+        return fbsData( prob, -1 )
+
+######################################################################
+
+class GraphDiscreteGroupSVAEConditioned( GraphDiscreteGroupSVAE ):
+
+    def preprocessData( self, group_graphs ):
+        super().preprocessData( group_graphs )
+
+        self.conds = {}
+        total_nodes = 0
+        for data_graph, fbs in group_graphs:
+
+            for node in data_graph.nodes:
+                sex = data_graph.attrs[ node ][ 'sex' ]
+                age = data_graph.attrs[ node ][ 'age' ]
+                affected = data_graph.attrs[ node ][ 'affected' ]
+                n_above = data_graph.n_affected_above[ node ]
+                n_below = data_graph.n_affected_below[ node ]
+                self.conds[ total_nodes + node ] = ( sex, age, affected, n_above, n_below )
+            total_nodes += len( data_graph.nodes )
+
+    def emissionProb( self, node, is_partial_graph_index=False ):
+        # Access the emission matrix with the full graph indices
+        node_full = self.partialGraphIndexToFullGraphIndex( node ) if is_partial_graph_index == True else node
+
+        group = self.node_groups[ int( node_full ) ]
+        y = self.ys[ int( node_full ) ]
+        cond = self.conds[ int( node_full ) ]
+
+        if( not np.any( np.isnan( y ) ) ):
+            prob = self.recognizerFuncs[ group ]( y, cond ).reshape( ( -1, ) )
         else:
             prob = np.zeros_like( self.pi0s[ group ][ :, 0 ] ).reshape( ( -1, ) )
 

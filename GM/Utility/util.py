@@ -21,7 +21,67 @@ __all__ = [ 'multigammalnDerivative',
             'toBlocks',
             'fbsData',
             'logsumexp',
-            'monitored_adam' ]
+            'monitored_adam',
+            'extendAxes',
+            'logMultiplyTerms',
+            'logIntegrate' ]
+
+######################################################################
+
+def extendAxes( term, target_axis, max_dim ):
+    # Push the first axis out to target_axis, but don't change
+    # the axes past max_dim
+
+    # Add axes before the fbsAxes
+    for _ in range( max_dim - target_axis - 1 ):
+        term = np.expand_dims( term, 1 )
+
+    # Prepend axes
+    for _ in range( target_axis ):
+        term = np.expand_dims( term, 0 )
+
+    return term
+
+def logMultiplyTerms( terms ):
+    # Basically np.einsum but in log space
+
+    # Remove the empty terms
+    terms = [ t for t in terms if np.prod( t.shape ) > 1 ]
+
+    ndim = max( [ len( term.shape ) for term in terms ] )
+
+    axes = [ [ i for i, s in enumerate( t.shape ) if s != 1 ] for t in terms ]
+
+    # Get the shape of the output
+    shape = np.ones( ndim, dtype=int )
+    for ax, term in zip( axes, terms ):
+        shape[ np.array( ax ) ] = term.squeeze().shape
+
+    # Basically np.einsum in log space
+    ans = np.zeros( shape )
+    for ax, term in zip( axes, terms ):
+
+        for _ in range( ndim - term.ndim ):
+            term = term[ ..., None ]
+
+        ans += term
+
+    return ans
+
+def logIntegrate( integrand, axes ):
+    # Need adjusted axes because the relative axes in integrand change as we reduce
+    # over each axis
+    if( len( axes ) == 0 ):
+        return integrand
+
+    assert max( axes ) < integrand.ndim
+    axes = np.array( axes )
+    axes[ axes < 0 ] = integrand.ndim + axes[ axes < 0 ]
+    adjusted_axes = np.array( sorted( axes ) ) - np.arange( len( axes ) )
+    for ax in adjusted_axes:
+        integrand = logsumexp( integrand, axis=ax )
+
+    return integrand
 
 ######################################################################
 

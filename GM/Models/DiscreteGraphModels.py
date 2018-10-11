@@ -364,7 +364,7 @@ class GSVAE():
         if( graphs is not None ):
             self.graphs = graphs
 
-        self.msg = GraphDiscreteSVAE()
+        self.msg = GraphDiscreteSVAEConditioned()
 
         minibatch_ratio = 1.0
 
@@ -416,7 +416,7 @@ class GroupGSVAE():
         if( graphs is not None ):
             self.graphs = graphs
 
-        self.msg = GraphDiscreteGroupSVAE()
+        self.msg = GraphDiscreteGroupSVAEConditioned()
 
         minibatch_ratio = 1.0
 

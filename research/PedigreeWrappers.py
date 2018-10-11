@@ -25,6 +25,29 @@ class _pedigreeMixin():
         self.studyID = None
         self.pedigree_obj = None
 
+    def setNumbAffectedBelow( self ):
+        n_affected_below = {}
+        for node in self.backwardPass():
+            n_affected_below[ node ] = 0
+            if( self.data[ node ] == 1 ):
+                n_affected_below[ node ] += 1
+            for children in self.getChildren( node ):
+                for child in children:
+                    if( child in n_affected_below ):
+                        n_affected_below[ node ] += n_affected_below[ child ]
+        self.n_affected_below = n_affected_below
+
+    def setNumbAffectedAbove( self ):
+        n_affected_above = {}
+        for node in self.forwardPass():
+            n_affected_above[ node ] = 0
+            if( self.data[ node ] == 1 ):
+                n_affected_above[ node ] += 1
+            for parent in self.getParents( node ):
+                if( parent in n_affected_above ):
+                    n_affected_above[ node ] += n_affected_above[ parent ]
+        self.n_affected_above = n_affected_above
+
     def getNumbAffected( self ):
         ans = 0
         for node, attr in self.attrs.items():
@@ -52,7 +75,6 @@ class _pedigreeMixin():
                 self._people.append( person )
 
         return self._people
-
 
     def toNetworkX( self ):
         graph = super().toNetworkX()
@@ -140,6 +162,8 @@ class Pedigree( _pedigreeMixin, DataGraph ):
         new_pedigree.data = deepcopy( pedigree.data )
         new_pedigree.possible_latent_states = deepcopy( pedigree.possible_latent_states )
         new_pedigree.attrs = deepcopy( pedigree.attrs )
+        new_pedigree.n_affected_below = deepcopy( pedigree.n_affected_below )
+        new_pedigree.n_affected_above = deepcopy( pedigree.n_affected_above )
         return new_pedigree
 
 class PedigreeSexMatters( _pedigreeMixin, GroupGraph ):
@@ -155,6 +179,8 @@ class PedigreeSexMatters( _pedigreeMixin, GroupGraph ):
         new_pedigree.data = deepcopy( pedigree.data )
         new_pedigree.possible_latent_states = deepcopy( pedigree.possible_latent_states )
         new_pedigree.attrs = deepcopy( pedigree.attrs )
+        new_pedigree.n_affected_below = deepcopy( pedigree.n_affected_below )
+        new_pedigree.n_affected_above = deepcopy( pedigree.n_affected_above )
         sex_to_index = lambda x: [ 'female', 'male', 'unknown' ].index( x )
         for node, attr in pedigree.attrs.items():
             new_pedigree.setGroups( node, sex_to_index( attr[ 'sex' ] ) )
