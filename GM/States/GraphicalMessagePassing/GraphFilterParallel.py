@@ -1114,8 +1114,10 @@ class GraphFilterFBSSVAE( GraphFilterFBSParallel ):
     ######################################################################
 
     def emissionPotentialGradients( self, U, V, nodes ):
-        grads = []
+        # d_logZ_dL
+        # The gradient is equal to the smoothed probabilities!
 
+        grads = []
         for node in nodes:
 
             node_data = self.nodeJointLocalInfo( node, U, V )

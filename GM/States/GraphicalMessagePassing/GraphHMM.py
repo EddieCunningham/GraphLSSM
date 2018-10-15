@@ -891,7 +891,7 @@ class GraphDiscreteGroupSVAE( _graphHMMGroupFBSMixin, GraphFilterFBSSVAE ):
 
     def parameterCheck( self, log_initial_dists, log_transition_dists ):
 
-        assert len( log_initial_dists.keys() ) == len( log_transition_dists.keys() ) and len( log_transition_dists.keys() ) == len( log_emission_dists.keys() )
+        assert len( log_initial_dists.keys() ) == len( log_transition_dists.keys() ) and len( log_transition_dists.keys() )
 
         for group in log_initial_dists.keys():
             log_initial_dist = log_initial_dists[ group ]
@@ -993,7 +993,8 @@ class GraphDiscreteSVAEConditioned( GraphDiscreteSVAE ):
                 affected = data_graph.attrs[ node ][ 'affected' ]
                 n_above = data_graph.n_affected_above[ node ]
                 n_below = data_graph.n_affected_below[ node ]
-                self.conds[ total_nodes + node ] = ( sex, age, affected, n_above, n_below )
+                keyword_vec = data_graph.getKeywordVec( node )
+                self.conds[ total_nodes + node ] = ( sex, age, affected, n_above, n_below, keyword_vec )
             total_nodes += len( data_graph.nodes )
 
     def emissionProb( self, node, is_partial_graph_index=False ):
@@ -1029,7 +1030,8 @@ class GraphDiscreteGroupSVAEConditioned( GraphDiscreteGroupSVAE ):
                 affected = data_graph.attrs[ node ][ 'affected' ]
                 n_above = data_graph.n_affected_above[ node ]
                 n_below = data_graph.n_affected_below[ node ]
-                self.conds[ total_nodes + node ] = ( sex, age, affected, n_above, n_below )
+                keyword_vec = data_graph.getKeywordVec( node )
+                self.conds[ total_nodes + node ] = ( sex, age, affected, n_above, n_below, keyword_vec )
             total_nodes += len( data_graph.nodes )
 
     def emissionProb( self, node, is_partial_graph_index=False ):

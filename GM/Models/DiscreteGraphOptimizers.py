@@ -1,8 +1,10 @@
 from GenModels.GM.Distributions import Categorical, Dirichlet, TensorTransitionDirichletPrior
 from .DiscreteGraphParameters import *
 import autograd.numpy as np
-from autograd import grad, value_and_grad
-from autograd.misc.optimizers import adam
+from autograd import grad, value_and_grad, jacobian
+from autograd.misc.optimizers import adam, unrolledGrad
+from autograd.extend import primitive, defvjp
+from autograd.misc import flatten
 import copy
 from functools import partial
 import string
@@ -17,7 +19,9 @@ __all__ = [ 'Gibbs',
             'SVI',
             'GroupSVI',
             'SVAE',
-            'GroupSVAE' ]
+            'GroupSVAE',
+            'DESOpt',
+            'GroupDESOpt' ]
 
 ######################################################################
 
@@ -411,6 +415,8 @@ class RelaxedStateSampler():
 
             self.node_states[ node ] = relaxed_state
 
+######################################################################
+
 class SVAE( Optimizer ):
     # THIS IS AN INCOMPLETE IMPLEMENTATION.  IT WILL ONLY OPTIMIZE THE RECOGNITION AND GENERATIVE NETWORKS.
     # THE FULL IMPLEMENTATION ISN'T NEEDED FOR THE RESEARCH PROJECT
@@ -427,7 +433,9 @@ class SVAE( Optimizer ):
         self.initial_prior_mfnp     = copy.deepcopy( self.params.initial_dist.prior.nat_params )
         self.transition_prior_mfnps = [ copy.deepcopy( dist.prior.nat_params ) for dist in self.params.transition_dists ]
 
-    def computeLoss( self, emission_params, n_iter ):
+    #####################################################################
+
+    def svaeLoss( self, emission_params, n_iter ):
 
         recognizer_params, generative_hyper_params = emission_params
 
@@ -469,11 +477,13 @@ class SVAE( Optimizer ):
 
         return -svae_loss
 
-    def train( self, num_iters=100 ):
+    #####################################################################
+
+    def trainSVAE( self, num_iters=100 ):
 
         svae_params = ( self.params.emission_dist.recognizer_params, self.params.emission_dist.generative_hyper_params )
 
-        emission_grads = grad( self.computeLoss )
+        emission_grads = grad( self.svaeLoss )
         def callback( x, i, g ):
             if( i%25 == 0 ):
                 print( 'i', i )
@@ -503,7 +513,9 @@ class GroupSVAE( Optimizer ):
         self.initial_prior_mfnp    = dict( [ ( group, copy.deepcopy( dist.prior.nat_params ) ) for group, dist in self.params.initial_dists.items() ] )
         self.transition_prior_mfnps = dict( [ ( group, dict( [ ( shape, copy.deepcopy( dist.prior.nat_params ) ) for shape, dist in dists.items() ] ) ) for group, dists in self.params.transition_dists.items() ] )
 
-    def computeLoss( self, emission_params, n_iter ):
+    #####################################################################
+
+    def svaeLoss( self, emission_params, n_iter ):
 
         recognizer_params, generative_hyper_params = emission_params
 
@@ -550,14 +562,16 @@ class GroupSVAE( Optimizer ):
 
         return -svae_loss
 
-    def train( self, num_iters=100 ):
+    #####################################################################
+
+    def trainSVAE( self, num_iters=100 ):
 
         svae_params = ( {}, {} )
         for group, dist in self.params.emission_dists.items():
             svae_params[ 0 ][ group ] = dist.recognizer_params
             svae_params[ 1 ][ group ] = dist.generative_hyper_params
 
-        emission_grads = grad( self.computeLoss )
+        emission_grads = grad( self.svaeLoss )
         def callback( x, i, g ):
             if( i%25 == 0 ):
                 print( 'i', i )
@@ -568,5 +582,263 @@ class GroupSVAE( Optimizer ):
         for group in self.params.emission_dists.keys():
             self.params.emission_dists[ group ].recognizer_params = opt_params[ 0 ][ group ]
             self.params.emission_dists[ group ].generative_hyper_params = opt_params[ 1 ][ group ]
+
+        return opt_params
+
+######################################################################
+
+class DESOpt( Optimizer ):
+    # Deep evolutionary smoother?
+
+    def __init__( self, msg, parameters, inheritance_pattern ):
+        super().__init__( msg, parameters )
+        self.inheritance_pattern = inheritance_pattern
+        self.s = 1.0
+        self.params.setMinibatchRatio( self.s )
+        self.initial_prior_mfnp     = copy.deepcopy( self.params.initial_dist.prior.nat_params )
+        self.transition_prior_mfnps = [ copy.deepcopy( dist.prior.nat_params ) for dist in self.params.transition_dists ]
+
+    #####################################################################
+
+    @primitive
+    def marginalLoss( self, recognizer_params, n_iter ):
+
+        # Sample natural parameter
+        initial_params = self.params.initial_dist.paramSample( prior_nat_params=self.initial_prior_mfnp )[ 0 ]
+        transition_params = [ dist.paramSample( prior_nat_params=mfnp )[ 0 ] for dist, mfnp in zip( self.params.transition_dists, self.transition_prior_mfnps ) ]
+
+        # Run the smoother
+        recognizer = partial( self.params.emission_dist.recognize, recognizer_params=recognizer_params, inheritance_pattern=self.inheritance_pattern )
+        self.msg.updateParams( initial_params, transition_params, recognizer )
+        self.runFilter()
+
+        marginal = self.msg.marginalProb( self.U, self.V )
+
+        return marginal
+
+    #####################################################################
+
+    def marginalLossGrad( self, recognizer_params, n_iter, run_smoother=False, return_flat=False ):
+
+        # Might want to just use the U and V computed from the last smoother run
+        if( run_smoother ):
+
+            # Sample natural parameter
+            initial_params = self.params.initial_dist.paramSample( prior_nat_params=self.initial_prior_mfnp )[ 0 ]
+            transition_params = [ dist.paramSample( prior_nat_params=mfnp )[ 0 ] for dist, mfnp in zip( self.params.transition_dists, self.transition_prior_mfnps ) ]
+
+            # Run the smoother
+            recognizer = partial( self.params.emission_dist.recognize, recognizer_params=recognizer_params, inheritance_pattern=self.inheritance_pattern )
+            self.msg.updateParams( initial_params, transition_params, recognizer )
+            self.runFilter()
+
+        d_logz_d_L = self.msg.emissionPotentialGradients( self.U, self.V, self.msg.nodes )
+
+        _full_g, unflatten = flatten( recognizer_params )
+        _full_g = np.zeros_like( _full_g )
+
+        for node, gLogZ in d_logz_d_L:
+            y = self.msg.ys[ node ]
+            cond = self.msg.conds[ node ]
+
+            def loss0( r, i ):
+                return self.params.emission_dist.recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 0 ]
+            def loss1( r, i ):
+                return self.params.emission_dist.recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 1 ]
+            def loss2( r, i ):
+                return self.params.emission_dist.recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 2 ]
+
+            g0 = unrolledGrad( grad( loss0 ), recognizer_params )
+            g1 = unrolledGrad( grad( loss1 ), recognizer_params )
+            g2 = unrolledGrad( grad( loss2 ), recognizer_params )
+
+            _g0, _ = flatten( g0 )
+            _g1, _ = flatten( g1 )
+            _g2, _ = flatten( g2 )
+
+            _g = _g0*gLogZ[ 0 ] + _g1*gLogZ[ 1 ] + _g2*gLogZ[ 2 ]
+
+            _full_g += _g
+
+        if( return_flat ):
+            full_g = _full_g, unflatten
+        else:
+            full_g = unflatten( _full_g )
+
+        return full_g
+
+    #####################################################################
+
+    def trainMarginal( self, num_iters=100 ):
+
+        params = self.params.emission_dist.recognizer_params
+
+        emission_grads = grad( self.svaeLoss )
+        def callback( x, i, g ):
+            if( i%25 == 0 ):
+                print( 'i', i )
+
+        gs = emission_grads( params )
+
+        opt_params = adam( emission_grads, params, num_iters=num_iters, callback=callback )
+
+        # Update the model parameters
+        self.params.emission_dist.recognizer_params = opt_params
+
+        return opt_params
+
+
+######################################################################
+
+class GroupDESOpt( Optimizer ):
+
+    def __init__( self, msg, parameters, inheritance_pattern ):
+        super().__init__( msg, parameters )
+        self.inheritance_pattern = inheritance_pattern
+        self.s = 1.0
+        self.params.setMinibatchRatio( self.s )
+        self.initial_prior_mfnp    = dict( [ ( group, copy.deepcopy( dist.prior.nat_params ) ) for group, dist in self.params.initial_dists.items() ] )
+        self.transition_prior_mfnps = dict( [ ( group, dict( [ ( shape, copy.deepcopy( dist.prior.nat_params ) ) for shape, dist in dists.items() ] ) ) for group, dists in self.params.transition_dists.items() ] )
+
+    #####################################################################
+
+    def marginalLoss( self, recognizer_params, n_iter ):
+
+        # Sample natural parameter
+        initial_params    = dict( [ ( group, dist.paramSample( prior_nat_params=self.initial_prior_mfnp[ group ] )[ 0 ] ) for group, dist in self.params.initial_dists.items() ] )
+        transition_params = dict( [ ( group, [ dist.paramSample( prior_nat_params=self.transition_prior_mfnps[ group ][ shape ] )[ 0 ] for shape, dist in dists.items() ] ) for group, dists in self.params.transition_dists.items() ] )
+
+        # Run the smoother
+        recognizers = {}
+        for group, dist in self.params.emission_dists.items():
+            recognizers[ group ] = partial( dist.recognize, recognizer_params=recognizer_params[ group ], inheritance_pattern=self.inheritance_pattern )
+
+        self.msg.updateParams( initial_params, transition_params, recognizers )
+        self.runFilter()
+
+        marginal = self.msg.marginalProb( self.U, self.V )
+
+        return marginal
+
+    #####################################################################
+
+    def marginalLossGrad( self, recognizer_params, n_iter, run_smoother=False, return_flat=False ):
+
+        # Might want to just use the U and V computed from the last smoother run
+        if( run_smoother ):
+
+            # Sample natural parameter
+            initial_params    = dict( [ ( group, dist.paramSample( prior_nat_params=self.initial_prior_mfnp[ group ] )[ 0 ] ) for group, dist in self.params.initial_dists.items() ] )
+            transition_params = dict( [ ( group, [ dist.paramSample( prior_nat_params=self.transition_prior_mfnps[ group ][ shape ] )[ 0 ] for shape, dist in dists.items() ] ) for group, dists in self.params.transition_dists.items() ] )
+
+            # Run the smoother
+            recognizers = {}
+            for group, dist in self.params.emission_dists.items():
+                recognizers[ group ] = partial( dist.recognize, recognizer_params=recognizer_params[ group ], inheritance_pattern=self.inheritance_pattern )
+
+            self.msg.updateParams( initial_params, transition_params, recognizers )
+            self.runFilter()
+
+        d_logz_d_L = self.msg.emissionPotentialGradients( self.U, self.V, self.msg.nodes )
+
+        unflatten, _full_g = {}, {}
+        for group in self.params.emission_dists.keys():
+            _full_g[ group ], unflatten[ group ] = flatten( recognizer_params[ group ] )
+            _full_g[ group ] = np.zeros_like( _full_g[ group ] )
+
+        for node, gLogZ in d_logz_d_L:
+
+            group = self.msg.node_groups[ node ]
+            y = self.msg.ys[ node ]
+            cond = self.msg.conds[ node ]
+            sex = cond[ 0 ]
+
+            if( sex == 'female' ):
+                def loss0( r, i ):
+                    return self.params.emission_dists[ group ].recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 0 ]
+                def loss1( r, i ):
+                    return self.params.emission_dists[ group ].recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 1 ]
+                def loss2( r, i ):
+                    return self.params.emission_dists[ group ].recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 2 ]
+
+                g0 = unrolledGrad( grad( loss0 ), recognizer_params[ group ] )
+                g1 = unrolledGrad( grad( loss1 ), recognizer_params[ group ] )
+                g2 = unrolledGrad( grad( loss2 ), recognizer_params[ group ] )
+
+                _g0, _ = flatten( g0 )
+                _g1, _ = flatten( g1 )
+                _g2, _ = flatten( g2 )
+
+                _g = _g0*gLogZ[ 0 ] + _g1*gLogZ[ 1 ] + _g2*gLogZ[ 2 ]
+            elif( sex == 'male' ):
+                def loss0( r, i ):
+                    return self.params.emission_dists[ group ].recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 0 ]
+                def loss1( r, i ):
+                    return self.params.emission_dists[ group ].recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 1 ]
+
+                g0 = unrolledGrad( grad( loss0 ), recognizer_params[ group ] )
+                g1 = unrolledGrad( grad( loss1 ), recognizer_params[ group ] )
+
+                _g0, _ = flatten( g0 )
+                _g1, _ = flatten( g1 )
+
+                _g = _g0*gLogZ[ 0 ] + _g1*gLogZ[ 1 ]
+            else:
+                def loss0( r, i ):
+                    return self.params.emission_dists[ group ].recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 0 ]
+                def loss1( r, i ):
+                    return self.params.emission_dists[ group ].recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 1 ]
+                def loss2( r, i ):
+                    return self.params.emission_dists[ group ].recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 2 ]
+                def loss3( r, i ):
+                    return self.params.emission_dists[ group ].recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 3 ]
+                def loss4( r, i ):
+                    return self.params.emission_dists[ group ].recognize( y, cond, recognizer_params=r, inheritance_pattern=self.inheritance_pattern )[ 4 ]
+
+                g0 = unrolledGrad( grad( loss0 ), recognizer_params[ group ] )
+                g1 = unrolledGrad( grad( loss1 ), recognizer_params[ group ] )
+                g2 = unrolledGrad( grad( loss2 ), recognizer_params[ group ] )
+                g3 = unrolledGrad( grad( loss3 ), recognizer_params[ group ] )
+                g4 = unrolledGrad( grad( loss4 ), recognizer_params[ group ] )
+
+                _g0, _ = flatten( g0 )
+                _g1, _ = flatten( g1 )
+                _g2, _ = flatten( g2 )
+                _g3, _ = flatten( g3 )
+                _g4, _ = flatten( g4 )
+
+                _g = _g0*gLogZ[ 0 ] + _g1*gLogZ[ 1 ] + _g2*gLogZ[ 2 ] + _g3*gLogZ[ 3 ] + _g4*gLogZ[ 4 ]
+
+            _full_g[ group ] += _g
+
+        full_g = {}
+        for group in self.params.emission_dists.keys():
+            full_g[ group ] = unflatten[ group ]( _full_g[ group ] )
+
+        if( return_flat ):
+            return flatten( full_g )
+
+        return full_g
+
+    #####################################################################
+
+    def trainMarginal( self, num_iters=100 ):
+
+        params = {}
+        for group, dist in self.params.emission_dists.items():
+            params[ group ] = dist.recognizer_params
+
+        emission_grads = grad( self.marginalLoss )
+        def callback( x, i, g ):
+            if( i%25 == 0 ):
+                print( 'i', i )
+
+        gs = emission_grads( params )
+
+        opt_params = adam( emission_grads, params, num_iters=num_iters, callback=callback )
+
+        # Update the model parameters
+        for group in self.params.emission_dists.keys():
+            self.params.emission_dists[ group ].recognizer_params = opt_params[ group ]
 
         return opt_params

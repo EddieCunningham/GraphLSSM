@@ -17,6 +17,25 @@ Person = namedtuple( 'Person', [ 'id', 'sex', 'affected' ] )
 
 ######################################################################
 
+_spell_check = {'africaamerican': 'africanamerican','ashjewish': 'ashkenazijewish','ashkenawjewish': 'ashkenazijewish','austria': 'austrian','autrian': 'austrian','britishisles': 'english','british': 'english','caucasian(ks)': 'caucasian','caucasion': 'caucasian','czechrepublic': 'czech','engl': 'english','englaish': 'english','england': 'english','englishcanadian': 'english','englishirish': 'english','france': 'french','frenchcanadian': 'french','gech': 'german','germans': 'german','germany': 'german','halian': 'halion','haly': 'halion','india': 'indian','irel': 'israel','italy': 'italian','lebanon': 'lebanese','mexico': 'mexican','mixedeuro': 'german','northerneuropean': 'finish','montana': 'american','nativeamericanscc': 'nativeamerican','nativeamerice': 'nativeamerican','notlisted': '','puertorico': 'puertorican','romania': 'romanian','russia': 'russian','scotch': 'scottish','scotish': 'scottish','spain': 'spanish','swiss': 'sweedish','swedish': 'sweedish','ukraine': 'ukrainian','ukranian': 'ukrainian','ukrain': 'ukrainian','unknown': '','unknowncaucasian': 'caucasian','wales': 'welsh','westerneuropean': 'english'}
+_country_to_region = { 'african': 'african','africanamerican': 'north america','american': 'north america','ashkenazijewish': 'middle east','austrian': 'europe','belarus': 'europe','belgium': 'europe','caucasian': 'europe','centralrussia': 'russia','cherokee': 'north america','chinese': 'china','czachrepublic': 'europe','czech': 'europe','danish': 'europe','dominicanrepublic': 'central america','dutch': 'europe','easterneuropean': 'europe','ecuador': 'central america','egyptian': 'middle east','elsalvador': 'central america','english': 'europe','equador': 'central america','european': 'europe','finish': 'europe','french': 'europe','german': 'europe','greek': 'europe','gypsie': 'europe','halion': 'india','hispanic': 'central america','holland': 'europe','indian': 'india','iran': 'middle east','iraq': 'middle east','irish': 'europe','israel': 'middle east','italian': 'europe','japanese': 'asia','korean': 'asia','lebanese': 'middle east','lithuanian': 'europe','mexican': 'central america','nativeamerican': 'north america','northkorea': 'asia','norway': 'europe','polish': 'europe','puertorican': 'central america','romanian': 'europe','russian': 'russia','scottish': 'europe','southkorea': 'asia','spanish': 'europe','sweedish': 'europe','syrian': 'middle east','ukrainian': 'russia','unitedarabemirates': 'middle east','welsh': 'europe' }
+
+def parseEthnicity( ethnicity ):
+    if( '/' in ethnicity ):
+        ethnicities = ethnicity.split( '/' )
+    elif( ';' in ethnicity ):
+        ethnicities = ethnicity.split( ';' )
+    elif( ',' in ethnicity ):
+        ethnicities = ethnicity.split( ',' )
+    elif( 'and' in ethnicity ):
+        ethnicities = ethnicity.split( 'and' )
+    else:
+        ethnicities = [ ethnicity ]
+
+    return [ e.lower().replace( ' ', '' ).replace( '.', '' ).replace( '-', '' )  for e in ethnicities ]
+
+######################################################################
+
 class _pedigreeMixin():
 
     def __init__( self ):
@@ -24,6 +43,40 @@ class _pedigreeMixin():
         self.attrs = {}
         self.studyID = None
         self.pedigree_obj = None
+
+    @property
+    def possible_regions(self):
+        return [ 'african', 'asia', 'central america', 'china', 'europe', 'india', 'middle east', 'north america', 'russia']
+
+    @property
+    def affected_keywords( self ):
+        return [ 'retina', 'blind', 'affected', 'mac', 'glaucoma', 'vision', 'see', 'cataract', 'eye' ]
+
+    def getKeywordVec( self, node ):
+        ans = np.zeros( 9 )
+        other_info = self.attrs[ node ][ 'other_info' ].lower()
+        for i, k in enumerate( self.affected_keywords ):
+            if( k in other_info ):
+                ans[ i ] = 1.0
+        return ans
+
+    @property
+    def get_world_regions( self ):
+        if( hasattr( self, '_world_regions' ) == False ):
+            all_ethnicities = set()
+            for e in parseEthnicity( self.ethnicity1 ) + parseEthnicity( self.ethnicity2 ):
+                if( e in _spell_check ):
+                    all_ethnicities.add( _spell_check[ e ] )
+                else:
+                    all_ethnicities.add( e )
+            regions = set()
+            for e in all_ethnicities:
+                if( e == '' ):
+                    continue
+                regions.add( _country_to_region[ e ] )
+            self._world_regions = list( regions )
+
+        return self._world_regions
 
     def setNumbAffectedBelow( self ):
         n_affected_below = {}

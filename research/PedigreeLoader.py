@@ -73,7 +73,7 @@ def pedigreeToGraph( pedigree ):
     for person in pedigree.family:
         node = index_map[ person.Id ]
         graph.setNodeData( node, np.array( [ int( person.affected ) ] ) )
-        graph.setNodeAttrs( node, dict( sex=person.sex, affected=person.affected, carrier=person.carrier, age=person.age ) )
+        graph.setNodeAttrs( node, dict( sex=person.sex, affected=person.affected, carrier=person.carrier, age=person.age, other_info=person.otherInfo ) )
         if( person.affected ):
             found_affected = True
 

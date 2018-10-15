@@ -11,7 +11,9 @@ __all__ = [
     'GHMM',
     'GroupGHMM',
     'GSVAE',
-    'GroupGSVAE' ]
+    'GroupGSVAE',
+    'DES',
+    'GroupDES' ]
 
 class GHMMBase( ABC ):
 
@@ -465,3 +467,17 @@ class GroupGSVAE():
                 transition_shapes[ group ].append( shape )
 
         return initial_shapes, transition_shapes
+
+######################################################################
+
+class DES( GSVAE ):
+    def __init__( self, graphs=None, prior_strength=1.0, priors=None, d_obs=None, inheritance_pattern=None, **kwargs ):
+        assert inheritance_pattern is not None
+        super().__init__( graphs, prior_strength, priors, d_obs, **kwargs )
+        self.opt = DESOpt( self.msg, self.params, inheritance_pattern )
+
+class GroupDES( GroupGSVAE ):
+    def __init__( self, graphs=None, prior_strength=1.0, priors=None, d_obs=None, inheritance_pattern=None, **kwargs ):
+        assert inheritance_pattern is not None
+        super().__init__( graphs, prior_strength, priors, d_obs, **kwargs )
+        self.opt = GroupDESOpt( self.msg, self.params, inheritance_pattern )
