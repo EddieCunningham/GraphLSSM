@@ -200,7 +200,8 @@ class Graph():
     @property
     def edge_style( self ):
         if( hasattr( self, '_edge_style' ) == False ):
-            self.edge_style = dict( width='0.25',
+            self.edge_style = dict( label='',
+                                    width='0.25',
                                     height='0.25',
                                     fontcolor='white',
                                     style='filled',
@@ -218,7 +219,7 @@ class Graph():
     @property
     def node_style( self ):
         if( hasattr( self, '_node_style' ) == False ):
-            self.node_style = dict( fixedsize='true' )
+            self.node_style = dict( label='', fixedsize='true' )
         return self._node_style
 
     @node_style.setter
@@ -230,7 +231,8 @@ class Graph():
     @property
     def highlight_node_style( self ):
         if( hasattr( self, '_highlight_edge_style' ) == False ):
-            self.highlight_node_style = dict( fontcolor='white',
+            self.highlight_node_style = dict( label='',
+                                              fontcolor='white',
                                               style='filled',
                                               fillcolor='blue' )
         return self._highlight_edge_style
@@ -258,13 +260,13 @@ class Graph():
             if( labels == True ):
                 d.node( '%d'%( e ), **self.edge_style )
             else:
-                d.node( **self.edge_style )
+                d.node( '', **self.edge_style )
 
         for n, style_key in node_to_style_key.items():
             if( labels == True ):
                 d.node( '%d '%( n ), **styles[ style_key ] )
             else:
-                d.node( **styles[ style_key ] )
+                d.node( '', **styles[ style_key ] )
 
         if( render ):
             d.render( cleanup=True )

@@ -1,6 +1,5 @@
 import itertools
 from functools import partial, lru_cache
-# import autograd.numpy as np
 import autograd.numpy as np
 from GenModels.GM.Utility import fbsData, logsumexp
 from collections import namedtuple, Iterable

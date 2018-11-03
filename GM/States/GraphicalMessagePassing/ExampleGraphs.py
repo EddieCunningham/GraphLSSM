@@ -3,23 +3,24 @@ from GenModels.GM.States.GraphicalMessagePassing.Graph import DataGraph
 import autograd.numpy as np
 from scipy.sparse import coo_matrix
 
-__all__ = [ 'graph1',
-            'graph2',
-            'graph3',
-            'graph4',
-            'graph5',
-            'graph6',
-            'graph7',
-            'graph8',
-            'cycleGraph1',
-            'cycleGraph2',
-            'cycleGraph3',
-            'cycleGraph7',
-            'cycleGraph8',
-            'cycleGraph9',
-            'cycleGraph10',
-            'cycleGraph11',
-            'cycleGraph12' ]
+# __all__ = [ 'graph1',
+#             'graph2',
+#             'graph3',
+#             'graph4',
+#             'graph5',
+#             'graph6',
+#             'graph7',
+#             'graph8',
+#             'cycleGraph1',
+#             'cycleGraph2',
+#             'cycleGraph3',
+#             'cycleGraph7',
+#             'cycleGraph8',
+#             'cycleGraph9',
+#             'cycleGraph10',
+#             'cycleGraph11',
+#             'cycleGraph12',
+#             'cycleGraph13' ]
 
 def graph1():
     graph = DataGraph()
@@ -256,5 +257,56 @@ def cycleGraph12():
     graph.addEdge( parents=[ 15, 16, 17 ], children=[ 18, 19, 20 ] )
 
     fbs = np.array( [ 5, 6, 11, 14 ] )
+
+    return graph, fbs
+
+def cycleGraph13():
+    graph = DataGraph()
+    graph.addEdge( parents=[ 0, 1 ], children=[ 3 ] )
+    graph.addEdge( parents=[ 1, 2 ], children=[ 4 ] )
+    graph.addEdge( parents=[ 3 ], children=[ 5 ] )
+    graph.addEdge( parents=[ 4 ], children=[ 7 ] )
+    graph.addEdge( parents=[ 5, 6 ], children=[ 8 ] )
+    graph.addEdge( parents=[ 6, 7 ], children=[ 9 ] )
+
+    fbs = np.array( [ 6 ] )
+
+    return graph, fbs
+
+def cycleGraph14():
+    graph = DataGraph()
+    graph.addEdge( parents=[ 0 ], children=[ 1, 2 ] )
+    graph.addEdge( parents=[ 1 ], children=[ 3 ] )
+    graph.addEdge( parents=[ 2 ], children=[ 4 ] )
+    graph.addEdge( parents=[ 3, 4 ], children=[ 5 ] )
+
+    fbs = np.array( [ 1 ] )
+
+    return graph, fbs
+
+def cycleGraph15():
+    graph = DataGraph()
+    graph.addEdge( parents=[ 0 ], children=[ 1, 2 ] )
+    graph.addEdge( parents=[ 1 ], children=[ 3, 4 ] )
+    graph.addEdge( parents=[ 2 ], children=[ 5 ] )
+    graph.addEdge( parents=[ 3 ], children=[ 6 ] )
+    graph.addEdge( parents=[ 4, 6 ], children=[ 7 ] )
+    graph.addEdge( parents=[ 4, 5 ], children=[ 8 ] )
+
+    fbs = np.array( [ 4 ] )
+
+    return graph, fbs
+
+def cycleGraph16():
+    graph = DataGraph()
+    graph.addEdge( parents=[ 0 ], children=[ 2, 3 ] )
+    graph.addEdge( parents=[ 1 ], children=[ 4, 5 ] )
+    graph.addEdge( parents=[ 2, 3 ], children=[ 6 ] )
+    graph.addEdge( parents=[ 4, 5 ], children=[ 7 ] )
+    graph.addEdge( parents=[ 6, 7 ], children=[ 8 ] )
+    graph.addEdge( parents=[ 2, 8 ], children=[ 9 ] )
+    graph.addEdge( parents=[ 5, 8 ], children=[ 10 ] )
+
+    fbs = np.array( [ 3, 4, 6, 7 ] )
 
     return graph, fbs

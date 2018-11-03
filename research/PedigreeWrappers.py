@@ -156,9 +156,9 @@ class _pedigreeMixin():
         male_style = dict( shape='square' )
         female_style = dict( shape='circle' )
         unknown_style = dict( shape='diamond' )
-        affected_male_style = dict( shape='square', fontcolor='black', style='bold', color='blue' )
-        affected_female_style = dict( shape='circle', fontcolor='black', style='bold', color='blue' )
-        affected_unknown_style = dict( shape='diamond', fontcolor='black', style='bold', color='blue' )
+        affected_male_style = dict( shape='square', fontcolor='black', style='filled', color='blue' )
+        affected_female_style = dict( shape='circle', fontcolor='black', style='filled', color='blue' )
+        affected_unknown_style = dict( shape='diamond', fontcolor='black', style='filled', color='blue' )
         styles = { 0: male_style, 1: female_style, 2: unknown_style, 3: affected_male_style, 4: affected_female_style, 5: affected_unknown_style }
 
         unaffected_males = []
@@ -200,7 +200,7 @@ class _pedigreeMixin():
 
         kwargs.update( dict( styles=styles, node_to_style_key=node_to_style_key) )
 
-        return super().draw( render=render, **kwargs )
+        return super().draw( labels=True, render=render, **kwargs )
 
 class Pedigree( _pedigreeMixin, DataGraph ):
 

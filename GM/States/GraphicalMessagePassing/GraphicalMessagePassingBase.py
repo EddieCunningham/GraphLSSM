@@ -615,6 +615,9 @@ class GraphMessagePasser():
         # Filter over all of the graphs
         while( u_list.size > 0 or v_list[ 0 ].size > 0 ):
 
+            print( 'u_list', u_list )
+            print( 'v_list', v_list )
+
             if( i > 1 ):
 
                 # In case we're pre-fetching values
@@ -792,6 +795,9 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
         index_map.update( fbs_index_map )
         index_map_reversed.update( fns_index_map_reversed )
 
+        print( 'self.fbs', self.fbs )
+        print( 'index_map', index_map )
+
         # Create a functions to map:
         # full_graph -> partial_graph
         # partial_graph -> full_graph
@@ -806,35 +812,6 @@ class GraphMessagePasserFBS( GraphMessagePasser ):
         mask = ~np.in1d( self.full_graph.cmask.row, self.fbs )
         _cmask_row, _cmask_col, _cmask_data = self.full_graph.cmask.row[ mask ], self.full_graph.cmask.col[ mask ], self.full_graph.cmask.data[ mask ]
         _cmask_row = self.fullGraphIndexToPartialGraphIndex( _cmask_row )
-
-        # # Remove edges that either don't have parents or don't have children
-        # loose_edges = np.hstack( ( np.setdiff1d( _pmask_col, _cmask_col ), np.setdiff1d( _cmask_col, _pmask_col ) ) )
-        # bad_cols = ~np.in1d( _pmask_col, loose_edges )
-        # _pmask_row = _pmask_row[ bad_cols ]
-        # _pmask_col = _pmask_col[ bad_cols ]
-        # _pmask_data = _pmask_data[ bad_cols ]
-
-        # bad_cols = ~np.in1d( _cmask_col, loose_edges )
-        # _cmask_row = _cmask_row[ bad_cols ]
-        # _cmask_col = _cmask_col[ bad_cols ]
-        # _cmask_data = _cmask_data[ bad_cols ]
-
-        # # Re-index the columns so they are consecutive
-        # all_edges = np.unique( np.hstack( ( _pmask_col, _cmask_col ) ) )
-        # edge_mapper = dict( [ ( e, i ) for i, e in enumerate( all_edges ) ] )
-        # edge_mapped_reversed = dict( [ ( i, e ) for i, e in enumerate( all_edges ) ] )
-        # self.fullGraphEdgeToPartialGraphEdge = np.vectorize( lambda x: edge_mapper[ x ], otypes=[np.float64] )
-        # self.partialGraphEdgeToFullGraphEdge = np.vectorize( lambda x: edge_mapped_reversed[ x ], otypes=[np.float64] )
-
-        # _pmask_col = np.array( [ edge_mapper[ e ] for e in _pmask_col ] )
-        # _cmask_col = np.array( [ edge_mapper[ e ] for e in _cmask_col ] )
-
-        # # The new shape will have fewer nodes
-        # shape = ( self.full_graph.pmask.shape[ 0 ] - self.fbs.shape[ 0 ], all_edges.shape[ 0 ] )
-        # parital_pmask = coo_matrix( ( _pmask_data, ( _pmask_row, _pmask_col ) ), shape=shape, dtype=int )
-
-        # shape = ( self.full_graph.cmask.shape[ 0 ] - self.fbs.shape[ 0 ], all_edges.shape[ 0 ] )
-        # parital_cmask = coo_matrix( ( _cmask_data, ( _cmask_row, _cmask_col ) ), shape=shape, dtype=int )
 
         # The new shape will have fewer nodes
         shape = ( self.full_graph.pmask.shape[ 0 ] - self.fbs.shape[ 0 ], self.full_graph.pmask.shape[ 1 ] )

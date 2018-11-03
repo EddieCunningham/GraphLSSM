@@ -189,6 +189,15 @@ class MarginalizationTester():
         msg.updateParams( initial_dist, transition_dists, emission_dist, graphs )
         msg.draw()
         U, V = msg.filter()
+        assert 0
+        # for node, elt in enumerate( U ):
+        #     node = msg.partialGraphIndexToFullGraphIndex( node )
+        #     print( 'node', node, 'elt.shape', elt.shape, 'elt.fbs_axis', elt.fbs_axis )
+
+        # for node, edge, elt in zip( *V ):
+        #     node = msg.partialGraphIndexToFullGraphIndex( node )
+        #     print( 'node', node, 'edge', edge, 'elt.shape', elt.shape, 'elt.fbs_axis', elt.fbs_axis )
+        # assert 0
 
         ####################################################
 
@@ -238,7 +247,7 @@ class MarginalizationTester():
             # If we reduce over the last axis, we should have everything sum to 1
             reduced = msg.integrate( probs, axes=[ -1 ] )
             print( 'P( x_%d | Y )'%( n ), ':', probs, '->', probs.shape, reduced )
-            # assert np.allclose( reduced, 0.0 )
+            assert np.allclose( reduced, 0.0 ), 'Failed test!'
 
         ####################################################
 
@@ -247,7 +256,7 @@ class MarginalizationTester():
             # If we reduce over the last axis, we should have everything sum to 1
             reduced = msg.integrate( probs, axes=[ -1 ] )
             print( 'P( x_%d | x_p1..pN, Y )'%( n ), '->', probs.shape, reduced )
-            # assert np.allclose( reduced, 0.0 )
+            assert np.allclose( reduced, 0.0 ), 'Failed test!'
 
 ##################################################################################################
 
@@ -412,7 +421,8 @@ def testGraphHMM():
                cycleGraph9(),
                cycleGraph10(),
                cycleGraph11(),
-               cycleGraph12() ]
+               cycleGraph12(),
+               cycleGraph13() ]
 
     d_latent = 2
     d_obs = 5
@@ -442,7 +452,8 @@ def testGraphHMMParallel():
                cycleGraph9(),
                cycleGraph10(),
                cycleGraph11(),
-               cycleGraph12() ]
+               cycleGraph12(),
+               cycleGraph13() ]
 
     d_latent = 2
     d_obs = 5
@@ -472,7 +483,8 @@ def testGraphGroupHMM():
                cycleGraph9(),
                cycleGraph10(),
                cycleGraph11(),
-               cycleGraph12() ]
+               cycleGraph12(),
+               cycleGraph13() ]
 
     d_obs = 5
     measurements = 2
@@ -503,7 +515,8 @@ def testGraphGroupHMMParallel():
                cycleGraph9(),
                cycleGraph10(),
                cycleGraph11(),
-               cycleGraph12() ]
+               cycleGraph12(),
+               cycleGraph13() ]
 
     d_obs = 5
     measurements = 2
@@ -518,22 +531,26 @@ def testGraphGroupHMMParallel():
 def testSpeed():
     np.random.seed( 2 )
 
-    graphs = [ graph1(),
-               graph2(),
-               graph3(),
-               graph4(),
-               graph5(),
-               graph6(),
-               graph7(),
-               cycleGraph1(),
-               cycleGraph2(),
-               cycleGraph3(),
-               cycleGraph7(),
-               cycleGraph8(),
-               cycleGraph9(),
-               cycleGraph10(),
-               cycleGraph11(),
-               cycleGraph12() ]
+    # graphs = [ graph1(),
+    #            graph2(),
+    #            graph3(),
+    #            graph4(),
+    #            graph5(),
+    #            graph6(),
+    #            graph7(),
+    #            cycleGraph1(),
+    #            cycleGraph2(),
+    #            cycleGraph3(),
+    #            cycleGraph7(),
+    #            cycleGraph8(),
+    #            cycleGraph9(),
+    #            cycleGraph10(),
+    #            cycleGraph11(),
+    #            cycleGraph12(),
+    #            cycleGraph13(),
+    #            cycleGraph14(),
+    #            cycleGraph15() ]
+    graphs = [ cycleGraph16() ]
 
     d_latent = 5
     d_obs = 4
@@ -552,11 +569,15 @@ def testSpeed():
     start_regular = time.time()
     regular.run()
     end_regular = time.time()
+    assert 0
 
     parallel = MarginalizationTesterFBSParallel( graphs, d_latent, d_obs, measurements, random_latent_states=False )
     start_parallel = time.time()
     parallel.run()
     end_parallel = time.time()
+
+    print( 'Non-group parallel:', end_parallel - start_parallel )
+    print( 'Non-group regular:', end_regular - start_regular )
 
     group_regular = MarginalizationTesterFBSGroup( graphs, d_latents, d_obs, measurements, groups, random_latent_states=False )
     start_regular_group = time.time()
@@ -567,9 +588,6 @@ def testSpeed():
     start_parallel_group = time.time()
     group_parallel.run()
     end_parallel_group = time.time()
-
-    print( 'Non-group parallel:', end_parallel - start_parallel )
-    print( 'Non-group regular:', end_regular - start_regular )
 
     print( 'Group regular:', end_regular_group - start_regular_group )
     print( 'Group parallel:', end_parallel_group - start_parallel_group )

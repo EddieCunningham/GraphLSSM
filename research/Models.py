@@ -253,9 +253,33 @@ class _drawMixin():
             # Get the probability of being a carrier
             prob = np.exp( probs[ n ] )
             carrier_prob = probCarrierFunc( attrs[ 'sex' ], prob )
-            style[ 'fillcolor' ] = matplotlib.colors.to_hex( plt.get_cmap( 'Reds' )( carrier_prob ) )
+            style[ 'fillcolor' ] = matplotlib.colors.to_hex( plt.get_cmap( 'Blues' )( carrier_prob ) )
+            style[ 'fontcolor' ] = 'white' if carrier_prob > 0.55 else 'black'
+            # style[ 'label' ] = str( [ '%2.1f'%p for p in prob ] )
+            # style[ 'label' ] = ''
 
             styles[ n ] = style
+
+        print( 'Node [AA,Aa,aa]' )
+        for n in graph.nodes:
+            with np.printoptions( precision=3, suppress=True ):
+                print( '%4d'%n, np.exp( probs[ n ] ) )
+        # print( 'Male [XY,xY]' )
+        # for n in graph.nodes:
+        #     if( graph.attrs[ n ][ 'sex' ] == 'male' ):
+        #         with np.printoptions( precision=3, suppress=True ):
+        #             print( '%4d'%n, np.exp( probs[ n ] ) )
+        # print( 'Female [XX,Xx,xx]' )
+        # for n in graph.nodes:
+        #     if( graph.attrs[ n ][ 'sex' ] == 'female' ):
+        #         with np.printoptions( precision=3, suppress=True ):
+        #             print( '%6d'%n, np.exp( probs[ n ] ) )
+        # print( 'Unknown [XX,  Xx,  xx,  XY,  xY  ]' )
+        # for n in graph.nodes:
+        #     if( graph.attrs[ n ][ 'sex' ] == 'unknown' ):
+        #         with np.printoptions( precision=2, suppress=True ):
+        #             print( '%7d'%n, np.exp( probs[ n ] ) )
+
 
         return graph.draw( _custom_args={ 'render': True, 'styles': styles, 'node_to_style_key': node_to_style_key } )
 
@@ -265,7 +289,7 @@ class _autosomalDrawMixin( _drawMixin ):
 
     def draw( self, graph_index=0, show_carrier_prob=True ):
         def probCarrierFunc( sex, prob ):
-            return prob[ 0 ] + prob[ 1 ]
+            return ( 2*prob[ 0 ] + prob[ 1 ] ) / 2
         return self._draw( graph_index=graph_index, show_carrier_prob=show_carrier_prob, probCarrierFunc=probCarrierFunc )
 
 class _xlDrawMixin( _drawMixin ):
@@ -273,11 +297,11 @@ class _xlDrawMixin( _drawMixin ):
     def draw( self, graph_index=0, show_carrier_prob=True ):
         def probCarrierFunc( sex, prob ):
             if( sex == 'female' ):
-                return prob[ 0 ] + prob[ 1 ]
+                return ( 2*prob[ 0 ] + prob[ 1 ] ) / 2
             elif( sex == 'male' ):
                 return prob[ 0 ]
             else:
-                return prob[ 0 ] + prob[ 1 ] + prob[ 3 ]
+                return ( 2*prob[ 0 ] + prob[ 1 ] + prob[ 3 ] ) / 3
         return self._draw( graph_index=graph_index, show_carrier_prob=show_carrier_prob, probCarrierFunc=probCarrierFunc )
 
 ######################################################################

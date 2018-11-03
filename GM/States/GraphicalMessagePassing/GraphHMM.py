@@ -721,7 +721,7 @@ class _graphHMMGroupFBSMixin( _graphHMMMixin ):
         pi = np.moveaxis( pi, np.arange( ndim ), np.hstack( ( parent_order, ndim - 1 ) ) )
 
         # If we know the latent state for child, then ensure that we
-        # transition there
+        # transition there. This is intervention!
         modified = False
         for parent, order in zip( parents, parent_order ):
             parent_full = self.partialGraphIndexToFullGraphIndex( parent )
