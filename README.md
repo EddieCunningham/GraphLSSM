@@ -7,8 +7,10 @@ With this framework, a user can do Bayesian inference over graphical structures.
 Here's what is currently implemented:
   - Discrete Latent States (Hidden Markov Model)
   - Inference over latent states on [polytrees](https://en.wikipedia.org/wiki/Polytree) and general DAGs (Evolutionary Smoother)
-  - Gibbs sampling of HMM
-  - EM, CAVI and SVI learning algorithms
+  - Gibbs Sampling
+  - Expectation Maximization
+  - Coordinate Ascent Variational Inference
+  - Stochastic Variational Inference
   - [SVAE](https://arxiv.org/abs/1603.06277) for non conjugate observations using [Autograd](https://github.com/HIPS/autograd) and the [Gumbel Softmax trick](https://arxiv.org/pdf/1611.01144.pdf)
   - Directly optimize marginal probability P(Y;ϴ) for model with non-conjugate observations
   - Visualization with Graphviz
