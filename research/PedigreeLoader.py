@@ -91,8 +91,9 @@ def pedigreeToGraph( pedigree ):
 
 ######################################################################
 
-def load( pedigree_folder_name='Pedigrees_JSON_FIXED_Label/' ):
+def load( pedigree_folder_name='Pedigrees_JSON_FIXED_Label/', return_invalid=False ):
 
+    invalid_pedigrees = []
     graphs = []
     for dir_name, sub_dir_list, file_list in os.walk( os.path.join( os.getcwd(), pedigree_folder_name ) ):
 
@@ -113,6 +114,10 @@ def load( pedigree_folder_name='Pedigrees_JSON_FIXED_Label/' ):
 
                 graphs.append( ( graph, feedback_set ) )
             except Exception as Argument:
+                invalid_pedigrees.append( file_name )
                 print( 'Graph', file_name, 'is incorrect.', Argument )
+
+    if( return_invalid == True ):
+        return graphs, invalid_pedigrees
 
     return graphs
