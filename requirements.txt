@@ -10,7 +10,7 @@ bokeh==0.13.0
 certifi==2018.8.13
 cffi==1.11.5
 constantly==15.1.0
-cryptography==2.3
+cryptography==3.2
 cryptography-vectors==2.3
 cycler==0.10.0
 Cython==0.29.1
